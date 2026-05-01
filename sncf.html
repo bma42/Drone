@@ -6,21 +6,20 @@
     <title>SNCF Radar Pro</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #050505; color: white; font-family: -apple-system, sans-serif; overflow: hidden; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #050505; color: white; font-family: sans-serif; overflow: hidden; }
         #map { height: 100%; width: 100%; }
         .ui { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 1000; 
-              background: rgba(15, 15, 15, 0.9); padding: 12px; border-radius: 12px; text-align: center; width: 270px; 
-              border: 1px solid #333; backdrop-filter: blur(8px); box-shadow: 0 4px 20px rgba(0,0,0,0.6); }
-        button { background: #007aff; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; font-size: 13px; }
-        #log { font-size: 10px; color: #00ffcc; margin-top: 10px; font-family: monospace; text-align: left; line-height: 1.4; }
+              background: rgba(15, 15, 15, 0.9); padding: 12px; border-radius: 12px; text-align: center; width: 260px; 
+              border: 1px solid #333; backdrop-filter: blur(10px); }
+        button { background: #007aff; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; }
+        #log { font-size: 10px; color: #00ffcc; margin-top: 8px; font-family: monospace; text-transform: uppercase; }
         .status-ok { color: #34c759; }
-        .status-err { color: #ff3b30; }
     </style>
 </head>
 <body>
 
 <div class="ui">
-    <button id="btn">SCANNER LA ZONE</button>
+    <button id="btn">SCANNER MA ZONE</button>
     <div id="log">SYSTÈME PRÊT</div>
 </div>
 
@@ -28,82 +27,101 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+    // --- CONFIGURATION ---
+    const API_KEY = "7e15976a-8ec1-4d46-b6a0-575b8a523cdd";
     const map = L.map('map', { zoomControl: false, tap: false }).setView([48.85, 2.34], 12);
     const railLayer = L.layerGroup().addTo(map);
-    const trainLayer = L.layerGroup().addTo(map);
+    const liveLayer = L.layerGroup().addTo(map);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-    async function scan() {
+    // --- FONCTIONS ---
+
+    async function updateRadar() {
         const c = map.getCenter();
-        const latLon = `${c.lat},${c.lng}`;
-        log.innerHTML = "📡 Connexion en cours...";
+        log.innerText = "CONNEXION SÉCURISÉE...";
 
-        // --- 1. RAILS (API v1.0 - Très stable) ---
-        try {
-            const resRail = await fetch(`https://ressources.data.sncf.com/api/records/1.0/search/?dataset=formes-des-lignes-du-rfn&rows=100&geofilter.distance=${latLon},15000`);
-            const dataRail = await resRail.json();
+        // 1. CHARGEMENT DES LIGNES (Infrastructure - Open Data Stable)
+        const railUrl = `https://ressources.data.sncf.com/api/records/1.0/search/?dataset=formes-des-lignes-du-rfn&rows=80&geofilter.distance=${c.lat},${c.lng},15000`;
+        
+        fetch(railUrl).then(res => res.json()).then(data => {
             railLayer.clearLayers();
-            if (dataRail.records) {
-                dataRail.records.forEach(r => {
+            if (data.records) {
+                data.records.forEach(r => {
                     if (r.fields.geo_shape) {
-                        L.geoJSON(r.fields.geo_shape, { style: { color: "#1e40af", weight: 2.5, opacity: 0.6 } }).addTo(railLayer);
+                        L.geoJSON(r.fields.geo_shape, { style: { color: "#1e3a8a", weight: 2, opacity: 0.5 } }).addTo(railLayer);
                     }
                 });
-                log.innerHTML = "<span class='status-ok'>●</span> LIGNES : CHARGÉES";
             }
-        } catch (e) {
-            log.innerHTML = "<span class='status-err'>●</span> LIGNES : ÉCHEC";
-        }
+        }).catch(() => console.warn("Lignes indisponibles"));
 
-        // --- 2. TRAINS (API v1.0 avec bypass Referrer) ---
-        // On utilise la v1.0 car la v2.1 renvoie souvent 404 sur ce dataset précis sans Token
-        const trainUrl = `https://ressources.data.sncf.com/api/records/1.0/search/?dataset=positions-temps-reel-des-trains&rows=100&geofilter.distance=${latLon},50000`;
+        // 2. CHARGEMENT DU TEMPS RÉEL (Navitia / api.sncf.com)
+        // On récupère les objets de transport et gares à proximité
+        const navitiaUrl = `https://api.sncf.com/v1/coverage/sncf/coords/${c.lng};${c.lat}/places_nearby?type[]=stop_point&distance=20000`;
 
         try {
-            const resTrain = await fetch(trainUrl, { referrerPolicy: "no-referrer" });
-            
-            if (!resTrain.ok) {
-                // Si 404, le dataset est probablement passé en mode "privé" (Token requis)
-                if (resTrain.status === 404) {
-                    log.innerHTML += "<br><span class='status-err'>●</span> TRAINS : ACCÈS REFUSÉ (404)";
-                    log.innerHTML += "<br><small style='color:#888'>Le dataset nécessite une clé API SNCF.</small>";
-                    return;
+            const response = await fetch(navitiaUrl, {
+                method: 'GET',
+                headers: {
+                    'Authorization': API_KEY // Authentification par Header
                 }
-                throw new Error();
-            }
+            });
 
-            const dataTrain = await resTrain.json();
-            trainLayer.clearLayers();
+            if (!response.ok) throw new Error(response.status);
 
-            if (dataTrain.records && dataTrain.records.length > 0) {
-                dataTrain.records.forEach(r => {
-                    const pos = r.fields.geopoint;
-                    if (pos) {
-                        L.circleMarker([pos[0], pos[1]], {
-                            radius: 8, fillColor: "#ffec00", color: "#000", weight: 1.5, fillOpacity: 1
-                        }).addTo(trainLayer).bindPopup(`<b>Train ${r.fields.train_number}</b><br>Vitesse : ${r.fields.speed || 0} km/h`);
-                    }
+            const data = await response.json();
+            liveLayer.clearLayers();
+
+            if (data.places_nearby) {
+                data.places_nearby.forEach(place => {
+                    const coord = place.stop_point.coord;
+                    
+                    const marker = L.circleMarker([coord.lat, coord.lon], {
+                        radius: 8,
+                        fillColor: "#ffec00",
+                        color: "#000",
+                        weight: 1,
+                        fillOpacity: 1
+                    }).addTo(liveLayer);
+
+                    // Contenu interactif : On affiche le nom et on pourrait ajouter les prochains départs ici
+                    marker.bindPopup(`
+                        <div style="color:#000">
+                            <b>Gare : ${place.name}</b><br>
+                            <small>Source : api.sncf.com</small><br>
+                            <button onclick="getDepartures('${place.id}')" style="margin-top:5px; font-size:10px; padding:4px;">Voir départs</button>
+                        </div>
+                    `);
                 });
-                log.innerHTML += `<br><span class='status-ok'>●</span> TRAINS : ${dataTrain.records.length} DÉTECTÉS`;
-            } else {
-                log.innerHTML += "<br>○ TRAINS : AUCUN (50KM)";
+                log.innerHTML = `<span class="status-ok">●</span> ${data.places_nearby.length} POINTS DÉTECTÉS`;
             }
         } catch (e) {
-            log.innerHTML += "<br><span class='status-err'>●</span> TRAINS : ERREUR RÉSEAU";
+            log.innerHTML = `<span style="color:red">ERREUR AUTH : ${e.message}</span>`;
         }
     }
+
+    // Fonction bonus pour voir les départs d'une gare au clic
+    window.getDepartures = async function(stopId) {
+        const depUrl = `https://api.sncf.com/v1/coverage/sncf/stop_areas/${stopId}/departures?duration=3600`;
+        try {
+            const res = await fetch(depUrl, { headers: { 'Authorization': API_KEY } });
+            const data = await res.json();
+            alert("Prochain départ : " + data.departures[0].display_informations.direction);
+        } catch (e) { alert("Aucun départ trouvé."); }
+    };
+
+    // --- INITIALISATION ---
 
     document.getElementById('btn').onclick = () => {
         navigator.geolocation.getCurrentPosition(p => {
             map.setView([p.coords.latitude, p.coords.longitude], 12);
-            scan();
-        }, () => scan());
+            updateRadar();
+        }, () => updateRadar());
     };
 
-    map.on('moveend', scan);
-    setInterval(scan, 60000); // 1 minute pour éviter le bannissement IP
-    scan();
+    map.on('moveend', updateRadar);
+    updateRadar();
+
 </script>
 </body>
 </html>
