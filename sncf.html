@@ -3,24 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Radar Rail SNCF</title>
+    <title>SNCF Radar - Fix 404</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #1a1a1a; color: white; font-family: -apple-system, sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #1a1a1a; color: white; font-family: sans-serif; }
         #map { height: 100%; width: 100%; }
-        .ui { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; 
-              background: rgba(0,0,0,0.9); padding: 20px; border-radius: 15px; text-align: center; width: 280px; 
-              border: 1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        button { background: #008cff; color: white; border: none; padding: 15px; border-radius: 10px; cursor: pointer; width: 100%; font-weight: bold; font-size: 16px; }
-        #log { font-size: 13px; color: #aaa; margin-top: 12px; }
+        .ui { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; 
+              background: rgba(0,0,0,0.85); padding: 15px; border-radius: 12px; text-align: center; width: 280px; border: 1px solid #444; }
+        button { background: #008cff; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; }
+        #log { font-size: 11px; color: #bbb; margin-top: 10px; word-break: break-all; }
         .error { color: #ff4d4d !important; }
     </style>
 </head>
 <body>
 
 <div class="ui">
-    <button id="btn">SCANNER 10KM</button>
-    <div id="log">Prêt à localiser</div>
+    <button id="btn">SCANNER LA ZONE</button>
+    <div id="log">En attente du GPS...</div>
 </div>
 
 <div id="map"></div>
@@ -31,72 +30,57 @@
     const log = document.getElementById('log');
     const btn = document.getElementById('btn');
 
-    // Fond de carte sombre et propre
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
     btn.onclick = () => {
-        log.innerText = "Recherche satellite GPS...";
-        log.classList.remove('error');
-
+        log.innerText = "Localisation en cours...";
         navigator.geolocation.getCurrentPosition(pos => {
             const { latitude, longitude } = pos.coords;
             map.setView([latitude, longitude], 13);
+            L.circleMarker([latitude, longitude], { color: '#00ffcc', radius: 6 }).addTo(map);
             
-            // Marqueur utilisateur
-            L.circleMarker([latitude, longitude], { 
-                color: '#00ffcc', fillOpacity: 0.8, radius: 7 
-            }).addTo(map).bindPopup("Vous êtes ici").openPopup();
-
             loadRailData(latitude, longitude);
         }, err => {
-            log.innerText = "Erreur GPS : " + err.message + " (Vérifiez l'autorisation)";
-            log.classList.add('error');
-        }, { enableHighAccuracy: true });
+            log.innerHTML = `<span class="error">GPS bloqué. Vérifiez que vous êtes bien en HTTPS.</span>`;
+        });
     };
 
     async function loadRailData(lat, lon) {
-        log.innerText = "Interrogation Base SNCF...";
+        log.innerText = "Appel API SNCF (v1.0)...";
         
-        // Identifiant vérifié pour l'API v2.1
-        const datasetId = "lignes-par-ligne-du-reseau-ferre-national";
-        
-        // Construction de la requête spatiale (rayon de 10km)
-        // Note: l'ordre est POINT(longitude latitude)
-        const whereClause = `within_distance(geo_shape, geom'POINT(${lon} ${lat})', 10000m)`;
-        const url = `https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets/${datasetId}/records?where=${encodeURIComponent(whereClause)}&limit=100`;
+        // Utilisation de l'API v1.0 : plus stable pour les filtres de distance
+        const dataset = "lignes-par-ligne-du-reseau-ferre-national";
+        const url = `https://ressources.data.sncf.com/api/records/1.0/search/?dataset=${dataset}&q=&rows=100&geofilter.distance=${lat},${lon},10000`;
 
         try {
             const response = await fetch(url);
             
             if (!response.ok) {
-                // Si 404, on tente l'identifiant alternatif
-                if (response.status === 404) throw new Error("Dataset introuvable (404)");
-                throw new Error(`Erreur Serveur (${response.status})`);
+                throw new Error(`Erreur ${response.status} : L'API ne répond pas.`);
             }
 
             const data = await response.json();
             
-            if (!data.results || data.results.length === 0) {
-                log.innerText = "Aucun rail trouvé à 10km.";
+            if (!data.records || data.records.length === 0) {
+                log.innerText = "Aucun rail trouvé dans les 10km.";
                 return;
             }
 
-            // Dessin des lignes sur la carte
-            data.results.forEach(record => {
-                if (record.geo_shape) {
-                    L.geoJSON(record.geo_shape, {
-                        style: { color: "#00a8ff", weight: 5, opacity: 0.8, lineCap: 'round' }
-                    }).addTo(map).bindPopup(`<b>Ligne :</b> ${record.libelle || 'Inconnue'}`);
+            data.records.forEach(record => {
+                if (record.fields.geo_shape) {
+                    L.geoJSON(record.fields.geo_shape, {
+                        style: { color: "#00a8ff", weight: 4, opacity: 0.8 }
+                    }).addTo(map).bindPopup(record.fields.libelle);
                 }
             });
 
-            log.innerText = `${data.results.length} segments détectés.`;
-            btn.innerText = "SCAN TERMINÉ";
-            btn.style.background = "#222";
+            log.innerText = `${data.records.length} lignes chargées.`;
+            btn.style.display = "none";
+
         } catch (e) {
-            log.innerText = "API Error: " + e.message;
-            log.classList.add('error');
-            console.error("Détails:", e);
+            log.innerHTML = `<span class="error">${e.message}</span><br><br>
+                             <a href="${url}" target="_blank" style="color:#008cff">Tester le lien API ici</a>`;
+            console.error(e);
         }
     }
 </script>
