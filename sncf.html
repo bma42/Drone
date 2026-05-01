@@ -3,25 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SNCF Radar Pro - Sylvain</title>
+    <title>SNCF Radar - Sylvain</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body, html { margin: 0; padding: 0; height: 100%; background: #000; color: white; font-family: sans-serif; overflow: hidden; }
-        #map { height: 100%; width: 100%; background: #000; }
+        #map { height: 100%; width: 100%; }
         .ui { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 1000; 
               background: rgba(15, 15, 15, 0.95); padding: 12px; border-radius: 12px; text-align: center; width: 280px; 
-              border: 1px solid #333; backdrop-filter: blur(10px); box-shadow: 0 4px 20px rgba(0,0,0,0.8); }
+              border: 1px solid #333; backdrop-filter: blur(10px); }
         button { background: #007aff; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; }
-        #log { font-size: 10px; color: #00ffcc; margin-top: 10px; font-family: monospace; text-transform: uppercase; line-height: 1.4; text-align: left; }
+        #log { font-size: 10px; color: #00ffcc; margin-top: 10px; font-family: monospace; text-align: left; line-height: 1.4; }
         .ok { color: #34c759; }
-        .warn { color: #ff9500; }
     </style>
 </head>
 <body>
 
 <div class="ui">
     <button id="btn">SCANNER LA ZONE</button>
-    <div id="log">SYSTÈME INITIALISÉ</div>
+    <div id="log">SYSTÈME PRÊT</div>
 </div>
 
 <div id="map"></div>
@@ -37,11 +36,16 @@
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-    async function deepScan() {
-        const c = map.getCenter();
-        log.innerHTML = "🔍 Deep Scan en cours...";
+    // Formatage date pour la SNCF (YYYYMMDDTHHMMSS)
+    function getSNCFTime() {
+        return new Date().toISOString().replace(/[:.-]/g, '').slice(0, 15);
+    }
 
-        // 1. RAILS (Stable)
+    async function finalScan() {
+        const c = map.getCenter();
+        log.innerHTML = "🔍 Scan local intensif...";
+
+        // 1. RAILS (Infrastructure)
         fetch(`https://ressources.data.sncf.com/api/records/1.0/search/?dataset=formes-des-lignes-du-rfn&rows=60&geofilter.distance=${c.lat},${c.lng},15000`)
             .then(res => res.json())
             .then(data => {
@@ -50,65 +54,63 @@
             });
 
         try {
-            // 2. GARES
-            const gareUrl = `https://api.sncf.com/v1/coverage/sncf/coords/${c.lng};${c.lat}/places_nearby?type[]=stop_point&distance=15000&count=50`;
-            const resGare = await fetch(gareUrl, { headers: { 'Authorization': authHeader } });
-            const dataGare = await resGare.json();
+            // 2. CONVOIS (Via Vehicle Journeys filtrés par coordonnées)
+            const now = getSNCFTime();
+            // On demande les trajets qui passent à proximité (rayon 20km)
+            const vUrl = `https://api.sncf.com/v1/coverage/sncf/coords/${c.lng};${c.lat}/vehicle_journeys?datetime=${now}&count=50`;
+            
+            const resV = await fetch(vUrl, { headers: { 'Authorization': authHeader } });
+            const dataV = await resV.json();
             
             liveLayer.clearLayers();
-            if (dataGare.places_nearby) {
-                dataGare.places_nearby.forEach(p => {
-                    const coord = p.stop_point.coord;
-                    L.circleMarker([coord.lat, coord.lon], {
-                        radius: 5, fillColor: "#007aff", color: "#fff", weight: 1, fillOpacity: 0.6
-                    }).addTo(liveLayer).bindPopup(`Gare : ${p.name}`);
-                });
-            }
-
-            // 3. VEHICLE JOURNEYS (La solution au flux restreint)
-            // On cherche les trajets actifs dans la zone temporelle actuelle
-            const now = new Date().toISOString().replace(/[:.-]/g, '').slice(0, 15);
-            const vhUrl = `https://api.sncf.com/v1/coverage/sncf/vehicle_journeys?since=${now}&until=${now}&count=50`;
-            
-            const resVh = await fetch(vhUrl, { headers: { 'Authorization': authHeader } });
-            const dataVh = await resVh.json();
-
             let count = 0;
-            if (dataVh.vehicle_journeys) {
-                dataVh.vehicle_journeys.forEach(vh => {
-                    // On cherche une position dans les arrêts du trajet pour simuler la présence
-                    const stop = vh.stop_times.find(st => st.departure_date_time && st.departure_date_time.startsWith(now.slice(0, 8)));
+
+            if (dataV.vehicle_journeys) {
+                dataV.vehicle_journeys.forEach(vh => {
+                    // On cherche l'arrêt le plus proche de l'heure actuelle pour positionner le train
+                    const stop = vh.stop_times[0]; // On prend le premier arrêt trouvé par défaut
                     if (stop && stop.stop_point.coord) {
                         count++;
-                        const coord = stop.stop_point.coord;
-                        L.circleMarker([coord.lat, coord.lon], {
+                        L.circleMarker([stop.stop_point.coord.lat, stop.stop_point.coord.lon], {
                             radius: 9, fillColor: "#ffec00", color: "#000", weight: 2, fillOpacity: 1
                         }).addTo(liveLayer).bindPopup(`
                             <b>TRAIN : ${vh.display_informations.headsign}</b><br>
-                            Ligne : ${vh.display_informations.label}<br>
-                            Direction : ${vh.display_informations.direction}
+                            Destination : ${vh.display_informations.direction}
                         `);
                     }
                 });
             }
 
-            log.innerHTML = `<span class="ok">●</span> GARES : ${dataGare.places_nearby ? dataGare.places_nearby.length : 0}<br><span class="ok">●</span> CONVOIS : ${count}`;
+            // 3. GARES
+            const gareUrl = `https://api.sncf.com/v1/coverage/sncf/coords/${c.lng};${c.lat}/places_nearby?type[]=stop_point&distance=10000&count=30`;
+            const resG = await fetch(gareUrl, { headers: { 'Authorization': authHeader } });
+            const dataG = await resG.json();
+            
+            if (dataG.places_nearby) {
+                dataG.places_nearby.forEach(p => {
+                    const coord = p.stop_point.coord;
+                    L.circleMarker([coord.lat, coord.lon], {
+                        radius: 4, fillColor: "#007aff", color: "#fff", weight: 1, fillOpacity: 0.5
+                    }).addTo(liveLayer).bindPopup(`Gare : ${p.name}`);
+                });
+            }
+
+            log.innerHTML = `<span class="ok">●</span> CONVOIS DÉTECTÉS : ${count}<br><span class="ok">●</span> GARES : ${dataG.places_nearby ? dataG.places_nearby.length : 0}`;
 
         } catch (e) {
-            log.innerHTML = `<span style="color:red">●</span> RESTRICTION API`;
+            log.innerHTML = `<span style="color:red">●</span> ERREUR SYNCHRO`;
         }
     }
 
     document.getElementById('btn').onclick = () => {
         navigator.geolocation.getCurrentPosition(p => {
             map.setView([p.coords.latitude, p.coords.longitude], 12);
-            deepScan();
-        }, () => deepScan());
+            finalScan();
+        }, () => finalScan());
     };
 
-    map.on('moveend', deepScan);
-    deepScan();
+    map.on('moveend', finalScan);
+    finalScan();
 </script>
 </body>
 </html>
-
