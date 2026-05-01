@@ -2,105 +2,96 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SNCF Live Radar</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SNCF Radar Pro</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #0a0a0a; color: white; font-family: sans-serif; overflow: hidden; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #050505; color: white; font-family: -apple-system, system-ui, sans-serif; overflow: hidden; }
         #map { height: 100%; width: 100%; }
-        .ui { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; 
-              background: rgba(20, 20, 20, 0.9); padding: 15px; border-radius: 12px; text-align: center; width: 280px; 
-              border: 1px solid #444; backdrop-filter: blur(10px); }
-        button { background: #007aff; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; }
-        #log { font-size: 11px; color: #00ffcc; margin-top: 10px; font-family: monospace; }
-        .error { color: #ff4d4d !important; }
+        .ui { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 1000; 
+              background: rgba(15, 15, 15, 0.95); padding: 12px; border-radius: 14px; text-align: center; width: 260px; 
+              border: 1px solid #333; box-shadow: 0 8px 32px rgba(0,0,0,0.8); backdrop-filter: blur(8px); }
+        button { background: #007aff; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; font-size: 13px; }
+        #log { font-size: 10px; color: #00ffcc; margin-top: 8px; font-family: monospace; text-transform: uppercase; letter-spacing: 1px; }
+        .error { color: #ff3b30 !important; }
     </style>
 </head>
 <body>
 
 <div class="ui">
-    <button id="btn">MA POSITION / RECHARGER</button>
-    <div id="log">Prêt pour le scan</div>
+    <button id="btn">SCANNER MA ZONE</button>
+    <div id="log">SYSTÈME PRÊT</div>
 </div>
 
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    const map = L.map('map', { zoomControl: false }).setView([46.6, 2.2], 6);
+    const map = L.map('map', { zoomControl: false, tap: false }).setView([46.6, 2.2], 6);
     const log = document.getElementById('log');
-    const railLayer = L.layerGroup().addTo(map);
     const trainLayer = L.layerGroup().addTo(map);
+    const railLayer = L.layerGroup().addTo(map);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-    // Fonction de récupération universelle v2.1
-    async function updateRadar() {
-        const center = map.getCenter();
-        log.innerText = "Appel API SNCF...";
+    async function apiRequest(dataset, where) {
+        const url = `https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets/${dataset}/records?where=${encodeURIComponent(where)}&limit=100`;
+        const response = await fetch(url, { method: 'GET', mode: 'cors' });
+        if (!response.ok) throw new Error(response.status);
+        return response.json();
+    }
 
-        // 1. Mise à jour des rails (si zoom suffisant)
-        if (map.getZoom() > 10) {
-            const railParams = `where=within_distance(geo_shape, geom'POINT(${center.lng} ${center.lat})', 20km)&limit=100`;
-            fetch(`https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets/formes-des-lignes-du-rfn/records?${railParams}`)
-                .then(res => res.json())
-                .then(data => {
-                    railLayer.clearLayers();
-                    if (data.results) {
-                        data.results.forEach(r => L.geoJSON(r.geo_shape, { style: { color: "#1e3a8a", weight: 2, opacity: 0.5 } }).addTo(railLayer));
-                    }
-                }).catch(() => console.log("Rail API Error"));
-        }
-
-        // 2. Mise à jour des trains (Temps réel)
-        const trainParams = `where=within_distance(geopoint, geom'POINT(${center.lng} ${center.lat})', 50km)&limit=100`;
-        const trainUrl = `https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets/positions-temps-reel-des-trains/records?${trainParams}`;
+    async function scan() {
+        const c = map.getCenter();
+        log.innerText = "CONNEXION SNCF...";
 
         try {
-            const response = await fetch(trainUrl);
-            if (!response.ok) throw new Error(response.status);
-            
-            const data = await response.json();
+            if (map.getZoom() > 10) {
+                const rails = await apiRequest('formes-des-lignes-du-rfn', `within_distance(geo_shape, geom'POINT(${c.lng} ${c.lat})', 20km)`);
+                railLayer.clearLayers();
+                if (rails.results) {
+                    rails.results.forEach(r => L.geoJSON(r.geo_shape, { style: { color: "#1e3a8a", weight: 2, opacity: 0.4 } }).addTo(railLayer));
+                }
+            }
+
+            const trains = await apiRequest('positions-temps-reel-des-trains', `within_distance(geopoint, geom'POINT(${c.lng} ${c.lat})', 50km)`);
             trainLayer.clearLayers();
 
-            if (!data.results || data.results.length === 0) {
-                log.innerText = "Aucun train trouvé (rayon 50km)";
+            if (!trains.results || trains.results.length === 0) {
+                log.innerText = "AUCUN TRAIN DÉTECTÉ";
                 return;
             }
 
-            data.results.forEach(t => {
+            trains.results.forEach(t => {
                 if (t.geopoint) {
-                    L.circleMarker([t.geopoint.lat, t.geopoint.lon], {
-                        radius: 8, fillColor: "#ffec00", color: "#000", weight: 1, fillOpacity: 1
-                    }).addTo(trainLayer)
-                      .bindPopup(`<b>Train ${t.train_number}</b><br>Vitesse : ${t.speed || 0} km/h`);
+                    const m = L.circleMarker([t.geopoint.lat, t.geopoint.lon], {
+                        radius: 7, fillColor: "#ffec00", color: "#000", weight: 1, fillOpacity: 1
+                    }).addTo(trainLayer);
+                    m.bindPopup(`<b>TRAIN ${t.train_number}</b><br>${t.speed || 0} KM/H`);
                 }
             });
 
-            log.innerText = `${data.results.length} trains détectés`;
+            log.innerText = `${trains.results.length} TRAINS EN LIGNE`;
         } catch (e) {
-            log.innerHTML = `<span class="error">API indisponible (${e.message})</span>`;
+            log.innerHTML = `<span class="error">ÉCHEC : SERVEUR SNCF HORS LIGNE</span>`;
+            console.error(e);
         }
     }
 
-    // Bouton GPS
     document.getElementById('btn').onclick = () => {
-        navigator.geolocation.getCurrentPosition(pos => {
-            map.setView([pos.coords.latitude, pos.coords.longitude], 12);
-            updateRadar();
+        navigator.geolocation.getCurrentPosition(p => {
+            map.setView([p.coords.latitude, p.coords.longitude], 12);
+            scan();
         }, () => {
-            log.innerText = "GPS refusé. Scan sur Paris...";
+            log.innerText = "GPS COUPÉ - SCAN PARIS";
             map.setView([48.85, 2.34], 12);
-            updateRadar();
+            scan();
         });
     };
 
-    // Événements
-    map.on('moveend', updateRadar);
-    setInterval(updateRadar, 30000); // Auto-refresh 30s
-
-    // Premier scan au chargement
-    updateRadar();
+    map.on('moveend', scan);
+    setInterval(scan, 60000);
+    scan();
 </script>
 </body>
 </html>
