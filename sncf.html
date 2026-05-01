@@ -3,92 +3,91 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SNCF Radar - Fix</title>
+    <title>SNCF Infrastructure</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
-        #map { height: 100%; width: 100%; background: #000; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #050505; overflow: hidden; }
+        #map { height: 100%; width: 100%; background: #050505; }
         .ui { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 1000; 
-              background: rgba(20, 20, 20, 0.9); padding: 12px; border-radius: 12px; text-align: center; width: 260px; 
-              border: 1px solid #333; backdrop-filter: blur(10px); }
-        button { background: #007aff; color: #fff; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; }
-        #log { font-size: 10px; color: #00ffcc; margin-top: 8px; font-family: monospace; text-align: left; }
+              background: rgba(15, 15, 15, 0.9); padding: 10px 20px; border-radius: 20px; 
+              border: 1px solid #333; backdrop-filter: blur(10px); color: #00ffcc; 
+              font-family: monospace; font-size: 12px; pointer-events: none; }
     </style>
 </head>
 <body>
 
-<div class="ui">
-    <button id="btn">RESCANNER</button>
-    <div id="log">INIT...</div>
-</div>
-
+<div class="ui" id="status">INITIALISATION INFRA...</div>
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    const API_KEY = "7e15976a-8ec1-4d46-b6a0-575b8a523cdd";
-    const auth = 'Basic ' + btoa(API_KEY + ':');
-    
-    const map = L.map('map', { zoomControl: false }).setView([48.85, 2.34], 12);
-    const layers = L.layerGroup().addTo(map);
+    const map = L.map('map', { 
+        zoomControl: false, 
+        attributionControl: false,
+        preferCanvas: true 
+    }).setView([48.85, 2.34], 12);
+
+    const routesLayer = L.featureGroup().addTo(map);
+    const stationsLayer = L.featureGroup().addTo(map);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-    async function scan() {
+    async function loadInfra() {
         const c = map.getCenter();
-        log.innerText = "CONNEXION...";
+        const status = document.getElementById('status');
+        status.innerText = "CHARGEMENT...";
 
+        const bbox = map.getBounds().toBBoxString().split(',').join(',');
+        
         try {
-            const url = `https://api.sncf.com/v1/coverage/sncf/coords/${c.lng};${c.lat}/places_nearby?type[]=stop_point&distance=20000&count=100`;
-            
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: { 'Authorization': auth }
-            });
+            const [resVoies, resGares] = await Promise.all([
+                fetch(`https://ressources.data.sncf.com/api/records/1.0/search/?dataset=formes-des-lignes-du-rfn&rows=200&geofilter.distance=${c.lat},${c.lng},20000`),
+                fetch(`https://ressources.data.sncf.com/api/records/1.0/search/?dataset=referentiel-gares-voyageurs&rows=100&geofilter.distance=${c.lat},${c.lng},20000`)
+            ]);
 
-            if (!response.ok) throw new Error("Erreur " + response.status);
+            const dataVoies = await resVoies.json();
+            const dataGares = await resGares.json();
 
-            const data = await response.json();
-            layers.clearLayers();
+            routesLayer.clearLayers();
+            stationsLayer.clearLayers();
 
-            let stations = 0;
-            if (data.places_nearby) {
-                stations = data.places_nearby.length;
-                data.places_nearby.forEach(p => {
-                    const coord = p.stop_point.coord;
-                    L.circleMarker([coord.lat, coord.lon], {
-                        radius: 6, fillColor: "#007aff", color: "#fff", weight: 1, fillOpacity: 0.8
-                    }).addTo(layers).bindPopup(`<b>${p.name}</b><br><button onclick="loadLive('${p.id}')">VOIR TRAINS</button>`);
+            if (dataVoies.records) {
+                dataVoies.records.forEach(r => {
+                    L.geoJSON(r.fields.geo_shape, {
+                        style: { color: "#1e40af", weight: 2, opacity: 0.5, interactive: false }
+                    }).addTo(routesLayer);
                 });
             }
 
-            log.innerHTML = `<span style="color:#34c759">●</span> GARES : ${stations}`;
+            if (dataGares.records) {
+                dataGares.records.forEach(g => {
+                    const pos = g.fields.wgs_84;
+                    if (pos) {
+                        L.circleMarker([pos[0], pos[1]], {
+                            radius: 4,
+                            fillColor: "#007aff",
+                            color: "#fff",
+                            weight: 1,
+                            fillOpacity: 0.8
+                        }).addTo(stationsLayer).bindPopup(`<b>${g.fields.gare_alias_libelle_non_sncf || g.fields.gare_ut_libelle}</b>`);
+                    }
+                });
+            }
+
+            status.innerText = `${dataGares.records.length} GARES DÉTECTÉES`;
 
         } catch (e) {
-            log.innerHTML = `<span style="color:#ff3b30">ERREUR : ${e.message}</span>`;
-            console.error(e);
+            status.innerText = "ERREUR DE FLUX";
         }
     }
 
-    window.loadLive = async function(id) {
-        log.innerText = "CHECK DÉPARTS...";
-        try {
-            const res = await fetch(`https://api.sncf.com/v1/coverage/sncf/stop_areas/${id}/departures?duration=3600`, {
-                headers: { 'Authorization': auth }
-            });
-            const data = await res.json();
-            
-            if (data.departures && data.departures.length > 0) {
-                alert("TRAIN DÉTECTÉ : " + data.departures[0].display_informations.direction);
-            } else {
-                alert("AUCUN TRAIN EN MOUVEMENT ICI");
-            }
-        } catch(e) { alert("ERREUR LIVE"); }
-    }
+    map.on('moveend', loadInfra);
+    
+    navigator.geolocation.getCurrentPosition(p => {
+        map.setView([p.coords.latitude, p.coords.longitude], 13);
+        loadInfra();
+    }, () => loadInfra());
 
-    document.getElementById('btn').onclick = scan;
-    map.on('moveend', scan);
-    scan();
 </script>
 </body>
 </html>
