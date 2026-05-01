@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body, html { margin: 0; padding: 0; height: 100%; background: #050505; color: white; font-family: -apple-system, sans-serif; overflow: hidden; }
-        #map { height: 100%; width: 100%; background: #050505; }
+        #map { height: 100%; width: 100%; background: #000; }
         .ui { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 1000; 
               background: rgba(15, 15, 15, 0.9); padding: 12px; border-radius: 12px; text-align: center; width: 280px; 
               border: 1px solid #333; backdrop-filter: blur(10px); box-shadow: 0 4px 20px rgba(0,0,0,0.6); }
@@ -25,7 +25,6 @@
     <div class="legend">
         <span><span class="dot" style="background:#ffec00"></span>Train</span>
         <span><span class="dot" style="background:#007aff"></span>Gare</span>
-        <span><span class="dot" style="background:#1e40af"></span>Rail</span>
     </div>
 </div>
 
@@ -45,30 +44,30 @@
     async function scan() {
         const c = map.getCenter();
         log.innerText = "CONNEXION SÉCURISÉE...";
-
         const authHeader = 'Basic ' + btoa(API_KEY + ':');
 
-        // 1. RAILS (Infrastructure)
+        // 1. RAILS (Infrastructure) - Toujours en v1.0 car plus fiable pour le tracé
         fetch(`https://ressources.data.sncf.com/api/records/1.0/search/?dataset=formes-des-lignes-du-rfn&rows=100&geofilter.distance=${c.lat},${c.lng},15000`)
             .then(res => res.json())
-            .then(data => {
-                railLayer.clearLayers();
-                if (data.records) {
-                    data.records.forEach(r => {
-                        L.geoJSON(r.fields.geo_shape, { style: { color: "#1e40af", weight: 2, opacity: 0.4 } }).addTo(railLayer);
-                    });
-                }
-            });
+                .then(data => {
+                    railLayer.clearLayers();
+                    if (data.records) {
+                        data.records.forEach(r => {
+                            L.geoJSON(r.fields.geo_shape, { style: { color: "#1e40af", weight: 2, opacity: 0.4 } }).addTo(railLayer);
+                        });
+                    }
+                });
 
-        // 2. GARES (Stop Points - On demande 100 points max)
-        const garesUrl = `https://api.sncf.com/v1/coverage/sncf/coords/${c.lng};${c.lat}/places_nearby?type[]=stop_point&distance=20000&count=100`;
-        
         try {
+            // 2. GARES (Stop Points) - Forcé à 100 résultats
+            const garesUrl = `https://api.sncf.com/v1/coverage/sncf/coords/${c.lng};${c.lat}/places_nearby?type[]=stop_point&distance=20000&count=100`;
             const resGares = await fetch(garesUrl, { headers: { 'Authorization': authHeader } });
             const dataGares = await resGares.json();
             gareLayer.clearLayers();
 
+            let countGares = 0;
             if (dataGares.places_nearby) {
+                countGares = dataGares.places_nearby.length;
                 dataGares.places_nearby.forEach(p => {
                     const coord = p.stop_point.coord;
                     L.circleMarker([coord.lat, coord.lon], {
@@ -77,14 +76,15 @@
                 });
             }
 
-            // 3. TRAINS (Vehicles - Tracking dynamique)
-            // On définit une zone de 0.5 degré autour du centre
-            const vUrl = `https://api.sncf.com/v1/coverage/sncf/vehicles?bbox=${c.lng-0.5};${c.lat-0.5};${c.lng+0.5};${c.lat+0.5}`;
+            // 3. TRAINS (Vehicles + Vehicle Journeys)
+            // On tente les deux pour maximiser les chances
+            const vUrl = `https://api.sncf.com/v1/coverage/sncf/vehicles?count=100`;
             const resTrains = await fetch(vUrl, { headers: { 'Authorization': authHeader } });
             const dataTrains = await resTrains.json();
+            
             trainLayer.clearLayers();
-
             let trainCount = 0;
+
             if (dataTrains.vehicles) {
                 dataTrains.vehicles.forEach(v => {
                     if (v.position) {
@@ -96,10 +96,11 @@
                 });
             }
 
-            log.innerHTML = `<span style="color:#34c759">●</span> ${trainCount} TRAINS & ${dataGares.places_nearby.length} GARES`;
+            log.innerHTML = `<span style="color:#34c759">●</span> ${trainCount} TRAINS & ${countGares} GARES`;
 
         } catch (e) {
-            log.innerHTML = `<span style="color:#ff3b30">ERREUR D'AUTHENTIFICATION</span>`;
+            log.innerHTML = `<span style="color:#ff3b30">ERREUR FLUX DATA</span>`;
+            console.error(e);
         }
     }
 
@@ -111,7 +112,7 @@
     };
 
     map.on('moveend', scan);
-    setInterval(scan, 30000); // Mise à jour auto toutes les 30s
+    setInterval(scan, 30000); // Mise à jour auto 30s
     scan();
 </script>
 </body>
