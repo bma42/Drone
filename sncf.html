@@ -3,25 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SNCF Radar Pro - Sylvain</title>
+    <title>SNCF Radar - Ultra</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #050505; color: white; font-family: -apple-system, sans-serif; overflow: hidden; }
-        #map { height: 100%; width: 100%; background: #000; }
-        .ui { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 1000; 
-              background: rgba(15, 15, 15, 0.9); padding: 12px; border-radius: 12px; text-align: center; width: 280px; 
-              border: 1px solid #333; backdrop-filter: blur(10px); }
-        button { background: #007aff; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; margin-bottom: 5px; font-size: 12px; }
-        .btn-test { background: #34c759; }
-        #log { font-size: 10px; color: #00ffcc; margin-top: 8px; font-family: monospace; text-align: left; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #000; color: white; font-family: sans-serif; overflow: hidden; }
+        #map { height: 100%; width: 100%; }
+        .ui { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 1000; 
+              background: rgba(15, 15, 15, 0.95); padding: 12px; border-radius: 12px; text-align: center; width: 280px; 
+              border: 1px solid #333; backdrop-filter: blur(10px); box-shadow: 0 4px 20px rgba(0,0,0,0.8); }
+        button { background: #007aff; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; margin-bottom: 5px; }
+        #log { font-size: 10px; color: #00ffcc; margin-top: 10px; font-family: monospace; text-transform: uppercase; text-align: left; }
+        .ok { color: #34c759; }
     </style>
 </head>
 <body>
 
 <div class="ui">
-    <button id="btn">MA POSITION</button>
-    <button id="btn-paris" class="btn-test">TESTER SUR PARIS (ZONE DENSE)</button>
-    <div id="log">INITIALISATION...</div>
+    <button id="btn">SCANNER MA POSITION</button>
+    <button id="btn-paris" style="background:#333; font-size: 10px;">TESTER PARIS CENTRE</button>
+    <div id="log">SYSTÈME PRÊT</div>
 </div>
 
 <div id="map"></div>
@@ -30,69 +30,78 @@
 <script>
     const API_KEY = "7e15976a-8ec1-4d46-b6a0-575b8a523cdd";
     const authHeader = 'Basic ' + btoa(API_KEY + ':');
-    const map = L.map('map', { zoomControl: false }).setView([45.04, 3.88], 12);
+    
+    // On commence sur Paris pour être sûr de voir du trafic au premier chargement
+    const map = L.map('map', { zoomControl: false }).setView([48.8566, 2.3522], 12);
     const railLayer = L.layerGroup().addTo(map);
     const liveLayer = L.layerGroup().addTo(map);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-    function getSNCFTime(offsetMinutes = 0) {
-        const d = new Date();
-        d.setMinutes(d.getMinutes() + offsetMinutes);
-        return d.toISOString().replace(/[:.-]/g, '').slice(0, 15);
-    }
-
     async function scan() {
-        const c = map.getCenter();
-        log.innerHTML = "📡 SCAN EN COURS...";
-
-        const railUrl = `https://ressources.data.sncf.com/api/records/1.0/search/?dataset=formes-des-lignes-du-rfn&rows=100&geofilter.distance=${c.lat},${c.lng},20000`;
-        fetch(railUrl).then(res => res.json()).then(data => {
-            railLayer.clearLayers();
-            if (data.records) data.records.forEach(r => L.geoJSON(r.fields.geo_shape, {style:{color:"#1e40af",weight:2,opacity:0.4}}).addTo(railLayer));
-        });
+        const bounds = map.getBounds();
+        const sw = bounds.getSouthWest();
+        const ne = bounds.getNorthEast();
+        
+        // Création de la Bounding Box pour Navitia (format: lon_min;lat_min;lon_max;lat_max)
+        const bbox = `${sw.lng};${sw.lat};${ne.lng};${ne.lat}`;
+        
+        log.innerHTML = "📡 SCAN BBOX EN COURS...";
 
         try {
-            const now = getSNCFTime();
-            const vUrl = `https://api.sncf.com/v1/coverage/sncf/coords/${c.lng};${c.lat}/vehicle_journeys?datetime=${now}&distance=30000&count=50`;
-            
-            const resV = await fetch(vUrl, { headers: { 'Authorization': authHeader } });
-            const dataV = await resV.json();
-            
-            liveLayer.clearLayers();
-            let count = 0;
-
-            if (dataV.vehicle_journeys) {
-                dataV.vehicle_journeys.forEach(vh => {
-                    const stop = vh.stop_times[0];
-                    if (stop && stop.stop_point.coord) {
-                        count++;
-                        L.circleMarker([stop.stop_point.coord.lat, stop.stop_point.coord.lon], {
-                            radius: 9, fillColor: "#ffec00", color: "#000", weight: 2, fillOpacity: 1
-                        }).addTo(liveLayer).bindPopup(`<b>${vh.display_informations.commercial_mode} ${vh.display_informations.headsign}</b><br>Vers : ${vh.display_informations.direction}`);
-                    }
-                });
-            }
-
-            const gUrl = `https://api.sncf.com/v1/coverage/sncf/coords/${c.lng};${c.lat}/places_nearby?type[]=stop_point&distance=15000&count=50`;
+            // 1. LES GARES (Simple et efficace)
+            const gUrl = `https://api.sncf.com/v1/coverage/sncf/coords/${map.getCenter().lng};${map.getCenter().lat}/places_nearby?type[]=stop_point&distance=10000&count=50`;
             const resG = await fetch(gUrl, { headers: { 'Authorization': authHeader } });
             const dataG = await resG.json();
             
+            liveLayer.clearLayers();
             if (dataG.places_nearby) {
                 dataG.places_nearby.forEach(p => {
                     L.circleMarker([p.stop_point.coord.lat, p.stop_point.coord.lon], {
-                        radius: 4, fillColor: "#007aff", color: "#fff", weight: 1, fillOpacity: 0.5
+                        radius: 4, fillColor: "#007aff", color: "#fff", weight: 1, fillOpacity: 0.4
                     }).addTo(liveLayer).bindPopup(`Gare : ${p.name}`);
                 });
             }
 
-            log.innerHTML = `<span style="color:#34c759">●</span> CONVOIS : ${count}<br><span style="color:#34c759">●</span> GARES : ${dataG.places_nearby ? dataG.places_nearby.length : 0}`;
+            // 2. LES CONVOIS (La méthode BBox)
+            // On demande tous les trajets qui ont un arrêt dans le rectangle de la carte en ce moment
+            const vhUrl = `https://api.sncf.com/v1/coverage/sncf/vehicle_journeys?bbox=${bbox}&count=50&data_freshness=realtime`;
+            
+            const resV = await fetch(vhUrl, { headers: { 'Authorization': authHeader } });
+            const dataV = await resV.json();
+            
+            let count = 0;
+            if (dataV.vehicle_journeys) {
+                dataV.vehicle_journeys.forEach(vh => {
+                    // On prend le premier arrêt du trajet qui est dans notre vue pour simuler le train
+                    const stop = vh.stop_times.find(st => {
+                        const lat = parseFloat(st.stop_point.coord.lat);
+                        const lon = parseFloat(st.stop_point.coord.lon);
+                        return lat > sw.lat && lat < ne.lat && lon > sw.lng && lon < ne.lng;
+                    });
+
+                    if (stop) {
+                        count++;
+                        L.circleMarker([stop.stop_point.coord.lat, stop.stop_point.coord.lon], {
+                            radius: 10, fillColor: "#ffec00", color: "#000", weight: 2, fillOpacity: 1
+                        }).addTo(liveLayer).bindPopup(`
+                            <div style="color:black">
+                                <b>${vh.display_informations.commercial_mode} ${vh.display_informations.headsign}</b><br>
+                                Direction : ${vh.display_informations.direction}
+                            </div>
+                        `);
+                    }
+                });
+            }
+
+            log.innerHTML = `<span class="ok">●</span> GARES : ${dataG.places_nearby ? dataG.places_nearby.length : 0}<br><span class="ok">●</span> CONVOIS : ${count}`;
 
         } catch (e) {
-            log.innerHTML = `<span style="color:red">●</span> ERREUR RESEAU`;
+            log.innerHTML = `<span style="color:red">●</span> ERREUR SYNCHRO`;
         }
     }
 
+    // Gestion des boutons
     document.getElementById('btn').onclick = () => {
         navigator.geolocation.getCurrentPosition(p => {
             map.setView([p.coords.latitude, p.coords.longitude], 12);
