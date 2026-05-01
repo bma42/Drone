@@ -3,20 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SNCF Infra v2.1</title>
+    <title>SNCF Infrastructure</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body, html { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
         #map { height: 100%; width: 100%; background: #000; }
         .ui { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 1000; 
-              background: rgba(15, 15, 15, 0.9); padding: 8px 18px; border-radius: 20px; 
+              background: rgba(15, 15, 15, 0.95); padding: 8px 18px; border-radius: 20px; 
               border: 1px solid #333; backdrop-filter: blur(10px); color: #00ffcc; 
               font-family: monospace; font-size: 11px; pointer-events: none; text-transform: uppercase; }
     </style>
 </head>
 <body>
 
-<div class="ui" id="status">SCAN RFN v2.1...</div>
+<div class="ui" id="status">SCAN INFRASTRUCTURE...</div>
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -27,6 +27,7 @@
         preferCanvas: true 
     }).setView([48.85, 2.34], 12);
 
+    // Ordre des couches important : gares après les voies
     const routesLayer = L.featureGroup().addTo(map);
     const stationsLayer = L.featureGroup().addTo(map);
 
@@ -41,11 +42,9 @@
         
         try {
             const [resVoies, resGares] = await Promise.all([
-                fetch(`${API_BASE}/formes-des-lignes-du-rfn/records?where=within_distance(geo_shape, ${point}, 30km)&limit=100`),
-                fetch(`${API_BASE}/referentiel-gares-voyageurs/records?where=within_distance(geopoint, ${point}, 30km)&limit=100`)
+                fetch(`${API_BASE}/formes-des-lignes-du-rfn/records?where=within_distance(geo_shape, ${point}, 25km)&limit=100`),
+                fetch(`${API_BASE}/referentiel-gares-voyageurs/records?where=within_distance(geopoint, ${point}, 25km)&limit=100`)
             ]);
-
-            if (!resVoies.ok || !resGares.ok) throw new Error();
 
             const dataVoies = await resVoies.json();
             const dataGares = await resGares.json();
@@ -53,34 +52,43 @@
             routesLayer.clearLayers();
             stationsLayer.clearLayers();
 
+            // 1. DESSIN DES VOIES (Fond)
             if (dataVoies.results) {
                 dataVoies.results.forEach(r => {
                     if (r.geo_shape) {
                         L.geoJSON(r.geo_shape, {
-                            style: { color: "#0066ff", weight: 2, opacity: 0.6, interactive: false }
+                            style: { color: "#1e40af", weight: 2, opacity: 0.5, interactive: false }
                         }).addTo(routesLayer);
                     }
                 });
             }
 
+            // 2. DESSIN DES GARES (Premier plan)
             if (dataGares.results) {
                 dataGares.results.forEach(g => {
-                    if (g.geopoint) {
-                        L.circleMarker([g.geopoint.lat, g.geopoint.lon], {
-                            radius: 4,
-                            fillColor: "#fff",
-                            color: "#0066ff",
-                            weight: 1,
-                            fillOpacity: 0.9
-                        }).addTo(stationsLayer).bindPopup(`<b>${g.gare_alias_libelle_non_sncf || g.uic_code}</b>`);
+                    // Sécurité sur l'accès aux coordonnées v2.1
+                    const lat = g.geopoint?.lat;
+                    const lon = g.geopoint?.lon;
+
+                    if (lat && lon) {
+                        L.circleMarker([lat, lon], {
+                            radius: 6,
+                            fillColor: "#ffec00", // Jaune pour bien les voir
+                            color: "#fff",
+                            weight: 2,
+                            fillOpacity: 1,
+                            pane: 'markerPane' // Force le rendu au-dessus du canvas des lignes
+                        }).addTo(stationsLayer).bindPopup(`<b>${g.gare_alias_libelle_non_sncf || "Gare"}</b>`);
                     }
                 });
-                status.innerText = `${dataGares.results.length} STATIONS / RFN OK`;
+                
+                // On force la couche des gares à passer devant les voies
+                stationsLayer.bringToFront();
+                status.innerText = `${dataGares.results.length} GARES / RÉSEAU VISIBLE`;
             }
 
         } catch (e) {
-            status.innerText = "ERREUR DE FLUX - RECO EN COURS";
-            setTimeout(loadInfra, 5000);
+            status.innerText = "ERREUR DE RÉSEAU";
         }
     }
 
