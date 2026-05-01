@@ -3,23 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SNCF Radar Pro</title>
+    <title>SNCF Radar Final</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #050505; color: white; font-family: sans-serif; overflow: hidden; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
         #map { height: 100%; width: 100%; }
-        .ui { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 1000; 
-              background: rgba(15, 15, 15, 0.9); padding: 12px; border-radius: 12px; text-align: center; width: 260px; 
-              border: 1px solid #333; backdrop-filter: blur(8px); }
-        button { background: #007aff; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; }
-        #log { font-size: 10px; color: #00ffcc; margin-top: 8px; font-family: monospace; }
-        .error { color: #ff3b30 !important; }
+        .ui { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 1000; 
+              background: #111; padding: 12px; border-radius: 10px; width: 250px; border: 1px solid #333; text-align: center; }
+        button { background: #007aff; color: #fff; border: none; padding: 10px; border-radius: 6px; width: 100%; font-weight: bold; }
+        #log { font-size: 10px; color: #0f0; margin-top: 8px; font-family: monospace; }
     </style>
 </head>
 <body>
 
 <div class="ui">
-    <button id="btn">RESCANNER LA ZONE</button>
+    <button id="btn">SCANNER</button>
     <div id="log">SYSTÈME PRÊT</div>
 </div>
 
@@ -27,68 +25,53 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    const map = L.map('map', { zoomControl: false, tap: false }).setView([48.85, 2.34], 12);
-    const trainLayer = L.layerGroup().addTo(map);
-    const railLayer = L.layerGroup().addTo(map);
-
+    const map = L.map('map', { zoomControl: false }).setView([48.85, 2.34], 12);
+    const trains = L.layerGroup().addTo(map);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
-
-    async function fetchSNCF(dataset, where) {
-        const target = `https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets/${dataset}/records?where=${encodeURIComponent(where)}&limit=100`;
-        // Utilisation du proxy pour bypasser le blocage CORS de GitHub
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(target)}`;
-        
-        const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error(response.status);
-        return response.json();
-    }
 
     async function scan() {
         const c = map.getCenter();
-        log.innerText = "TRANSFERT DE DONNÉES...";
+        log.innerText = "APPEL DIRECT...";
+
+        const url = `https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets/positions-temps-reel-des-trains/records?where=within_distance(geopoint%2C%20geom'POINT(${c.lng}%20${c.lat})'%2C%2050km)&limit=50`;
 
         try {
-            // Rails
-            if (map.getZoom() > 10) {
-                const railData = await fetchSNCF('formes-des-lignes-du-rfn', `within_distance(geo_shape, geom'POINT(${c.lng} ${c.lat})', 15km)`);
-                railLayer.clearLayers();
-                if (railData.results) {
-                    railData.results.forEach(r => L.geoJSON(r.geo_shape, { style: { color: "#1e3a8a", weight: 2, opacity: 0.4 } }).addTo(railLayer));
-                }
+            const response = await fetch(url, {
+                method: 'GET',
+                mode: 'cors',
+                referrerPolicy: 'no-referrer' 
+            });
+
+            if (!response.ok) {
+                if (response.status === 429) throw new Error("TROP DE REQUÊTES (ATTENDEZ)");
+                throw new Error("ERREUR " + response.status);
             }
 
-            // Trains
-            const trainData = await fetchSNCF('positions-temps-reel-des-trains', `within_distance(geopoint, geom'POINT(${c.lng} ${c.lat})', 50km)`);
-            trainLayer.clearLayers();
+            const data = await response.json();
+            trains.clearLayers();
 
-            if (!trainData.results || trainData.results.length === 0) {
+            if (!data.results || data.results.length === 0) {
                 log.innerText = "ZONE VIDE";
                 return;
             }
 
-            trainData.results.forEach(t => {
+            data.results.forEach(t => {
                 if (t.geopoint) {
                     L.circleMarker([t.geopoint.lat, t.geopoint.lon], {
-                        radius: 7, fillColor: "#ffec00", color: "#000", weight: 1, fillOpacity: 1
-                    }).addTo(trainLayer).bindPopup(`<b>TRAIN ${t.train_number}</b><br>${t.speed || 0} KM/H`);
+                        radius: 8, fillColor: "#ff0", color: "#000", weight: 1, fillOpacity: 1
+                    }).addTo(trains).bindPopup("Train " + t.train_number);
                 }
             });
 
-            log.innerText = `${trainData.results.length} TRAINS DÉTECTÉS`;
+            log.innerText = data.results.length + " TRAINS DÉTECTÉS";
         } catch (e) {
-            log.innerHTML = `<span class="error">ERREUR CONNEXION (PROXY)</span>`;
+            log.innerHTML = `<span style="color:red">${e.message}</span>`;
+            console.error(e);
         }
     }
 
-    document.getElementById('btn').onclick = () => {
-        navigator.geolocation.getCurrentPosition(p => {
-            map.setView([p.coords.latitude, p.coords.longitude], 12);
-            scan();
-        }, () => scan());
-    };
-
+    document.getElementById('btn').onclick = scan;
     map.on('moveend', scan);
-    setInterval(scan, 30000);
     scan();
 </script>
 </body>
