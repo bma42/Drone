@@ -2,127 +2,114 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SNCF Radar - Fix 404</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SNCF Radar Pro</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #1a1a1a; color: white; font-family: sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #0f0f0f; color: white; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
         #map { height: 100%; width: 100%; }
-        .ui { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; 
-              background: rgba(0,0,0,0.85); padding: 15px; border-radius: 12px; text-align: center; width: 320px; border: 1px solid #444; }
-        button { background: #008cff; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; }
-        #log { font-size: 11px; color: #bbb; margin-top: 10px; word-break: break-all; }
-        .error { color: #ff4d4d !important; }
+        .ui { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 1000; 
+              background: rgba(20, 20, 20, 0.9); padding: 15px; border-radius: 15px; text-align: center; width: 280px; 
+              border: 1px solid #333; backdrop-filter: blur(10px); box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        button { background: #007aff; color: white; border: none; padding: 12px; border-radius: 10px; cursor: pointer; width: 100%; font-weight: 600; font-size: 14px; transition: background 0.2s; }
+        button:active { background: #0051a8; }
+        #log { font-size: 11px; color: #888; margin-top: 10px; line-height: 1.4; }
+        .error { color: #ff3b30 !important; }
+        .train-label { background: none; border: none; color: #ffec00; font-weight: bold; text-shadow: 0 0 3px #000; }
     </style>
 </head>
 <body>
 
 <div class="ui">
-    <button id="btn">SCANNER LA ZONE</button>
-    <div id="log">En attente du GPS...</div>
+    <button id="btn">ARMER LE RADAR</button>
+    <div id="log">Prêt pour le scan.</div>
 </div>
 
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    const map = L.map('map', { zoomControl: false }).setView([46.6, 2.2], 5);
+    const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([46.6, 2.2], 5);
     const log = document.getElementById('log');
     const btn = document.getElementById('btn');
+    const trainLayer = L.layerGroup().addTo(map);
+    const railLayer = L.layerGroup().addTo(map);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
     btn.onclick = () => {
-        log.innerText = "Localisation en cours...";
+        log.innerText = "Localisation GPS...";
         navigator.geolocation.getCurrentPosition(pos => {
             const { latitude, longitude } = pos.coords;
-            map.setView([latitude, longitude], 13);
-            L.circleMarker([latitude, longitude], { color: '#00ffcc', radius: 6 }).addTo(map);
-            loadRailData(latitude, longitude);
+            map.setView([latitude, longitude], 12);
+            
+            L.circleMarker([latitude, longitude], { color: '#00ffcc', radius: 5, fillOpacity: 1 }).addTo(map);
+            
+            loadData(latitude, longitude);
+            setInterval(() => updateTrains(latitude, longitude), 60000);
+            
+            btn.style.display = 'none';
         }, err => {
-            log.innerHTML = `<span class="error">GPS bloqué. Vérifiez que vous êtes bien en HTTPS et avez autorisé la géolocalisation.</span>`;
-            console.error(err);
-        }, { enableHighAccuracy: true, timeout: 10000 });
+            log.innerHTML = `<span class="error">Erreur GPS. Vérifiez les permissions HTTPS.</span>`;
+        }, { enableHighAccuracy: true });
     };
 
-    async function loadRailData(lat, lon) {
-        log.innerText = "Appel API SNCF (v1.0)...";
-        const dataset = "formes-des-lignes-du-rfn"; // identifiant correct
-        const rows = 500;
-        const radius = 10000; // en mètres
-        const url = `https://ressources.data.sncf.com/api/records/1.0/search/?dataset=${encodeURIComponent(dataset)}&rows=${rows}&geofilter.distance=${lat},${lon},${radius}`;
-
-        log.innerHTML = `Appel API : <a href="${url}" target="_blank" style="color:#008cff">Tester le lien API</a>`;
-        console.info("Requête API :", url);
+    async function loadData(lat, lon) {
+        log.innerText = "Chargement des infrastructures...";
+        const dataset = "formes-des-lignes-du-rfn";
+        const url = `https://ressources.data.sncf.com/api/records/1.0/search/?dataset=${dataset}&rows=400&geofilter.distance=${lat},${lon},15000`;
 
         try {
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error(`Erreur ${response.status} : L'API ne répond pas.`);
-            }
-            const data = await response.json();
-            console.debug("Réponse API :", data);
-
-            if (!data.records || data.records.length === 0) {
-                log.innerText = "Aucun rail trouvé dans les 10 km.";
-                return;
-            }
-
-            let count = 0;
+            const res = await fetch(url);
+            const data = await res.json();
+            
             data.records.forEach(record => {
-                const fields = record.fields || {};
-                // différents champs possibles
-                let geo = fields.geo_shape || fields.geometry || record.geometry || fields.the_geom || fields.geojson || fields.wkb_geometry || fields.geo_point_2d || null;
-
-                if (!geo) return;
-
-                // Si geo est un objet GeoJSON
-                if (typeof geo === 'object' && (geo.type || geo.coordinates)) {
-                    try {
-                        L.geoJSON(geo, { style: { color: "#00a8ff", weight: 4, opacity: 0.8 } }).addTo(map)
-                         .bindPopup(fields.libelle || fields.nom || fields.label || record.recordid || 'Ligne');
-                        count++;
-                    } catch (e) {
-                        console.warn('Échec chargement GeoJSON', e, geo);
-                    }
-                    return;
-                }
-
-                // Si geo est un tableau de coordonnées (point)
-                if (Array.isArray(geo) && geo.length === 2 && typeof geo[0] === 'number' && typeof geo[1] === 'number') {
-                    // Détecter si ordre [lat, lon] ou [lon, lat]
-                    let latC = geo[0], lonC = geo[1];
-                    if (Math.abs(latC) > 90 && Math.abs(lonC) <= 90) {
-                        // probablement [lon, lat]
-                        latC = geo[1]; lonC = geo[0];
-                    }
-                    L.polyline([[latC, lonC]], { color: "#00a8ff", weight: 4, opacity: 0.8 }).addTo(map)
-                     .bindPopup(fields.libelle || fields.nom || fields.label || record.recordid || 'Ligne');
-                    count++;
-                    return;
-                }
-
-                // Si geo est une chaîne (parfois sérialisée)
-                if (typeof geo === 'string') {
-                    try {
-                        const parsed = JSON.parse(geo);
-                        if (parsed) {
-                            L.geoJSON(parsed, { style: { color: "#00a8ff", weight: 4, opacity: 0.8 } }).addTo(map)
-                             .bindPopup(fields.libelle || fields.nom || fields.label || record.recordid || 'Ligne');
-                            count++;
-                        }
-                    } catch (e) {
-                        console.warn('Impossible de parser la géométrie string', e);
-                    }
+                const geo = record.fields.geo_shape || record.geometry;
+                if (geo) {
+                    L.geoJSON(geo, { style: { color: "#1e3a8a", weight: 3, opacity: 0.6 } }).addTo(railLayer);
                 }
             });
-
-            log.innerText = `${count} lignes chargées (${data.records.length} enregistrements explorés).`;
-            if (count > 0) btn.style.display = 'none';
-
+            updateTrains(lat, lon);
         } catch (e) {
-            log.innerHTML = `<span class="error">${e.message}</span><br><br><a href="${url}" target="_blank" style="color:#008cff">Tester le lien API ici</a>`;
-            console.error(e);
+            log.innerText = "Erreur infrastructure.";
+        }
+    }
+
+    async function updateTrains(lat, lon) {
+        log.innerText = "Scan des convois en cours...";
+        const url = `https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets/positions-temps-reel-des-trains/records?where=within_distance(geopoint, geom'POINT(${lon} ${lat})', 25000m)&limit=100`;
+
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            
+            trainLayer.clearLayers();
+            
+            data.results.forEach(train => {
+                if (!train.geopoint) return;
+
+                const marker = L.circleMarker([train.geopoint.lat, train.geopoint.lon], {
+                    radius: 7,
+                    fillColor: "#ffec00",
+                    color: "#fff",
+                    weight: 1,
+                    fillOpacity: 1
+                });
+
+                const info = `
+                    <div style="color:#000; font-size:12px;">
+                        <b>Train ${train.train_number}</b><br>
+                        ${train.route_long_name || 'Ligne inconnue'}<br>
+                        Vitesse: ${train.speed || 0} km/h
+                    </div>
+                `;
+
+                marker.bindPopup(info).addTo(trainLayer);
+            });
+
+            log.innerText = `${data.results.length} trains détectés (Maj: ${new Date().toLocaleTimeString()})`;
+        } catch (e) {
+            log.innerText = "Erreur mise à jour trains.";
         }
     }
 </script>
