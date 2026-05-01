@@ -2,23 +2,24 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SNCF Radar Final</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SNCF Radar - Stable Version</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #0a0a0a; color: white; font-family: sans-serif; }
         #map { height: 100%; width: 100%; }
-        .ui { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 1000; 
-              background: #111; padding: 12px; border-radius: 10px; width: 250px; border: 1px solid #333; text-align: center; }
-        button { background: #007aff; color: #fff; border: none; padding: 10px; border-radius: 6px; width: 100%; font-weight: bold; }
-        #log { font-size: 10px; color: #0f0; margin-top: 8px; font-family: monospace; }
+        .ui { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 1000; 
+              background: rgba(20, 20, 20, 0.9); padding: 12px; border-radius: 10px; width: 260px; border: 1px solid #444; text-align: center; }
+        button { background: #007aff; color: white; border: none; padding: 10px; border-radius: 6px; width: 100%; font-weight: bold; cursor: pointer; }
+        #log { font-size: 10px; color: #00ffcc; margin-top: 8px; font-family: monospace; text-align: left; }
+        .err { color: #ff4d4d; }
     </style>
 </head>
 <body>
 
 <div class="ui">
-    <button id="btn">SCANNER</button>
-    <div id="log">SYSTÈME PRÊT</div>
+    <button id="btn">RESCANNER LA ZONE</button>
+    <div id="log">Initialisation...</div>
 </div>
 
 <div id="map"></div>
@@ -26,54 +27,69 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     const map = L.map('map', { zoomControl: false }).setView([48.85, 2.34], 12);
-    const trains = L.layerGroup().addTo(map);
+    const railLayer = L.layerGroup().addTo(map);
+    const trainLayer = L.layerGroup().addTo(map);
+
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
     async function scan() {
         const c = map.getCenter();
-        log.innerText = "APPEL DIRECT...";
+        log.innerHTML = "📡 Connexion SNCF...";
 
-        const url = `https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets/positions-temps-reel-des-trains/records?where=within_distance(geopoint%2C%20geom'POINT(${c.lng}%20${c.lat})'%2C%2050km)&limit=50`;
+        // --- 1. CHARGEMENT DES RAILS (Infrastructure) ---
+        const railUrl = `https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets/formes-des-lignes-du-rfn/records?where=within_distance(geo_shape, geom'POINT(${c.lng} ${c.lat})', 15km)&limit=100`;
+        
+        try {
+            const resRail = await fetch(railUrl);
+            if (resRail.ok) {
+                const dataRail = await resRail.json();
+                railLayer.clearLayers();
+                dataRail.results.forEach(r => {
+                    if (r.geo_shape) {
+                        L.geoJSON(r.geo_shape, { style: { color: "#1e40af", weight: 2, opacity: 0.6 } }).addTo(railLayer);
+                    }
+                });
+                log.innerHTML = "✅ Lignes OK";
+            } else {
+                log.innerHTML = `<span class="err">Lignes: Erreur ${resRail.status}</span>`;
+            }
+        } catch (e) {
+            log.innerHTML = `<span class="err">Lignes: Échec réseau</span>`;
+        }
+
+        // --- 2. CHARGEMENT DES TRAINS (Temps Réel) ---
+        const trainUrl = `https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets/positions-temps-reel-des-trains/records?where=within_distance(geopoint, geom'POINT(${c.lng} ${c.lat})', 50km)&limit=100`;
 
         try {
-            const response = await fetch(url, {
-                method: 'GET',
-                mode: 'cors',
-                referrerPolicy: 'no-referrer' 
-            });
-
-            if (!response.ok) {
-                if (response.status === 429) throw new Error("TROP DE REQUÊTES (ATTENDEZ)");
-                throw new Error("ERREUR " + response.status);
-            }
-
-            const data = await response.json();
-            trains.clearLayers();
-
-            if (!data.results || data.results.length === 0) {
-                log.innerText = "ZONE VIDE";
-                return;
-            }
-
-            data.results.forEach(t => {
-                if (t.geopoint) {
-                    L.circleMarker([t.geopoint.lat, t.geopoint.lon], {
-                        radius: 8, fillColor: "#ff0", color: "#000", weight: 1, fillOpacity: 1
-                    }).addTo(trains).bindPopup("Train " + t.train_number);
+            const resTrain = await fetch(trainUrl);
+            if (resTrain.ok) {
+                const dataTrain = await resTrain.json();
+                trainLayer.clearLayers();
+                if (dataTrain.results && dataTrain.results.length > 0) {
+                    dataTrain.results.forEach(t => {
+                        if (t.geopoint) {
+                            L.circleMarker([t.geopoint.lat, t.geopoint.lon], {
+                                radius: 7, fillColor: "#ffec00", color: "#000", weight: 1, fillOpacity: 1
+                            }).addTo(trainLayer).bindPopup(`Train ${t.train_number}`);
+                        }
+                    });
+                    log.innerHTML += `<br>✅ ${dataTrain.results.length} Trains OK`;
+                } else {
+                    log.innerHTML += "<br>ℹ️ Aucun train (50km)";
                 }
-            });
-
-            log.innerText = data.results.length + " TRAINS DÉTECTÉS";
+            } else {
+                log.innerHTML += `<br><span class="err">Trains: Erreur ${resTrain.status}</span>`;
+            }
         } catch (e) {
-            log.innerHTML = `<span style="color:red">${e.message}</span>`;
-            console.error(e);
+            log.innerHTML += `<br><span class="err">Trains: Échec réseau</span>`;
         }
     }
 
     document.getElementById('btn').onclick = scan;
     map.on('moveend', scan);
+
+    // Démarrage auto
     scan();
 </script>
 </body>
 </html>
-
