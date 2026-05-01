@@ -3,135 +3,98 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SNCF Radar V2.1 - Fix 404</title>
+    <title>SNCF Radar - Diagnostic</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #0a0a0a; color: white; font-family: sans-serif; overflow: hidden; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #0a0a0a; color: white; font-family: sans-serif; }
         #map { height: 100%; width: 100%; }
         .ui { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 1000; 
-              background: rgba(25, 25, 25, 0.9); padding: 12px; border-radius: 12px; text-align: center; width: 260px; 
-              border: 1px solid #333; backdrop-filter: blur(8px); }
+              background: rgba(25, 25, 25, 0.95); padding: 12px; border-radius: 12px; text-align: center; width: 280px; 
+              border: 1px solid #444; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
         button { background: #007aff; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; }
-        #log { font-size: 11px; color: #00ffcc; margin-top: 8px; font-family: monospace; }
+        #log { font-size: 11px; color: #00ffcc; margin-top: 8px; font-family: monospace; white-space: pre-wrap; }
         .error { color: #ff4d4d !important; }
     </style>
 </head>
 <body>
 
 <div class="ui">
-    <button id="btn">MA POSITION (GPS)</button>
-    <div id="log">Déplacez la carte pour scanner</div>
+    <button id="btn">SCANNER MA ZONE</button>
+    <div id="log">Initialisation...</div>
 </div>
 
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    const map = L.map('map', { zoomControl: false }).setView([48.8566, 2.3522], 12);
+    const map = L.map('map', { zoomControl: false }).setView([46.6, 2.2], 6);
     const log = document.getElementById('log');
-    const btn = document.getElementById('btn');
-    
     const trainLayer = L.layerGroup().addTo(map);
-    const railLayer = L.layerGroup().addTo(map);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-    const API_BASE = "https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets";
-
-    async function scanZone() {
-        const center = map.getCenter();
-        const zoom = map.getZoom();
+    // Fonction de scan principale
+    async function updateTrains(lat, lon, isGlobal = false) {
+        log.innerText = isGlobal ? "Scan National..." : "Scan Local (30km)...";
         
-        // On charge les rails uniquement si le zoom est suffisant
-        if (zoom >= 11) {
-            loadInfrastructure(center.lat, center.lng);
-        } else {
-            railLayer.clearLayers();
-            log.innerText = "Zoomez pour voir les rails";
-        }
-        
-        updateTrains(center.lat, center.lng);
-    }
+        // v2.1 syntax: POINT(LON LAT) - Très important d'inverser lat/lon ici
+        let whereClause = `within_distance(geopoint, geom'POINT(${lon} ${lat})', 30000m)`;
+        if(isGlobal) whereClause = "vitesse>0"; // Chercher n'importe quel train qui bouge en France
 
-    map.on('moveend', scanZone);
-
-    btn.onclick = () => {
-        navigator.geolocation.getCurrentPosition(pos => {
-            map.setView([pos.coords.latitude, pos.coords.longitude], 13);
-        }, () => { log.innerHTML = `<span class="error">GPS bloqué</span>`; });
-    };
-
-    // Chargement des rails (Infrastructures)
-    async function loadInfrastructure(lat, lon) {
-        // En v2.1, within_distance utilise POINT(longitude latitude)
-        const url = `${API_BASE}/formes-des-lignes-du-rfn/records?where=within_distance(geo_shape, geom'POINT(${lon} ${lat})', 15km)&limit=100`;
-        
-        try {
-            const res = await fetch(url);
-            const data = await res.json();
-            railLayer.clearLayers();
-            
-            if (data.results) {
-                data.results.forEach(r => {
-                    if (r.geo_shape) {
-                        L.geoJSON(r.geo_shape, { style: { color: "#1e3a8a", weight: 2, opacity: 0.6 } }).addTo(railLayer);
-                    }
-                });
-            }
-        } catch (e) { console.error("Erreur rails v2.1"); }
-    }
-
-    // Chargement des trains (Temps réel)
-    async function updateTrains(lat, lon) {
-        log.innerText = "Scan en cours...";
-        const url = `${API_BASE}/positions-temps-reel-des-trains/records?where=within_distance(geopoint, geom'POINT(${lon} ${lat})', 30km)&limit=100`;
+        const url = `https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets/positions-temps-reel-des-trains/records?where=${encodeURIComponent(whereClause)}&limit=100`;
 
         try {
             const res = await fetch(url);
-            if (!res.ok) throw new Error();
-            const data = await res.json();
+            if (!res.ok) throw new Error(`Erreur HTTP: ${res.status}`);
             
+            const data = await res.json();
             trainLayer.clearLayers();
 
             if (!data.results || data.results.length === 0) {
-                log.innerText = "Aucun train détecté";
+                if (!isGlobal) {
+                    log.innerText = "Zone vide. Tentative Scan National...";
+                    return updateTrains(46.6, 2.2, true); // Relance en mode global
+                }
+                log.innerText = "L'API SNCF ne renvoie aucun train actuellement.";
                 return;
             }
 
             data.results.forEach(train => {
-                if (!train.geopoint) return;
-
-                const marker = L.circleMarker([train.geopoint.lat, train.geopoint.lon], {
-                    radius: 8,
-                    fillColor: "#ffec00",
-                    color: "#000",
-                    weight: 1,
-                    fillOpacity: 1
-                });
-
-                marker.bindPopup(`
-                    <div style="color:black">
-                        <b>Train n°${train.train_number}</b><br>
-                        Vitesse: ${train.speed || '0'} km/h<br>
-                        Dernière MAJ: ${new Date().toLocaleTimeString()}
-                    </div>
-                `).addTo(trainLayer);
+                if (train.geopoint) {
+                    L.circleMarker([train.geopoint.lat, train.geopoint.lon], {
+                        radius: 7, fillColor: "#ffec00", color: "#000", weight: 1, fillOpacity: 1
+                    }).addTo(trainLayer)
+                      .bindPopup(`Train: ${train.train_number}<br>Vitesse: ${train.speed} km/h`);
+                }
             });
 
-            log.innerText = `${data.results.length} trains détectés`;
+            log.innerText = `${data.results.length} trains trouvés ${isGlobal ? '(France)' : '(Local)'}`;
         } catch (e) {
-            log.innerHTML = `<span class="error">Erreur API SNCF (404/500)</span>`;
+            log.innerHTML = `<span class="error">Erreur: ${e.message}</span>`;
+            console.error(e);
         }
     }
 
-    // Refresh auto toutes les 30s
-    setInterval(() => {
-        const center = map.getCenter();
-        updateTrains(center.lat, center.lng);
-    }, 30000);
+    // Interaction
+    document.getElementById('btn').onclick = () => {
+        navigator.geolocation.getCurrentPosition(pos => {
+            const { latitude, longitude } = pos.coords;
+            map.setView([latitude, longitude], 11);
+            updateTrains(latitude, longitude);
+        }, () => {
+            log.innerText = "GPS refusé. Scan sur Paris...";
+            updateTrains(48.85, 2.34);
+        });
+    };
 
-    // Initialisation
-    scanZone();
+    // Scan au mouvement
+    map.on('moveend', () => {
+        const c = map.getCenter();
+        updateTrains(c.lat, c.lng);
+    });
+
+    // Premier lancement sur le centre par défaut
+    updateTrains(46.6, 2.2);
 </script>
 </body>
 </html>
