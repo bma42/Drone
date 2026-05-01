@@ -2,23 +2,25 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>SNCF Radar - Sylvain</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #000; color: white; font-family: sans-serif; }
-        #map { height: 100%; width: 100%; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #000; color: white; font-family: sans-serif; overflow: hidden; }
+        #map { height: 100%; width: 100%; background: #000; }
         .ui { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 1000; 
-              background: rgba(20, 20, 20, 0.9); padding: 12px; border-radius: 12px; width: 260px; border: 1px solid #444; text-align: center; }
+              background: rgba(15, 15, 15, 0.9); padding: 12px; border-radius: 12px; text-align: center; width: 260px; 
+              border: 1px solid #333; backdrop-filter: blur(10px); }
         button { background: #007aff; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; }
-        #log { font-size: 10px; color: #00ffcc; margin-top: 8px; font-family: monospace; }
-        .error { color: #ff3b30 !important; }
+        #log { font-size: 10px; color: #00ffcc; margin-top: 8px; font-family: monospace; line-height: 1.4; text-align: left; }
+        .ok { color: #34c759; }
+        .warn { color: #ff9500; }
     </style>
 </head>
 <body>
 
 <div class="ui">
-    <button id="btn">SCANNER LA ZONE</button>
+    <button id="btn">RESCANNER LA ZONE</button>
     <div id="log">SYSTÈME PRÊT</div>
 </div>
 
@@ -26,66 +28,87 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    // Votre clé SNCF
     const API_KEY = "7e15976a-8ec1-4d46-b6a0-575b8a523cdd";
+    const authHeader = 'Basic ' + btoa(API_KEY + ':');
     
     const map = L.map('map', { zoomControl: false }).setView([48.85, 2.34], 12);
     const railLayer = L.layerGroup().addTo(map);
+    const gareLayer = L.layerGroup().addTo(map);
     const trainLayer = L.layerGroup().addTo(map);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
     async function scan() {
         const c = map.getCenter();
-        log.innerText = "AUTH EN COURS...";
+        log.innerHTML = "📡 Connexion SNCF...";
 
-        // Encodage propre de la clé pour le header Basic Auth
-        const authString = btoa(API_KEY + ":");
+        // 1. RAILS (Indépendant de la clé)
+        const railUrl = `https://ressources.data.sncf.com/api/records/1.0/search/?dataset=formes-des-lignes-du-rfn&rows=60&geofilter.distance=${c.lat},${c.lng},15000`;
+        fetch(railUrl).then(res => res.json()).then(data => {
+            railLayer.clearLayers();
+            if (data.records) data.records.forEach(r => L.geoJSON(r.fields.geo_shape, {style:{color:"#1e40af",weight:2,opacity:0.4}}).addTo(railLayer));
+        }).catch(() => {});
 
+        // 2. GARES (Stop Points)
         try {
-            // 1. SCAN DES GARES (On en demande 50 pour dépasser la limite de 10)
-            const url = `https://api.sncf.com/v1/coverage/sncf/coords/${c.lng};${c.lat}/places_nearby?type[]=stop_point&distance=20000&count=50`;
+            const gareUrl = `https://api.sncf.com/v1/coverage/sncf/coords/${c.lng};${c.lat}/places_nearby?type[]=stop_point&distance=20000&count=100`;
+            const resGare = await fetch(gareUrl, { headers: { 'Authorization': authHeader } });
+            const dataGare = await resGare.json();
             
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Authorization': 'Basic ' + authString
-                }
-            });
-
-            if (!response.ok) {
-                if(response.status === 401) throw new Error("CLÉ REJETÉE (401)");
-                throw new Error("ERREUR SERVEUR (" + response.status + ")");
-            }
-
-            const data = await response.json();
-            trainLayer.clearLayers();
-
-            if (data.places_nearby) {
-                data.places_nearby.forEach(p => {
+            gareLayer.clearLayers();
+            if (dataGare.places_nearby) {
+                dataGare.places_nearby.forEach(p => {
                     const coord = p.stop_point.coord;
                     L.circleMarker([coord.lat, coord.lon], {
-                        radius: 6, fillColor: "#ffec00", color: "#000", weight: 1, fillOpacity: 1
-                    }).addTo(trainLayer).bindPopup(`<b>${p.name}</b>`);
+                        radius: 5, fillColor: "#007aff", color: "#fff", weight: 1, fillOpacity: 0.8
+                    }).addTo(gareLayer).bindPopup(`Gare : ${p.name}`);
                 });
-                log.innerText = `${data.places_nearby.length} POINTS DÉTECTÉS`;
+                log.innerHTML = `<span class="ok">●</span> GARES : ${dataGare.places_nearby.length} OK`;
+            }
+        } catch (e) {
+            log.innerHTML = `<span style="color:red">●</span> GARES : ERREUR AUTH`;
+        }
+
+        // 3. TRAINS (Le flux instable)
+        try {
+            // On tente l'endpoint 'vehicles'
+            const trainUrl = `https://api.sncf.com/v1/coverage/sncf/vehicles?count=100`;
+            const resTrain = await fetch(trainUrl, { headers: { 'Authorization': authHeader } });
+            
+            if (resTrain.status === 404) {
+                log.innerHTML += `<br><span class="warn">●</span> TRAINS : NON DISPONIBLES (404)`;
+                return;
             }
 
-            // 2. RAILS (Indépendant de l'auth)
-            fetch(`https://ressources.data.sncf.com/api/records/1.0/search/?dataset=formes-des-lignes-du-rfn&rows=50&geofilter.distance=${c.lat},${c.lng},15000`)
-                .then(res => res.json())
-                .then(d => {
-                    railLayer.clearLayers();
-                    if(d.records) d.records.forEach(r => L.geoJSON(r.fields.geo_shape, {style:{color:"#1e40af",weight:2,opacity:0.5}}).addTo(railLayer));
-                });
+            const dataTrain = await resTrain.json();
+            trainLayer.clearLayers();
+            let tCount = 0;
 
+            if (dataTrain.vehicles) {
+                dataTrain.vehicles.forEach(v => {
+                    if (v.position) {
+                        tCount++;
+                        L.circleMarker([v.position.lat, v.position.lon], {
+                            radius: 8, fillColor: "#ffec00", color: "#000", weight: 2, fillOpacity: 1
+                        }).addTo(trainLayer).bindPopup(`<b>Train ${v.label}</b><br>Dir: ${v.direction.name}`);
+                    }
+                });
+                log.innerHTML += `<br><span class="ok">●</span> TRAINS : ${tCount} DÉTECTÉS`;
+            } else {
+                log.innerHTML += `<br><span class="warn">●</span> TRAINS : AUCUN SCAN`;
+            }
         } catch (e) {
-            log.innerHTML = `<span class="error">${e.message}</span>`;
-            console.error(e);
+            log.innerHTML += `<br><span class="warn">●</span> TRAINS : FLUX RESTREINT`;
         }
     }
 
-    document.getElementById('btn').onclick = scan;
+    document.getElementById('btn').onclick = () => {
+        navigator.geolocation.getCurrentPosition(p => {
+            map.setView([p.coords.latitude, p.coords.longitude], 12);
+            scan();
+        }, () => scan());
+    };
+
     map.on('moveend', scan);
     scan();
 </script>
