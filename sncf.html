@@ -9,7 +9,7 @@
         body, html { margin: 0; padding: 0; height: 100%; background: #1a1a1a; color: white; font-family: sans-serif; }
         #map { height: 100%; width: 100%; }
         .ui { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; 
-              background: rgba(0,0,0,0.85); padding: 15px; border-radius: 12px; text-align: center; width: 280px; border: 1px solid #444; }
+              background: rgba(0,0,0,0.85); padding: 15px; border-radius: 12px; text-align: center; width: 320px; border: 1px solid #444; }
         button { background: #008cff; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; }
         #log { font-size: 11px; color: #bbb; margin-top: 10px; word-break: break-all; }
         .error { color: #ff4d4d !important; }
@@ -38,48 +38,90 @@
             const { latitude, longitude } = pos.coords;
             map.setView([latitude, longitude], 13);
             L.circleMarker([latitude, longitude], { color: '#00ffcc', radius: 6 }).addTo(map);
-            
             loadRailData(latitude, longitude);
         }, err => {
-            log.innerHTML = `<span class="error">GPS bloqué. Vérifiez que vous êtes bien en HTTPS.</span>`;
-        });
+            log.innerHTML = `<span class="error">GPS bloqué. Vérifiez que vous êtes bien en HTTPS et avez autorisé la géolocalisation.</span>`;
+            console.error(err);
+        }, { enableHighAccuracy: true, timeout: 10000 });
     };
 
     async function loadRailData(lat, lon) {
         log.innerText = "Appel API SNCF (v1.0)...";
-        
-        // Utilisation de l'API v1.0 : plus stable pour les filtres de distance
-        const dataset = "lignes-par-ligne-du-reseau-ferre-national";
-        const url = `https://ressources.data.sncf.com/api/records/1.0/search/?dataset=${dataset}&q=&rows=100&geofilter.distance=${lat},${lon},10000`;
+        const dataset = "formes-des-lignes-du-rfn"; // identifiant correct
+        const rows = 500;
+        const radius = 10000; // en mètres
+        const url = `https://ressources.data.sncf.com/api/records/1.0/search/?dataset=${encodeURIComponent(dataset)}&rows=${rows}&geofilter.distance=${lat},${lon},${radius}`;
+
+        log.innerHTML = `Appel API : <a href="${url}" target="_blank" style="color:#008cff">Tester le lien API</a>`;
+        console.info("Requête API :", url);
 
         try {
             const response = await fetch(url);
-            
             if (!response.ok) {
                 throw new Error(`Erreur ${response.status} : L'API ne répond pas.`);
             }
-
             const data = await response.json();
-            
+            console.debug("Réponse API :", data);
+
             if (!data.records || data.records.length === 0) {
-                log.innerText = "Aucun rail trouvé dans les 10km.";
+                log.innerText = "Aucun rail trouvé dans les 10 km.";
                 return;
             }
 
+            let count = 0;
             data.records.forEach(record => {
-                if (record.fields.geo_shape) {
-                    L.geoJSON(record.fields.geo_shape, {
-                        style: { color: "#00a8ff", weight: 4, opacity: 0.8 }
-                    }).addTo(map).bindPopup(record.fields.libelle);
+                const fields = record.fields || {};
+                // différents champs possibles
+                let geo = fields.geo_shape || fields.geometry || record.geometry || fields.the_geom || fields.geojson || fields.wkb_geometry || fields.geo_point_2d || null;
+
+                if (!geo) return;
+
+                // Si geo est un objet GeoJSON
+                if (typeof geo === 'object' && (geo.type || geo.coordinates)) {
+                    try {
+                        L.geoJSON(geo, { style: { color: "#00a8ff", weight: 4, opacity: 0.8 } }).addTo(map)
+                         .bindPopup(fields.libelle || fields.nom || fields.label || record.recordid || 'Ligne');
+                        count++;
+                    } catch (e) {
+                        console.warn('Échec chargement GeoJSON', e, geo);
+                    }
+                    return;
+                }
+
+                // Si geo est un tableau de coordonnées (point)
+                if (Array.isArray(geo) && geo.length === 2 && typeof geo[0] === 'number' && typeof geo[1] === 'number') {
+                    // Détecter si ordre [lat, lon] ou [lon, lat]
+                    let latC = geo[0], lonC = geo[1];
+                    if (Math.abs(latC) > 90 && Math.abs(lonC) <= 90) {
+                        // probablement [lon, lat]
+                        latC = geo[1]; lonC = geo[0];
+                    }
+                    L.polyline([[latC, lonC]], { color: "#00a8ff", weight: 4, opacity: 0.8 }).addTo(map)
+                     .bindPopup(fields.libelle || fields.nom || fields.label || record.recordid || 'Ligne');
+                    count++;
+                    return;
+                }
+
+                // Si geo est une chaîne (parfois sérialisée)
+                if (typeof geo === 'string') {
+                    try {
+                        const parsed = JSON.parse(geo);
+                        if (parsed) {
+                            L.geoJSON(parsed, { style: { color: "#00a8ff", weight: 4, opacity: 0.8 } }).addTo(map)
+                             .bindPopup(fields.libelle || fields.nom || fields.label || record.recordid || 'Ligne');
+                            count++;
+                        }
+                    } catch (e) {
+                        console.warn('Impossible de parser la géométrie string', e);
+                    }
                 }
             });
 
-            log.innerText = `${data.records.length} lignes chargées.`;
-            btn.style.display = "none";
+            log.innerText = `${count} lignes chargées (${data.records.length} enregistrements explorés).`;
+            if (count > 0) btn.style.display = 'none';
 
         } catch (e) {
-            log.innerHTML = `<span class="error">${e.message}</span><br><br>
-                             <a href="${url}" target="_blank" style="color:#008cff">Tester le lien API ici</a>`;
+            log.innerHTML = `<span class="error">${e.message}</span><br><br><a href="${url}" target="_blank" style="color:#008cff">Tester le lien API ici</a>`;
             console.error(e);
         }
     }
