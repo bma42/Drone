@@ -2,32 +2,33 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SNCF Radar - Restauration</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SNCF Radar Pro</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #0a0a0a; color: white; font-family: sans-serif; overflow: hidden; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #050505; color: white; font-family: -apple-system, sans-serif; overflow: hidden; }
         #map { height: 100%; width: 100%; }
         .ui { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 1000; 
-              background: rgba(20, 20, 20, 0.95); padding: 12px; border-radius: 12px; text-align: center; width: 260px; 
-              border: 1px solid #444; backdrop-filter: blur(8px); }
-        button { background: #007aff; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; }
-        #log { font-size: 11px; color: #00ffcc; margin-top: 8px; font-family: monospace; text-align: left; }
-        .error { color: #ff4d4d !important; }
+              background: rgba(15, 15, 15, 0.9); padding: 12px; border-radius: 12px; text-align: center; width: 270px; 
+              border: 1px solid #333; backdrop-filter: blur(8px); box-shadow: 0 4px 20px rgba(0,0,0,0.6); }
+        button { background: #007aff; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; font-size: 13px; }
+        #log { font-size: 10px; color: #00ffcc; margin-top: 10px; font-family: monospace; text-align: left; line-height: 1.4; }
+        .status-ok { color: #34c759; }
+        .status-err { color: #ff3b30; }
     </style>
 </head>
 <body>
 
 <div class="ui">
     <button id="btn">SCANNER LA ZONE</button>
-    <div id="log">Système prêt (v1.0)</div>
+    <div id="log">SYSTÈME PRÊT</div>
 </div>
 
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    const map = L.map('map', { zoomControl: false }).setView([48.85, 2.34], 12);
+    const map = L.map('map', { zoomControl: false, tap: false }).setView([48.85, 2.34], 12);
     const railLayer = L.layerGroup().addTo(map);
     const trainLayer = L.layerGroup().addTo(map);
 
@@ -35,35 +36,43 @@
 
     async function scan() {
         const c = map.getCenter();
-        log.innerHTML = "📡 Synchronisation...";
-
         const latLon = `${c.lat},${c.lng}`;
+        log.innerHTML = "📡 Connexion en cours...";
 
-        // 1. CHARGEMENT DES LIGNES (Dataset stable)
-        const railUrl = `https://ressources.data.sncf.com/api/records/1.0/search/?dataset=formes-des-lignes-du-rfn&rows=100&geofilter.distance=${latLon},15000`;
-        
+        // --- 1. RAILS (API v1.0 - Très stable) ---
         try {
-            const resRail = await fetch(railUrl);
+            const resRail = await fetch(`https://ressources.data.sncf.com/api/records/1.0/search/?dataset=formes-des-lignes-du-rfn&rows=100&geofilter.distance=${latLon},15000`);
             const dataRail = await resRail.json();
             railLayer.clearLayers();
             if (dataRail.records) {
                 dataRail.records.forEach(r => {
                     if (r.fields.geo_shape) {
-                        L.geoJSON(r.fields.geo_shape, { style: { color: "#1e40af", weight: 2, opacity: 0.6 } }).addTo(railLayer);
+                        L.geoJSON(r.fields.geo_shape, { style: { color: "#1e40af", weight: 2.5, opacity: 0.6 } }).addTo(railLayer);
                     }
                 });
-                log.innerHTML = "✅ Lignes : OK";
+                log.innerHTML = "<span class='status-ok'>●</span> LIGNES : CHARGÉES";
             }
-        } catch (e) { log.innerHTML = "<span class='error'>Lignes : Erreur v1</span>"; }
+        } catch (e) {
+            log.innerHTML = "<span class='status-err'>●</span> LIGNES : ÉCHEC";
+        }
 
-        // 2. CHARGEMENT DES TRAINS
-        // On teste le dataset standard, s'il échoue on ne bloque pas les lignes
+        // --- 2. TRAINS (API v1.0 avec bypass Referrer) ---
+        // On utilise la v1.0 car la v2.1 renvoie souvent 404 sur ce dataset précis sans Token
         const trainUrl = `https://ressources.data.sncf.com/api/records/1.0/search/?dataset=positions-temps-reel-des-trains&rows=100&geofilter.distance=${latLon},50000`;
 
         try {
-            const resTrain = await fetch(trainUrl);
-            if (!resTrain.ok) throw new Error("Dataset Trains introuvable");
+            const resTrain = await fetch(trainUrl, { referrerPolicy: "no-referrer" });
             
+            if (!resTrain.ok) {
+                // Si 404, le dataset est probablement passé en mode "privé" (Token requis)
+                if (resTrain.status === 404) {
+                    log.innerHTML += "<br><span class='status-err'>●</span> TRAINS : ACCÈS REFUSÉ (404)";
+                    log.innerHTML += "<br><small style='color:#888'>Le dataset nécessite une clé API SNCF.</small>";
+                    return;
+                }
+                throw new Error();
+            }
+
             const dataTrain = await resTrain.json();
             trainLayer.clearLayers();
 
@@ -72,16 +81,16 @@
                     const pos = r.fields.geopoint;
                     if (pos) {
                         L.circleMarker([pos[0], pos[1]], {
-                            radius: 8, fillColor: "#ffec00", color: "#000", weight: 1, fillOpacity: 1
-                        }).addTo(trainLayer).bindPopup(`Train ${r.fields.train_number}`);
+                            radius: 8, fillColor: "#ffec00", color: "#000", weight: 1.5, fillOpacity: 1
+                        }).addTo(trainLayer).bindPopup(`<b>Train ${r.fields.train_number}</b><br>Vitesse : ${r.fields.speed || 0} km/h`);
                     }
                 });
-                log.innerHTML += `<br>✅ Trains : ${dataTrain.records.length} trouvés`;
+                log.innerHTML += `<br><span class='status-ok'>●</span> TRAINS : ${dataTrain.records.length} DÉTECTÉS`;
             } else {
-                log.innerHTML += "<br>ℹ️ Aucun train (50km)";
+                log.innerHTML += "<br>○ TRAINS : AUCUN (50KM)";
             }
         } catch (e) {
-            log.innerHTML += `<br><span class="error">Trains : Indisponible</span>`;
+            log.innerHTML += "<br><span class='status-err'>●</span> TRAINS : ERREUR RÉSEAU";
         }
     }
 
@@ -93,7 +102,7 @@
     };
 
     map.on('moveend', scan);
-    setInterval(scan, 45000); // Rafraîchissement toutes les 45s
+    setInterval(scan, 60000); // 1 minute pour éviter le bannissement IP
     scan();
 </script>
 </body>
