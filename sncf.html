@@ -3,24 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SNCF Localizer</title>
+    <title>Radar Rail SNCF</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #121212; color: white; font-family: sans-serif; }
-        #map { height: 100%; width: 100%; z-index: 1; }
-        .ui { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 1000; 
-              background: rgba(25,25,25,0.9); padding: 20px; border-radius: 12px; text-align: center; width: 300px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-        button { background: #008cff; color: white; border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: bold; }
-        #log { font-size: 0.8em; color: #888; margin-top: 10px; line-height: 1.4; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #1a1a1a; color: white; font-family: -apple-system, sans-serif; }
+        #map { height: 100%; width: 100%; }
+        .ui { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; 
+              background: rgba(0,0,0,0.9); padding: 20px; border-radius: 15px; text-align: center; width: 280px; 
+              border: 1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        button { background: #008cff; color: white; border: none; padding: 15px; border-radius: 10px; cursor: pointer; width: 100%; font-weight: bold; font-size: 16px; }
+        #log { font-size: 13px; color: #aaa; margin-top: 12px; }
         .error { color: #ff4d4d !important; }
     </style>
 </head>
 <body>
 
 <div class="ui">
-    <strong>Radar Ferroviaire (10km)</strong>
-    <div id="log">Cliquez pour activer le radar</div>
-    <button id="btn">ACTIVER GPS</button>
+    <button id="btn">SCANNER 10KM</button>
+    <div id="log">Prêt à localiser</div>
 </div>
 
 <div id="map"></div>
@@ -31,61 +31,73 @@
     const log = document.getElementById('log');
     const btn = document.getElementById('btn');
 
+    // Fond de carte sombre et propre
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
     btn.onclick = () => {
-        log.innerText = "Recherche satellite...";
-        if (!navigator.geolocation) return error("GPS non supporté");
+        log.innerText = "Recherche satellite GPS...";
+        log.classList.remove('error');
 
         navigator.geolocation.getCurrentPosition(pos => {
             const { latitude, longitude } = pos.coords;
             map.setView([latitude, longitude], 13);
-            L.circleMarker([latitude, longitude], { color: 'cyan', radius: 6 }).addTo(map);
-            loadData(latitude, longitude);
+            
+            // Marqueur utilisateur
+            L.circleMarker([latitude, longitude], { 
+                color: '#00ffcc', fillOpacity: 0.8, radius: 7 
+            }).addTo(map).bindPopup("Vous êtes ici").openPopup();
+
+            loadRailData(latitude, longitude);
         }, err => {
-            if (location.protocol !== 'https:') {
-                error("ERREUR : HTTPS obligatoire pour le GPS");
-            } else {
-                error("GPS refusé ou indisponible");
-            }
+            log.innerText = "Erreur GPS : " + err.message + " (Vérifiez l'autorisation)";
+            log.classList.add('error');
         }, { enableHighAccuracy: true });
     };
 
-    async function loadData(lat, lon) {
-        log.innerText = "Interrogation SNCF...";
+    async function loadRailData(lat, lon) {
+        log.innerText = "Interrogation Base SNCF...";
         
-        // Nouvelle URL utilisant l'API de recherche (plus robuste que l'export)
-        const dataset = "lignes-par-ligne-du-reseau-ferre-national";
-        const query = `within_distance(shape, geom'POINT(${lon} ${lat})', 10000m)`;
-        const url = `https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets/${dataset}/records?where=${encodeURIComponent(query)}&limit=50`;
+        // Identifiant vérifié pour l'API v2.1
+        const datasetId = "lignes-par-ligne-du-reseau-ferre-national";
+        
+        // Construction de la requête spatiale (rayon de 10km)
+        // Note: l'ordre est POINT(longitude latitude)
+        const whereClause = `within_distance(geo_shape, geom'POINT(${lon} ${lat})', 10000m)`;
+        const url = `https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets/${datasetId}/records?where=${encodeURIComponent(whereClause)}&limit=100`;
 
         try {
             const response = await fetch(url);
-            if (!response.ok) throw new Error("Serveur SNCF (Code " + response.status + ")");
             
+            if (!response.ok) {
+                // Si 404, on tente l'identifiant alternatif
+                if (response.status === 404) throw new Error("Dataset introuvable (404)");
+                throw new Error(`Erreur Serveur (${response.status})`);
+            }
+
             const data = await response.json();
             
             if (!data.results || data.results.length === 0) {
-                log.innerText = "Aucune ligne à moins de 10km.";
+                log.innerText = "Aucun rail trouvé à 10km.";
                 return;
             }
 
+            // Dessin des lignes sur la carte
             data.results.forEach(record => {
-                L.geoJSON(record.shape, {
-                    style: { color: "#00ccff", weight: 4, opacity: 0.8 }
-                }).addTo(map);
+                if (record.geo_shape) {
+                    L.geoJSON(record.geo_shape, {
+                        style: { color: "#00a8ff", weight: 5, opacity: 0.8, lineCap: 'round' }
+                    }).addTo(map).bindPopup(`<b>Ligne :</b> ${record.libelle || 'Inconnue'}`);
+                }
             });
 
-            log.innerText = data.results.length + " lignes détectées.";
-            btn.style.display = "none";
+            log.innerText = `${data.results.length} segments détectés.`;
+            btn.innerText = "SCAN TERMINÉ";
+            btn.style.background = "#222";
         } catch (e) {
-            error(e.message);
+            log.innerText = "API Error: " + e.message;
+            log.classList.add('error');
+            console.error("Détails:", e);
         }
-    }
-
-    function error(msg) {
-        log.innerText = msg;
-        log.classList.add('error');
     }
 </script>
 </body>
