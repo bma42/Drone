@@ -3,24 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SNCF Radar Fix</title>
+    <title>SNCF Radar - Restauration</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #050505; color: white; font-family: sans-serif; overflow: hidden; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #0a0a0a; color: white; font-family: sans-serif; overflow: hidden; }
         #map { height: 100%; width: 100%; }
         .ui { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 1000; 
-              background: rgba(15, 15, 15, 0.9); padding: 12px; border-radius: 12px; text-align: center; width: 260px; 
-              border: 1px solid #333; backdrop-filter: blur(8px); }
+              background: rgba(20, 20, 20, 0.95); padding: 12px; border-radius: 12px; text-align: center; width: 260px; 
+              border: 1px solid #444; backdrop-filter: blur(8px); }
         button { background: #007aff; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; }
-        #log { font-size: 10px; color: #00ffcc; margin-top: 8px; font-family: monospace; }
-        .error { color: #ff3b30 !important; }
+        #log { font-size: 11px; color: #00ffcc; margin-top: 8px; font-family: monospace; text-align: left; }
+        .error { color: #ff4d4d !important; }
     </style>
 </head>
 <body>
 
 <div class="ui">
-    <button id="btn">MA POSITION / RECHARGER</button>
-    <div id="log">SYSTÈME OPÉRATIONNEL</div>
+    <button id="btn">SCANNER LA ZONE</button>
+    <div id="log">Système prêt (v1.0)</div>
 </div>
 
 <div id="map"></div>
@@ -33,65 +33,68 @@
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-    const BASE_URL = "https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets";
-
-    async function updateRadar() {
+    async function scan() {
         const c = map.getCenter();
-        log.innerText = "SYNCHRONISATION...";
+        log.innerHTML = "📡 Synchronisation...";
+
+        const latLon = `${c.lat},${c.lng}`;
+
+        // 1. CHARGEMENT DES LIGNES (Dataset stable)
+        const railUrl = `https://ressources.data.sncf.com/api/records/1.0/search/?dataset=formes-des-lignes-du-rfn&rows=100&geofilter.distance=${latLon},15000`;
+        
+        try {
+            const resRail = await fetch(railUrl);
+            const dataRail = await resRail.json();
+            railLayer.clearLayers();
+            if (dataRail.records) {
+                dataRail.records.forEach(r => {
+                    if (r.fields.geo_shape) {
+                        L.geoJSON(r.fields.geo_shape, { style: { color: "#1e40af", weight: 2, opacity: 0.6 } }).addTo(railLayer);
+                    }
+                });
+                log.innerHTML = "✅ Lignes : OK";
+            }
+        } catch (e) { log.innerHTML = "<span class='error'>Lignes : Erreur v1</span>"; }
+
+        // 2. CHARGEMENT DES TRAINS
+        // On teste le dataset standard, s'il échoue on ne bloque pas les lignes
+        const trainUrl = `https://ressources.data.sncf.com/api/records/1.0/search/?dataset=positions-temps-reel-des-trains&rows=100&geofilter.distance=${latLon},50000`;
 
         try {
-            if (map.getZoom() > 10) {
-                const railUrl = `${BASE_URL}/formes-des-lignes-du-rfn/records?where=within_distance(geo_shape, geom'POINT(${c.lng} ${c.lat})', 15km)&limit=100`;
-                const railRes = await fetch(railUrl);
-                if (railRes.ok) {
-                    const railData = await railRes.json();
-                    railLayer.clearLayers();
-                    railData.results.forEach(r => {
-                        if (r.geo_shape) L.geoJSON(r.geo_shape, { style: { color: "#1e3a8a", weight: 2, opacity: 0.5 } }).addTo(railLayer);
-                    });
-                }
-            }
-
-            const trainUrl = `${BASE_URL}/positions-temps-reel-des-trains/records?where=within_distance(geopoint, geom'POINT(${c.lng} ${c.lat})', 50km)&limit=100`;
-            const trainRes = await fetch(trainUrl);
+            const resTrain = await fetch(trainUrl);
+            if (!resTrain.ok) throw new Error("Dataset Trains introuvable");
             
-            if (!trainRes.ok) {
-                if(trainRes.status === 404) throw new Error("DATASET TRAINS INTROUVABLE (404)");
-                throw new Error("ERREUR " + trainRes.status);
-            }
-
-            const trainData = await trainRes.json();
+            const dataTrain = await resTrain.json();
             trainLayer.clearLayers();
 
-            if (!trainData.results || trainData.results.length === 0) {
-                log.innerText = "LIGNES OK - AUCUN TRAIN DÉTECTÉ";
-                return;
+            if (dataTrain.records && dataTrain.records.length > 0) {
+                dataTrain.records.forEach(r => {
+                    const pos = r.fields.geopoint;
+                    if (pos) {
+                        L.circleMarker([pos[0], pos[1]], {
+                            radius: 8, fillColor: "#ffec00", color: "#000", weight: 1, fillOpacity: 1
+                        }).addTo(trainLayer).bindPopup(`Train ${r.fields.train_number}`);
+                    }
+                });
+                log.innerHTML += `<br>✅ Trains : ${dataTrain.records.length} trouvés`;
+            } else {
+                log.innerHTML += "<br>ℹ️ Aucun train (50km)";
             }
-
-            trainData.results.forEach(t => {
-                if (t.geopoint) {
-                    L.circleMarker([t.geopoint.lat, t.geopoint.lon], {
-                        radius: 7, fillColor: "#ffec00", color: "#000", weight: 1, fillOpacity: 1
-                    }).addTo(trainLayer).bindPopup(`Train ${t.train_number}`);
-                }
-            });
-
-            log.innerText = `LIGNES OK - ${trainData.results.length} TRAINS`;
         } catch (e) {
-            log.innerHTML = `<span class="error">${e.message}</span>`;
+            log.innerHTML += `<br><span class="error">Trains : Indisponible</span>`;
         }
     }
 
     document.getElementById('btn').onclick = () => {
         navigator.geolocation.getCurrentPosition(p => {
             map.setView([p.coords.latitude, p.coords.longitude], 12);
-            updateRadar();
-        }, () => updateRadar());
+            scan();
+        }, () => scan());
     };
 
-    map.on('moveend', updateRadar);
-    setInterval(updateRadar, 30000);
-    updateRadar();
+    map.on('moveend', scan);
+    setInterval(scan, 45000); // Rafraîchissement toutes les 45s
+    scan();
 </script>
 </body>
 </html>
