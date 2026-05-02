@@ -6,62 +6,72 @@
     <title>Radar Basse Altitude</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
-        #map { height: 100vh; width: 100%; background: #1a1a1a; }
-        .info-panel {
-            position: absolute; top: 10px; left: 50px; z-index: 1000;
-            background: rgba(255, 255, 255, 0.9); padding: 10px;
-            border-radius: 4px; pointer-events: none;
+        body, html { margin: 0; padding: 0; height: 100%; background: #121212; color: white; }
+        #map { height: 100vh; width: 100%; }
+        #status {
+            position: absolute; top: 10px; right: 10px; z-index: 1000;
+            background: rgba(0, 0, 0, 0.8); padding: 10px; border-radius: 5px;
+            font-size: 12px; border: 1px solid #333;
         }
     </style>
 </head>
 <body>
 
-<div class="info-panel">
-    <b>Radar Basse Altitude</b><br>
-    Filtre : < 3000m
-</div>
+<div id="status">Initialisation...</div>
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     const map = L.map('map').setView([46.2276, 2.2137], 6);
     const markers = {};
-    const ALTITUDE_LIMIT = 3000;
+    const ALTITUDE_LIMIT = 3000; 
+    const statusEl = document.getElementById('status');
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; OpenStreetMap'
     }).addTo(map);
 
     async function updateTraffic() {
+        statusEl.innerText = "Mise à jour des données...";
+        
         try {
-            const response = await fetch('https://opensky-network.org/api/states/all');
-            const data = await response.json();
+            // Utilisation d'un proxy public pour éviter les erreurs CORS en local
+            const proxy = "https://api.allorigins.win/raw?url=";
+            const target = encodeURIComponent('https://opensky-network.org/api/states/all');
             
-            if (!data.states) return;
+            const response = await fetch(proxy + target);
+            if (!response.ok) throw new Error("Erreur réseau");
+            
+            const data = await response.json();
+            if (!data.states) {
+                statusEl.innerText = "Aucun vol détecté (Limite API ?)";
+                return;
+            }
 
+            let lowAltitudeCount = 0;
             const currentIds = new Set();
 
             data.states.forEach(flight => {
                 const [icao, callsign, country, time, lastSeen, lng, lat, baroAlt, onGround, velocity, trueTrack] = flight;
 
+                // Filtrage : Doit avoir des coordonnées et être sous la limite
                 if (lat && lng && baroAlt !== null && baroAlt < ALTITUDE_LIMIT) {
+                    lowAltitudeCount++;
                     currentIds.add(icao);
-                    const pos = [lat, lng];
-
+                    
                     if (markers[icao]) {
-                        markers[icao].setLatLng(pos);
-                        markers[icao].setRotationAngle?.(trueTrack);
+                        markers[icao].setLatLng([lat, lng]);
                     } else {
-                        markers[icao] = L.circleMarker(pos, {
-                            radius: 5,
-                            color: '#00ff00',
-                            fillOpacity: 0.8
-                        }).addTo(map).bindPopup(`<b>${callsign || 'Inconnu'}</b><br>Alt: ${Math.round(baroAlt)}m<br>Vitesse: ${Math.round(velocity * 3.6)} km/h`);
+                        markers[icao] = L.circleMarker([lat, lng], {
+                            radius: 4,
+                            color: '#39FF14',
+                            fillOpacity: 0.9
+                        }).addTo(map).bindPopup(`ID: ${callsign || icao}<br>Alt: ${Math.round(baroAlt)}m`);
                     }
                 }
             });
 
+            // Nettoyage des avions disparus
             Object.keys(markers).forEach(id => {
                 if (!currentIds.has(id)) {
                     map.removeLayer(markers[id]);
@@ -69,11 +79,15 @@
                 }
             });
 
+            statusEl.innerText = `${lowAltitudeCount} avions à basse altitude`;
+
         } catch (error) {
-            console.error("Erreur API:", error);
+            console.error(error);
+            statusEl.innerText = "Erreur de connexion (CORS ou Quota)";
         }
     }
 
+    // L'API OpenSky est limitée à 1 requête / 10s pour les anonymes
     setInterval(updateTraffic, 10000);
     updateTraffic();
 </script>
