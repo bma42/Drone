@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radar Basse Altitude</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
+        #map { height: 100vh; width: 100%; background: #1a1a1a; }
+        .info-panel {
+            position: absolute; top: 10px; left: 50px; z-index: 1000;
+            background: rgba(255, 255, 255, 0.9); padding: 10px;
+            border-radius: 4px; pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="info-panel">
+    <b>Radar Basse Altitude</b><br>
+    Filtre : < 3000m
+</div>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    const map = L.map('map').setView([46.2276, 2.2137], 6);
+    const markers = {};
+    const ALTITUDE_LIMIT = 3000;
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    async function updateTraffic() {
+        try {
+            const response = await fetch('https://opensky-network.org/api/states/all');
+            const data = await response.json();
+            
+            if (!data.states) return;
+
+            const currentIds = new Set();
+
+            data.states.forEach(flight => {
+                const [icao, callsign, country, time, lastSeen, lng, lat, baroAlt, onGround, velocity, trueTrack] = flight;
+
+                if (lat && lng && baroAlt !== null && baroAlt < ALTITUDE_LIMIT) {
+                    currentIds.add(icao);
+                    const pos = [lat, lng];
+
+                    if (markers[icao]) {
+                        markers[icao].setLatLng(pos);
+                        markers[icao].setRotationAngle?.(trueTrack);
+                    } else {
+                        markers[icao] = L.circleMarker(pos, {
+                            radius: 5,
+                            color: '#00ff00',
+                            fillOpacity: 0.8
+                        }).addTo(map).bindPopup(`<b>${callsign || 'Inconnu'}</b><br>Alt: ${Math.round(baroAlt)}m<br>Vitesse: ${Math.round(velocity * 3.6)} km/h`);
+                    }
+                }
+            });
+
+            Object.keys(markers).forEach(id => {
+                if (!currentIds.has(id)) {
+                    map.removeLayer(markers[id]);
+                    delete markers[id];
+                }
+            });
+
+        } catch (error) {
+            console.error("Erreur API:", error);
+        }
+    }
+
+    setInterval(updateTraffic, 10000);
+    updateTraffic();
+</script>
+</body>
+</html>
