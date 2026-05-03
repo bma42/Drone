@@ -2,93 +2,58 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Radar Basse Altitude</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #0f0f0f; }
-        #map { height: 100vh; width: 100%; }
-        #ui {
-            position: absolute; top: 10px; left: 50px; z-index: 1000;
-            background: rgba(0,0,0,0.7); color: #0f0; padding: 8px;
-            font-family: monospace; border: 1px solid #0f0; pointer-events: none;
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow-x: hidden;
+            overflow-y: auto;
+            font-family: -apple-system, system-ui, sans-serif;
+            background-color: #f0f0f2;
+        }
+
+        .container {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .placeholder-card {
+            width: 100%;
+            height: 200px;
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .placeholder-hero {
+            width: 100%;
+            height: 400px;
+            background: linear-gradient(180deg, #007AFF 0%, #0051a8 100%);
+            border-radius: 12px;
         }
     </style>
 </head>
 <body>
 
-<div id="ui">SCANNING...</div>
-<div id="map"></div>
+    <div class="container">
+        <div class="placeholder-hero"></div>
+        <div class="placeholder-card"></div>
+        <div class="placeholder-card"></div>
+        <div class="placeholder-card"></div>
+        <div class="placeholder-card"></div>
+        <div class="placeholder-card"></div>
+    </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
-    const map = L.map('map').setView([46.2, 2.2], 6);
-    const markers = new Map();
-    const ALT_LIMIT = 3000;
-    const ui = document.getElementById('ui');
-
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
-
-    async function fetchTraffic() {
-        const bounds = map.getBounds();
-        // Paramètres de zone : lamin, lomin, lamax, lomax
-        const bbox = `lamin=${bounds.getSouth()}&lomin=${bounds.getWest()}&lamax=${bounds.getNorth()}&lomax=${bounds.getEast()}`;
-        
-        // Utilisation de corsproxy.io (plus performant pour GitHub Pages)
-        const url = `https://corsproxy.io/?${encodeURIComponent('https://opensky-network.org/api/states/all?' + bbox)}`;
-
-        try {
-            const res = await fetch(url);
-            if (res.status === 429) {
-                ui.innerText = "RATE LIMIT (WAIT 1MIN)";
-                return;
-            }
-            
-            const data = await res.json();
-            if (!data.states) return;
-
-            const seen = new Set();
-            
-            for (const f of data.states) {
-                const [icao, call, country, last, lastContact, lng, lat, alt] = f;
-                
-                if (lat && lng && alt !== null && alt < ALT_LIMIT) {
-                    seen.add(icao);
-                    const pos = [lat, lng];
-
-                    if (markers.has(icao)) {
-                        markers.get(icao).setLatLng(pos);
-                    } else {
-                        const m = L.circleMarker(pos, {
-                            radius: 4,
-                            color: '#0f0',
-                            fillOpacity: 1,
-                            weight: 1
-                        }).addTo(map);
-                        m.bindPopup(`ID: ${call || icao}<br>ALT: ${alt}m`);
-                        markers.set(icao, m);
-                    }
-                }
-            }
-
-            for (const [id, marker] of markers) {
-                if (!seen.has(id)) {
-                    map.removeLayer(marker);
-                    markers.delete(id);
-                }
-            }
-            
-            ui.innerText = `ACTIVE: ${markers.size} | BBOX: ENABLED`;
-
-        } catch (e) {
-            ui.innerText = "OFFLINE / CORS ERR";
-        }
-    }
-
-    // Intervalle de 10s minimum pour éviter le ban IP
-    setInterval(fetchTraffic, 10000);
-    map.on('moveend', fetchTraffic);
-    fetchTraffic();
-</script>
 </body>
 </html>
