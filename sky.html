@@ -3,7 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Mobile Fix iOS</title>
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+
     <style>
         * {
             box-sizing: border-box;
@@ -19,72 +23,89 @@
             overflow-x: hidden;
             overflow-y: auto;
             font-family: -apple-system, system-ui, sans-serif;
-            background-color: #1a1a1a;
+            background-color: #000000;
             color: #ffffff;
+            scroll-behavior: smooth;
         }
 
-        .main-container {
+        .app-container {
             width: 100%;
+            min-height: 100.1vh; 
             display: flex;
             flex-direction: column;
-            gap: 15px;
+            gap: 20px;
             padding: 20px;
+            padding-bottom: 50px;
         }
 
-        .item {
-            width: 100%;
-            height: 150px;
-            background: #2c2c2e;
-            border-radius: 15px;
-            flex-shrink: 0;
-        }
-
-        .hero {
+        .placeholder-hero {
             width: 100%;
             height: 300px;
-            background: linear-gradient(135deg, #007AFF, #5856D6);
+            background: linear-gradient(135deg, #1e1e1e 0%, #333333 100%);
             border-radius: 20px;
+            border: 1px solid #444;
+        }
+
+        .placeholder-card {
+            width: 100%;
+            height: 180px;
+            background: #1c1c1e;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         }
 
         input {
-            font-size: 16px; 
-            padding: 12px;
-            border-radius: 8px;
-            border: none;
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            border-radius: 10px;
+            border: 1px solid #333;
+            background: #2c2c2e;
+            color: white;
+            outline: none;
         }
     </style>
 </head>
 <body>
 
-    <div class="main-container">
-        <div class="hero"></div>
-        <input type="text" placeholder="Focus sans zoom auto...">
-        <div class="item"></div>
-        <div class="item"></div>
-        <div class="item"></div>
-        <div class="item"></div>
-        <div class="item"></div>
+    <div class="app-container">
+        <div class="placeholder-hero"></div>
+        
+        <input type="text" placeholder="Entrée de texte (sans zoom auto)">
+
+        <div class="placeholder-card"></div>
+        <div class="placeholder-card"></div>
+        <div class="placeholder-card"></div>
+        <div class="placeholder-card"></div>
+        <div class="placeholder-card"></div>
     </div>
 
     <script>
-        document.addEventListener('touchstart', (event) => {
-            if (event.touches.length > 1) {
-                event.preventDefault();
+        window.addEventListener("load", () => {
+            setTimeout(() => {
+                window.scrollTo(0, 1);
+            }, 100);
+        });
+
+        document.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 1) {
+                e.preventDefault();
             }
         }, { passive: false });
 
         let lastTouch = 0;
-        document.addEventListener('touchend', (event) => {
+        document.addEventListener('touchend', (e) => {
             const now = Date.now();
             if (now - lastTouch <= 300) {
-                event.preventDefault();
+                e.preventDefault();
             }
             lastTouch = now;
         }, false);
 
-        document.addEventListener('gesturestart', (event) => {
-            event.preventDefault();
+        document.addEventListener('gesturestart', (e) => {
+            e.preventDefault();
         });
     </script>
+
 </body>
 </html>
