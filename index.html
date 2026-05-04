@@ -1340,10 +1340,23 @@
             </div>
         </section>
 
-        <!-- §15 Espaces aériens (OpenAIP) -->
+        <!-- §15 ZICAD - Zones interdites à la captation aérienne de données -->
         <section class="card">
             <div class="card-head">
                 <div class="card-num">15</div>
+                <div class="card-title">ZICAD — Zones interdites à la captation<span class="sub">IGN Géoplateforme · arrêté du 10 avril 2017 (Code des transports L. 6224-1) · rayon 15 km</span></div>
+                <button type="button" class="no-print" onclick="if(STATE.lat) fetchZicad(STATE.lat, STATE.lon)" title="Rafraîchir" style="background:transparent; border:1px solid var(--c-border-strong); border-radius:4px; padding:3px 9px; cursor:pointer; font-size:11px; color:var(--c-text-soft); margin-right:8px;">↻ Rafraîchir</button>
+                <span class="card-status" id="status-zicad">en attente</span>
+            </div>
+            <div class="card-body" id="zicad-body">
+                <div class="empty-state">Sélectionnez une adresse pour récupérer les ZICAD à proximité.</div>
+            </div>
+        </section>
+
+        <!-- §16 Espaces aériens (OpenAIP) -->
+        <section class="card">
+            <div class="card-head">
+                <div class="card-num">16</div>
                 <div class="card-title">Espaces aériens contrôlés (CTR / TMA / classes)<span class="sub">OpenAIP · CTR, TMA, zones P/R/D, classes A→G dans un rayon de 25 km</span></div>
                 <button type="button" class="no-print" onclick="if(STATE.lat) fetchAirspaces(STATE.lat, STATE.lon)" title="Rafraîchir" style="background:transparent; border:1px solid var(--c-border-strong); border-radius:4px; padding:3px 9px; cursor:pointer; font-size:11px; color:var(--c-text-soft); margin-right:8px;">↻ Rafraîchir</button>
                 <span class="card-status" id="status-airspace">en attente</span>
@@ -1353,10 +1366,10 @@
             </div>
         </section>
 
-        <!-- §16 METAR / TAF aéronautique (CheckWX) -->
+        <!-- §17 METAR / TAF aéronautique (CheckWX) -->
         <section class="card">
             <div class="card-head">
-                <div class="card-num">16</div>
+                <div class="card-num">17</div>
                 <div class="card-title">METAR &amp; TAF aéronautiques<span class="sub">CheckWX · 3 stations les plus proches avec prévisions VFR/IFR</span></div>
                 <button type="button" class="no-print" onclick="if(STATE.lat) fetchMetarTaf(STATE.lat, STATE.lon)" title="Rafraîchir" style="background:transparent; border:1px solid var(--c-border-strong); border-radius:4px; padding:3px 9px; cursor:pointer; font-size:11px; color:var(--c-text-soft); margin-right:8px;">↻ Rafraîchir</button>
                 <span class="card-status" id="status-metar">en attente</span>
@@ -1366,10 +1379,10 @@
             </div>
         </section>
 
-        <!-- §17 Altimétrie -->
+        <!-- §18 Altimétrie -->
         <section class="card">
             <div class="card-head">
-                <div class="card-num">17</div>
+                <div class="card-num">18</div>
                 <div class="card-title">Profil altimétrique<span class="sub">Open-Meteo Elevation · transect autour du point</span></div>
                 <span class="card-status" id="status-elev">en attente</span>
             </div>
@@ -1378,10 +1391,10 @@
             </div>
         </section>
 
-        <!-- §18 GNSS -->
+        <!-- §19 GNSS -->
         <section class="card">
             <div class="card-head">
-                <div class="card-num">18</div>
+                <div class="card-num">19</div>
                 <div class="card-title">Conditions GNSS<span class="sub">Indice Kp planétaire (perturbations électromagnétiques)</span></div>
                 <button type="button" class="no-print" onclick="refreshKp()" title="Rafraîchir l'indice Kp" style="background:transparent; border:1px solid var(--c-border-strong); border-radius:4px; padding:3px 9px; cursor:pointer; font-size:11px; color:var(--c-text-soft); margin-right:8px;">↻ Rafraîchir</button>
                 <span class="card-status" id="status-kp">en attente</span>
@@ -1391,10 +1404,10 @@
             </div>
         </section>
 
-        <!-- §19 Risques -->
+        <!-- §20 Risques -->
         <section class="card">
             <div class="card-head">
-                <div class="card-num">19</div>
+                <div class="card-num">20</div>
                 <div class="card-title">Analyse de risques<span class="sub">Risques identifiés · niveau (probabilité × gravité) · mesures de mitigation</span></div>
             </div>
             <div class="card-body">
@@ -1406,10 +1419,10 @@
             </div>
         </section>
 
-        <!-- §20 Étapes de vérification -->
+        <!-- §21 Étapes de vérification -->
         <section class="card">
             <div class="card-head">
-                <div class="card-num">20</div>
+                <div class="card-num">21</div>
                 <div class="card-title">Informations complémentaires<span class="sub">Points complémentaires, observations, illustrations photographiques</span></div>
             </div>
             <div class="card-body">
@@ -1422,10 +1435,10 @@
             </div>
         </section>
 
-        <!-- §21 Validation -->
+        <!-- §22 Validation -->
         <section class="card">
             <div class="card-head">
-                <div class="card-num">21</div>
+                <div class="card-num">22</div>
                 <div class="card-title">Validation<span class="sub">Visa hiérarchique et signatures</span></div>
             </div>
             <div class="card-body">
@@ -1700,11 +1713,13 @@ function updateElongation(val) {
     if (railElongationCircle) railElongationCircle.setRadius(STATE.radius);
     if (naturalElongationCircle) naturalElongationCircle.setRadius(STATE.radius);
     if (trafficElongationCircle) trafficElongationCircle.setRadius(STATE.radius);
+    if (zicadElongationCircle) zicadElongationCircle.setRadius(STATE.radius);
     // Met à jour le contenu du popup d'élongation sur toutes les cartes
     const popupHtml = `<b>Élongation de vol</b><br>${STATE.radius} m`;
     [linesElongationCircle, antennasElongationCircle, sevesoElongationCircle,
      uasElongationCircle, ighElongationCircle, airspaceElongationCircle,
-     railElongationCircle, naturalElongationCircle, trafficElongationCircle]
+     railElongationCircle, naturalElongationCircle, trafficElongationCircle,
+     zicadElongationCircle]
         .forEach(c => { if (c && c.setPopupContent) c.setPopupContent(popupHtml); });
     // Le module §10 affiche uniquement les voies dans la zone d'évolution
     // → on relance le rendu (filtre client) à chaque changement de rayon.
@@ -1949,6 +1964,7 @@ function showFastFlyProgress() {
         { key: 'density',  label: 'Densité pop.' },
         { key: 'seveso',   label: 'Seveso' },
         { key: 'uas',      label: 'Zones drones' },
+        { key: 'zicad',    label: 'ZICAD' },
         { key: 'airspace', label: 'Espaces aériens' },
         { key: 'metar',    label: 'METAR/TAF' },
         { key: 'elev',     label: 'Altimétrie' },
@@ -2078,6 +2094,7 @@ function refreshAuto() {
         fetchDensity(STATE.lat, STATE.lon),
         fetchSeveso(STATE.lat, STATE.lon),
         fetchUasZones(STATE.lat, STATE.lon),
+        fetchZicad(STATE.lat, STATE.lon),
         fetchAirspaces(STATE.lat, STATE.lon),
         fetchMetarTaf(STATE.lat, STATE.lon),
         fetchElevation(STATE.lat, STATE.lon, STATE.radius),
@@ -3946,7 +3963,153 @@ function initUasMap(items, lat, lon) {
 }
 
 /* ===================================================================
-   §14 — ESPACES AÉRIENS (OpenAIP : CTR, TMA, P, R, D, classes A→G)
+   §15 — ZICAD (Zones Interdites à la Captation Aérienne de Données)
+   IGN Géoplateforme · arrêté du 10 avril 2017
+   =================================================================== */
+let zicadMap = null;
+let zicadElongationCircle = null;
+
+async function fetchZicad(lat, lon) {
+    setStatus('zicad', 'load');
+    document.getElementById('zicad-body').innerHTML = `<div class="empty-state">⏳ Récupération des ZICAD (IGN Géoplateforme)…</div>`;
+
+    // Bbox 15 km
+    const dLat = 15000 / 111000;
+    const dLon = 15000 / (111000 * Math.cos(lat * Math.PI / 180));
+    const bbox = `${(lon - dLon).toFixed(5)},${(lat - dLat).toFixed(5)},${(lon + dLon).toFixed(5)},${(lat + dLat).toFixed(5)}`;
+
+    // Plusieurs typenames possibles selon les évolutions du catalogue Géoplateforme.
+    // On tente en cascade jusqu'à obtenir une réponse valide.
+    const typenames = [
+        'TRANSPORTS.DRONES.ZICAD:zicad_lf',
+        'TRANSPORTS.DRONES.ZICAD:carte_zicad',
+        'PROTECTEDAREAS:zicad'
+    ];
+
+    let features = null, lastErr = null, usedTn = null;
+    for (const tn of typenames) {
+        const params = new URLSearchParams({
+            service: 'WFS', version: '2.0.0', request: 'GetFeature',
+            typenames: tn,
+            bbox: bbox + ',EPSG:4326',
+            srsname: 'EPSG:4326',
+            count: 200, outputFormat: 'application/json'
+        });
+        try {
+            const r = await fetchWithTimeout('https://data.geopf.fr/wfs/ows?' + params.toString(), {}, 15000);
+            if (!r.ok) { lastErr = new Error('HTTP ' + r.status); continue; }
+            const j = await r.json();
+            features = j.features || [];
+            usedTn = tn;
+            break;
+        } catch (e) { lastErr = e; }
+    }
+
+    if (features == null) {
+        console.warn('ZICAD échec:', lastErr);
+        setStatus('zicad', 'err', 'indisponible');
+        document.getElementById('zicad-body').innerHTML = `
+            <div class="empty-state" style="margin-bottom:10px;">ZICAD indisponibles (${(lastErr && lastErr.message) || 'erreur réseau'}). Consulter la <a href="https://www.geoportail.gouv.fr/carte?l1=TRANSPORTS.DRONES.ZICAD::GEOPORTAIL:OGC:WMTS(0.7)" target="_blank" rel="noopener" style="color:var(--c-primary);">carte officielle Géoportail</a>.</div>
+            <button class="no-print" onclick="if(STATE.lat) fetchZicad(STATE.lat, STATE.lon)" style="background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer;">↻ Réessayer</button>`;
+        return null;
+    }
+
+    renderZicad(features, lat, lon);
+    STATE.zicad = features;
+    return features;
+}
+
+function zicadGeomCenter(geom) {
+    if (!geom) return null;
+    const coords = [];
+    const flat = (a) => { for (const x of a) Array.isArray(x[0]) ? flat(x) : coords.push(x); };
+    flat(geom.coordinates || []);
+    if (!coords.length) return null;
+    let sLat = 0, sLon = 0;
+    for (const c of coords) { sLon += c[0]; sLat += c[1]; }
+    return { lat: sLat / coords.length, lon: sLon / coords.length };
+}
+
+function renderZicad(features, lat, lon) {
+    const enriched = features.map(f => {
+        const c = zicadGeomCenter(f.geometry);
+        if (!c) return null;
+        const inside = pointInGeometry(lat, lon, f.geometry);
+        const minDist = inside ? 0 : minDistToGeom(lat, lon, f.geometry);
+        const p = f.properties || {};
+        return {
+            geom: f.geometry,
+            center: c,
+            inside,
+            dist: minDist,
+            name: p.nom || p.libelle || p.designation || p.toponyme || p.name || 'ZICAD',
+            type: p.type || p.categorie || p.nature || '',
+            referenceJoue: p.reference || p.numero || ''
+        };
+    }).filter(Boolean).sort((a, b) => a.dist - b.dist);
+
+    const insideCount = enriched.filter(z => z.inside).length;
+    const closest = enriched[0];
+
+    const rows = enriched.length === 0
+        ? `<tr><td colspan="3" class="empty-state">Aucune ZICAD dans un rayon de 15 km.</td></tr>`
+        : enriched.slice(0, 10).map(z => `
+            <tr style="${z.inside ? 'background:#fee2e2;' : ''}">
+                <td><strong>${z.name}</strong>${z.inside ? ' <span style="background:#dc2626; color:#fff; font-size:9px; font-weight:700; padding:1px 6px; border-radius:999px; margin-left:4px;">POINT EN ZICAD</span>' : ''}${z.type ? '<br><span style="color:var(--c-muted); font-size:11px;">' + z.type + '</span>' : ''}</td>
+                <td style="font-size:11px;">${z.referenceJoue || '—'}</td>
+                <td style="text-align:right; white-space:nowrap;"><strong>${z.inside ? '<span style="color:#dc2626;">À l&rsquo;intérieur</span>' : fmtDist(z.dist)}</strong></td>
+            </tr>`).join('');
+
+    document.getElementById('zicad-body').innerHTML = `
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px;">
+            <div class="metric ${insideCount ? 'danger' : ''}"><div class="v">${insideCount}</div><div class="k">Point en ZICAD</div></div>
+            <div class="metric ${enriched.length ? 'alert' : ''}"><div class="v">${enriched.length}</div><div class="k">ZICAD &le; 15 km</div></div>
+            <div class="metric"><div class="v">${closest ? (closest.inside ? '0' : fmtDist(closest.dist)) : '—'}</div><div class="k">Plus proche</div></div>
+        </div>
+        <div id="zicad-map" style="height:300px; width:100%; border-radius:6px; border:1px solid var(--c-border); margin-bottom:12px;"></div>
+        <table class="tbl">
+            <thead><tr><th>Zone</th><th>Référence</th><th style="text-align:right;">Distance</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+        <div style="margin-top:10px; padding:10px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; font-size:12px; line-height:1.55;">
+            <strong style="color:var(--c-danger);">⚠ Captation aérienne d'images interdite</strong>
+            — Les ZICAD (zones interdites à la captation aérienne de données) sont définies par l'<strong>arrêté du 10 avril 2017</strong> pris en application de l'<strong>article L. 6224-1 du Code des transports</strong>. Tout survol par un aéronef sans personne à bord avec captation d'images, vidéos ou données est <strong>interdit sauf autorisation expresse</strong> délivrée par le préfet (ou autorité compétente — Ministère des Armées pour les sites de défense).
+            <div style="margin-top:6px; color:var(--c-muted);">Demande d'autorisation préalable obligatoire · joindre au dossier le motif opérationnel et le plan de vol.</div>
+        </div>
+    `;
+    setTimeout(() => initZicadMap(enriched, lat, lon), 50);
+
+    let st = 'ok';
+    if (insideCount) st = 'err';
+    else if (enriched.length) st = 'warn';
+    setStatus('zicad', st, insideCount ? `${insideCount} EN ZICAD` : enriched.length ? `${enriched.length} ZICAD` : 'aucune');
+}
+
+function initZicadMap(items, lat, lon) {
+    const el = document.getElementById('zicad-map');
+    if (!el) return;
+    if (zicadMap) { zicadMap.remove(); zicadMap = null; }
+    zicadMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 11);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', crossOrigin: true }).addTo(zicadMap);
+
+    items.forEach(z => {
+        try {
+            L.geoJSON(z.geom, {
+                style: { color: '#dc2626', weight: 2, opacity: .9, fillColor: '#dc2626', fillOpacity: z.inside ? 0.35 : 0.18 }
+            }).bindPopup(`<b>${z.name}</b>${z.type ? '<br>' + z.type : ''}<br>${z.inside ? '<strong style="color:#dc2626;">⚠ Point de mission DANS la ZICAD</strong>' : 'Distance : ' + fmtDist(z.dist)}<br><span style="font-size:11px; color:#6b7280;">Captation interdite sans autorisation préfectorale</span>`).addTo(zicadMap);
+        } catch (e) { /* skip */ }
+    });
+
+    L.circleMarker([lat, lon], { radius: 7, color: '#0b3d91', fillColor: '#0b3d91', fillOpacity: 1, weight: 2 }).addTo(zicadMap).bindPopup('<b>Point de mission</b>');
+    zicadElongationCircle = STATE.radius
+        ? L.circle([lat, lon], { radius: STATE.radius, color: '#d97706', fillColor: '#fbbf24', fillOpacity: .15, weight: 2 }).addTo(zicadMap).bindPopup(`<b>Élongation de vol</b><br>${STATE.radius} m`)
+        : null;
+    fitMapToRadius(zicadMap, lat, lon, 15000);
+    setTimeout(() => zicadMap.invalidateSize(), 100);
+}
+
+/* ===================================================================
+   §16 — ESPACES AÉRIENS (OpenAIP : CTR, TMA, P, R, D, classes A→G)
    =================================================================== */
 const OPENAIP_KEY = '0ed9a357b3e1636ec2f2bcb4167cb7b8';
 let airspaceMap = null;
@@ -4834,6 +4997,43 @@ function populateRiskTable() {
         else if (limited) {
             const cls = classifyUasLimit(limited.properties.limite);
             rows.push([`Zone à hauteur limitée (max ${cls.height || '?'} m)`, 'Élevée', 'Modérée', `Respecter la hauteur max ${cls.height || ''} m AGL · ${limited.properties.remarque || ''}`, uasCenter(limited)]);
+        }
+    }
+
+    // Risque réglementaire : ZICAD (zones interdites à la captation aérienne)
+    if (Array.isArray(STATE.zicad) && STATE.zicad.length > 0) {
+        const R = STATE.radius || 1000;
+        const zicadList = STATE.zicad.map(f => {
+            const inside = pointInGeometry(STATE.lat, STATE.lon, f.geometry);
+            const minD = inside ? 0 : minDistToGeom(STATE.lat, STATE.lon, f.geometry);
+            const c = zicadGeomCenter(f.geometry);
+            const p = f.properties || {};
+            return { inside, dist: minD, center: c, name: p.nom || p.libelle || p.designation || p.toponyme || 'ZICAD' };
+        }).filter(z => z.center).sort((a, b) => a.dist - b.dist);
+        const zIn = zicadList.find(z => z.inside);
+        const zNear = zicadList.find(z => !z.inside && z.dist <= R);
+        if (zIn) {
+            rows.push([
+                `Point de mission en ZICAD « ${zIn.name.slice(0, 40)} »`,
+                'Élevée', 'Élevée',
+                "Captation interdite par l'arrêté du 10/04/2017 (CT L. 6224-1) · autorisation préfectorale écrite obligatoire avant tout vol avec captation",
+                { lat: zIn.center.lat, lon: zIn.center.lon }
+            ]);
+        } else if (zNear) {
+            rows.push([
+                `ZICAD « ${zNear.name.slice(0, 40)} » dans la zone d'évolution (à ${fmtDist(zNear.dist)})`,
+                'Élevée', 'Élevée',
+                "Risque de pénétration en ZICAD pendant le vol · autorisation préfectorale préalable · cadrer le plan de vol pour éviter le périmètre",
+                { lat: zNear.center.lat, lon: zNear.center.lon }
+            ]);
+        } else if (zicadList[0] && zicadList[0].dist < 2000) {
+            const z = zicadList[0];
+            rows.push([
+                `ZICAD « ${z.name.slice(0, 40)} » à proximité (${fmtDist(z.dist)})`,
+                'Modérée', 'Élevée',
+                "Vigilance dérive · pas de captation au-dessus du périmètre · vérifier autorisation préfectorale si extension de la zone d'évolution",
+                { lat: z.center.lat, lon: z.center.lon }
+            ]);
         }
     }
 
