@@ -1257,7 +1257,7 @@
         <section class="card">
             <div class="card-head">
                 <div class="card-num">10</div>
-                <div class="card-title">Voies rapides routières<span class="sub">IGN BDTOPO · autoroutes &amp; routes nationales · rayon 10 km · mise en évidence dans la zone d'évolution</span></div>
+                <div class="card-title">Voies rapides routières<span class="sub">OpenStreetMap (Overpass) · autoroutes &amp; routes nationales · rayon 10 km · mise en évidence dans la zone d'évolution</span></div>
                 <button type="button" class="no-print" onclick="if(STATE.lat) fetchTrafficRoads(STATE.lat, STATE.lon)" title="Rafraîchir" style="background:transparent; border:1px solid var(--c-border-strong); border-radius:4px; padding:3px 9px; cursor:pointer; font-size:11px; color:var(--c-text-soft); margin-right:8px;">↻ Rafraîchir</button>
                 <span class="card-status" id="status-traffic">en attente</span>
             </div>
@@ -3113,92 +3113,104 @@ function trafficRoadCenter(geom) {
     return { lat: sLat / coords.length, lon: sLon / coords.length };
 }
 
-function trafficClassifyRoad(p) {
-    // Le WFS public BDTOPO V3 n'expose pas cl_admin / cpx_classement_administratif :
-    // on s'appuie sur `numero` (A6, N88, D108…), `importance` (1-5) et `nature`.
-    const nat = String(p.nature || '').toLowerCase();
-    const imp = parseInt(p.importance, 10);
-    const num = String(p.numero || p.cpx_numero || '').trim().toUpperCase();
-    const isA = /^A[\s\-]?\d/.test(num);
-    const isN = /^N[\s\-]?\d/.test(num) || /^RN[\s\-]?\d/.test(num);
-    if (isA) return { kind: 'autoroute', label: 'Autoroute', color: '#dc2626', priority: 3, num };
-    if (isN) return { kind: 'nationale', label: 'Route nationale', color: '#d97706', priority: 2, num };
-    if (nat.includes('type autoroutier')) return { kind: 'voie-rapide', label: 'Voie rapide', color: '#b45309', priority: 2, num };
-    if (imp === 1) return { kind: 'voie-rapide', label: 'Voie rapide', color: '#b45309', priority: 2, num };
+function trafficClassifyRoad(tags) {
+    // Classification à partir des tags OpenStreetMap (highway + ref).
+    const hw = String(tags.highway || '').toLowerCase();
+    const ref = String(tags.ref || '').replace(/\s+/g, '').toUpperCase();
+    const isA = /^A\d/.test(ref);
+    const isN = /^N\d/.test(ref) || /^RN\d/.test(ref);
+    if (hw === 'motorway' || isA)
+        return { kind: 'autoroute', label: 'Autoroute', color: '#dc2626', priority: 3, num: ref };
+    if (isN || (hw === 'trunk' && ref))
+        return { kind: 'nationale', label: 'Route nationale', color: '#d97706', priority: 2, num: ref };
+    if (hw === 'trunk' || hw === 'motorway_link' || hw === 'trunk_link')
+        return { kind: 'voie-rapide', label: 'Voie rapide', color: '#b45309', priority: 2, num: ref };
     return null;
 }
 
-function trafficFlowState(p) {
-    // Estimation des conditions de circulation à partir de l'écart entre vitesse moyenne mesurée
-    // (vitesse_moyenne_vl, BDTOPO) et vitesse libre attendue selon la classe administrative.
-    const vMoy = parseFloat(p.vitesse_moyenne_vl);
-    if (!isFinite(vMoy) || vMoy <= 0) return { level: 'unknown', label: '—', color: '#6b7280' };
-    const cl = (p.cl_admin || '').toLowerCase();
-    const vLibre = cl.includes('autoroute') ? 130 : cl.includes('national') ? 90 : 80;
-    const ratio = vMoy / vLibre;
-    if (ratio >= 0.85) return { level: 'fluide',  label: 'Fluide',  color: '#16a34a', vMoy, vLibre };
-    if (ratio >= 0.65) return { level: 'dense',   label: 'Dense',   color: '#d97706', vMoy, vLibre };
-    return                  { level: 'sature',  label: 'Saturé',  color: '#dc2626', vMoy, vLibre };
+function trafficFlowState(tags) {
+    // OSM ne fournit pas de mesure temps-réel : on lit maxspeed pour info.
+    const ms = parseFloat(String(tags.maxspeed || '').replace(/[^\d]/g, ''));
+    if (!isFinite(ms) || ms <= 0) return { level: 'unknown', label: '—', color: '#6b7280' };
+    return { level: 'unknown', label: `${ms} km/h`, color: '#6b7280', vLibre: ms };
 }
 
 async function fetchTrafficRoads(lat, lon) {
     setStatus('traffic', 'load');
-    document.getElementById('traffic-body').innerHTML = `<div class="empty-state">⏳ Récupération des autoroutes / routes nationales (IGN BDTOPO)…</div>`;
+    document.getElementById('traffic-body').innerHTML = `<div class="empty-state">⏳ Récupération des autoroutes / routes nationales (Overpass OSM)…</div>`;
 
-    // Bbox 10 km : couvre largement n'importe quelle zone d'évolution drone
-    // (max 2 km avec observateur), avec une marge confortable pour le risque de proximité.
+    // Overpass : autour du point, 10 km, motorway/trunk + routes numérotées A/N
     const FETCH_RADIUS = 10000;
-    const dLat = FETCH_RADIUS / 111000;
-    const dLon = FETCH_RADIUS / (111000 * Math.cos(lat * Math.PI / 180));
-    const bbox = `${(lon - dLon).toFixed(5)},${(lat - dLat).toFixed(5)},${(lon + dLon).toFixed(5)},${(lat + dLat).toFixed(5)}`;
+    const query = `[out:json][timeout:25];
+(
+  way["highway"="motorway"](around:${FETCH_RADIUS},${lat},${lon});
+  way["highway"="motorway_link"](around:${FETCH_RADIUS},${lat},${lon});
+  way["highway"="trunk"](around:${FETCH_RADIUS},${lat},${lon});
+  way["highway"="trunk_link"](around:${FETCH_RADIUS},${lat},${lon});
+  way["highway"="primary"]["ref"~"^N\\\\s*\\\\d"](around:${FETCH_RADIUS},${lat},${lon});
+  way["ref"~"^A\\\\s*\\\\d"](around:${FETCH_RADIUS},${lat},${lon});
+);
+out geom tags;`;
 
-    const params = new URLSearchParams({
-        service: 'WFS', version: '2.0.0', request: 'GetFeature',
-        typenames: 'BDTOPO_V3:troncon_de_route',
-        bbox: bbox + ',EPSG:4326',
-        srsname: 'EPSG:4326',
-        count: 5000, outputFormat: 'application/json'
-    });
+    const endpoints = [
+        'https://overpass-api.de/api/interpreter',
+        'https://overpass.kumi.systems/api/interpreter',
+        'https://overpass.openstreetmap.fr/api/interpreter'
+    ];
 
-    try {
-        const r = await fetchWithTimeout('https://data.geopf.fr/wfs/ows?' + params.toString(), {}, 20000);
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const j = await r.json();
-        const features = j.features || [];
+    let elements = null, lastErr = null;
+    for (const url of endpoints) {
+        try {
+            const r = await fetchWithTimeout(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'data=' + encodeURIComponent(query)
+            }, 25000);
+            if (!r.ok) { lastErr = new Error('HTTP ' + r.status); continue; }
+            const j = await r.json();
+            elements = j.elements || [];
+            break;
+        } catch (e) { lastErr = e; }
+    }
 
-        const roads = features.map(f => {
-            const cls = trafficClassifyRoad(f.properties || {});
-            if (!cls) return null;
-            const c = trafficRoadCenter(f.geometry);
-            if (!c) return null;
-            const p = f.properties || {};
-            // Distance minimale du tracé au point d'opération (pas du centroïde)
-            const minD = minDistToGeom(lat, lon, f.geometry);
-            return {
-                geom: f.geometry,
-                center: c,
-                dist: minD,
-                cls,
-                nature: p.nature || '—',
-                numero: cls.num || String(p.numero || p.cpx_numero || '').toUpperCase(),
-                voies: parseInt(p.nombre_de_voies || p.nb_voies, 10) || null,
-                largeur: parseFloat(p.largeur_de_chaussee) || null,
-                position: p.position_par_rapport_au_sol,
-                flow: trafficFlowState(p)
-            };
-        }).filter(Boolean).sort((a, b) => a.dist - b.dist);
-
-        STATE.traffic = roads;
-        renderTrafficRoads(roads, lat, lon);
-        return roads;
-    } catch (e) {
-        console.warn('Traffic IGN:', e);
+    if (elements == null) {
+        console.warn('Overpass échec:', lastErr);
         setStatus('traffic', 'err', 'indisponible');
         document.getElementById('traffic-body').innerHTML = `
-            <div class="empty-state" style="margin-bottom:10px;">Voies rapides indisponibles (${e.message || 'erreur réseau'}).</div>
+            <div class="empty-state" style="margin-bottom:10px;">Voies rapides indisponibles (${(lastErr && lastErr.message) || 'erreur réseau'}).</div>
             <button class="no-print" onclick="if(STATE.lat) fetchTrafficRoads(STATE.lat, STATE.lon)" style="background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer;">↻ Réessayer</button>`;
         return null;
     }
+
+    // Conversion Overpass → GeoJSON-like
+    const roads = elements.map(el => {
+        if (el.type !== 'way' || !el.geometry || el.geometry.length < 2) return null;
+        const tags = el.tags || {};
+        const cls = trafficClassifyRoad(tags);
+        if (!cls) return null;
+        const coords = el.geometry.map(p => [p.lon, p.lat]);
+        const geom = { type: 'LineString', coordinates: coords };
+        const c = trafficRoadCenter(geom);
+        if (!c) return null;
+        const minD = minDistToGeom(lat, lon, geom);
+        return {
+            geom,
+            center: c,
+            dist: minD,
+            cls,
+            nature: tags.highway || '—',
+            numero: cls.num || '',
+            voies: parseInt(tags.lanes, 10) || null,
+            largeur: null,
+            position: tags.tunnel === 'yes' ? -1 : (tags.bridge === 'yes' ? 1 : 0),
+            flow: trafficFlowState(tags),
+            name: tags.name || ''
+        };
+    }).filter(Boolean).sort((a, b) => a.dist - b.dist);
+
+    STATE.traffic = roads;
+    renderTrafficRoads(roads, lat, lon);
+    return roads;
 }
 
 function renderTrafficRoads(roadsAll, lat, lon) {
@@ -3239,7 +3251,7 @@ function renderTrafficRoads(roadsAll, lat, lon) {
             <thead><tr><th>Voie</th><th>Voies / largeur</th><th>Conditions</th><th>Position</th><th style="text-align:right;">Distance</th></tr></thead>
             <tbody>${rows}</tbody>
         </table>
-        <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source IGN BDTOPO · ${roads.length} voie(s) classée(s) dans 10 km · ${inZone.length} pénètre(nt) dans la zone d'évolution (${R} m). Fluidité&nbsp;: vitesse moyenne VL (mesure terrain) / vitesse libre théorique (Fluide ≥ 85 % · Dense 65–85 % · Saturé < 65 %).</div>
+        <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source OpenStreetMap (Overpass API) · ${roads.length} voie(s) classée(s) dans 10 km · ${inZone.length} pénètre(nt) dans la zone d'évolution (${R} m). La colonne « Conditions » affiche la vitesse maximale tagguée OSM (pas de mesure temps-réel).</div>
         <div style="margin-top:10px; padding:8px 12px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; font-size:12px;">
             <strong style="color:var(--c-danger);">⚠ Risque chute drone sur chaussée</strong>
             <span style="color:var(--c-muted);">— prévoir périmètre latéral aux voies, pas de survol direct, coordination CRS / DIR si élongation traverse l'axe.</span>
