@@ -1204,12 +1204,12 @@
                 <div class="field-group">
                     <label class="lbl">Personnels engagés</label>
                     <div class="check-list">
-                        <div class="check-option"><input type="checkbox" id="p1"><label for="p1">Major AMATO Jean Baptiste</label><label class="redac-tool no-print"><input type="radio" name="redac" data-name="Major AMATO Jean Baptiste" onchange="updateRedacteur()"> Rédacteur de la préparation mission</label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
-                        <div class="check-option"><input type="checkbox" id="p2"><label for="p2">Major ROUCAIROL Daniel</label><label class="redac-tool no-print"><input type="radio" name="redac" data-name="Major ROUCAIROL Daniel" onchange="updateRedacteur()"> Rédacteur de la préparation mission</label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
-                        <div class="check-option"><input type="checkbox" id="p3"><label for="p3">Major DUDECK Philippe</label><label class="redac-tool no-print"><input type="radio" name="redac" data-name="Major DUDECK Philippe" onchange="updateRedacteur()"> Rédacteur de la préparation mission</label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
-                        <div class="check-option"><input type="checkbox" id="p4"><label for="p4">B/C MOTTER Sylvain</label><label class="redac-tool no-print"><input type="radio" name="redac" data-name="B/C MOTTER Sylvain" onchange="updateRedacteur()"> Rédacteur de la préparation mission</label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
-                        <div class="check-option"><input type="checkbox" id="p5"><label for="p5">B/C FOURNIE Hervé</label><label class="redac-tool no-print"><input type="radio" name="redac" data-name="B/C FOURNIE Hervé" onchange="updateRedacteur()"> Rédacteur de la préparation mission</label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
-                        <div class="check-option"><input type="checkbox" id="p6"><label for="p6">GPX KAOULALA Nordine</label><label class="redac-tool no-print"><input type="radio" name="redac" data-name="GPX KAOULALA Nordine" onchange="updateRedacteur()"> Rédacteur de la préparation mission</label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
+                        <div class="check-option"><input type="checkbox" id="p1"><label for="p1">Major AMATO Jean Baptiste<br><span style="color:var(--c-muted); font-size:11px;">Matricule 471946</span></label><label class="redac-tool no-print"><input type="radio" name="redac" data-name="Major AMATO Jean Baptiste" data-matricule="471946" onchange="updateRedacteur()"> Rédacteur de la préparation mission</label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
+                        <div class="check-option"><input type="checkbox" id="p2"><label for="p2">Major ROUCAIROL Daniel<br><span style="color:var(--c-muted); font-size:11px;">Matricule 455254</span></label><label class="redac-tool no-print"><input type="radio" name="redac" data-name="Major ROUCAIROL Daniel" data-matricule="455254" onchange="updateRedacteur()"> Rédacteur de la préparation mission</label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
+                        <div class="check-option"><input type="checkbox" id="p3"><label for="p3">Major DUDECK Philippe<br><span style="color:var(--c-muted); font-size:11px;">Matricule 0472323</span></label><label class="redac-tool no-print"><input type="radio" name="redac" data-name="Major DUDECK Philippe" data-matricule="0472323" onchange="updateRedacteur()"> Rédacteur de la préparation mission</label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
+                        <div class="check-option"><input type="checkbox" id="p4"><label for="p4">B/C MOTTER Sylvain<br><span style="color:var(--c-muted); font-size:11px;">Matricule 496397</span></label><label class="redac-tool no-print"><input type="radio" name="redac" data-name="B/C MOTTER Sylvain" data-matricule="496397" onchange="updateRedacteur()"> Rédacteur de la préparation mission</label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
+                        <div class="check-option"><input type="checkbox" id="p5"><label for="p5">B/C FOURNIE Hervé<br><span style="color:var(--c-muted); font-size:11px;">Matricule 0477206</span></label><label class="redac-tool no-print"><input type="radio" name="redac" data-name="B/C FOURNIE Hervé" data-matricule="0477206" onchange="updateRedacteur()"> Rédacteur de la préparation mission</label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
+                        <div class="check-option"><input type="checkbox" id="p6"><label for="p6">GPX KAOULALA Nordine<br><span style="color:var(--c-muted); font-size:11px;">Matricule 0235519</span></label><label class="redac-tool no-print"><input type="radio" name="redac" data-name="GPX KAOULALA Nordine" data-matricule="0235519" onchange="updateRedacteur()"> Rédacteur de la préparation mission</label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
                     </div>
                     <div id="custom-pilots"></div>
                     <button type="button" class="no-print" onclick="addCustomPilot()" style="margin-top:8px; width:100%; background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:9px 10px; font-size:13px; font-weight:600; cursor:pointer; text-align:center; display:flex; align-items:center; justify-content:center; gap:6px;">+ Ajouter un télépilote / observateur</button>
@@ -1483,13 +1483,14 @@
                     <div class="sig-box" data-sig="redac">
                         <div class="role">Rédacteur</div>
                         <input type="text" id="sig-redac" placeholder="Nom et grade…" style="margin-top:6px;">
+                        <input type="text" id="sig-redac-mat" placeholder="Matricule…" style="margin-top:6px;" oninput="onSigMatChange('redac')">
                         <div style="display:flex; gap:8px; margin-top:6px;">
                             <input type="date" id="sig-redac-date" style="flex:1">
                         </div>
                         <div class="sig-wrap">
                             <canvas class="sig-pad" width="500" height="120"></canvas>
                             <button type="button" class="sig-clear no-print" title="Effacer">↺</button>
-                            <div class="sig-name-overlay" style="position:absolute; bottom:6px; right:8px; font-size:12px; font-weight:700; color:var(--c-primary); pointer-events:none; display:none;"></div>
+                            <div class="sig-name-overlay" style="position:absolute; bottom:6px; right:8px; font-size:12px; font-weight:700; color:var(--c-primary); pointer-events:none; display:none; text-align:right; line-height:1.25;"></div>
                         </div>
                         <div style="display:flex; gap:6px; margin-top:8px;">
                             <button type="button" class="sig-validate-btn no-print" onclick="validateSignature('redac')" style="flex:1; padding:8px; background:var(--c-success); color:#fff; border:0; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;">✓ Valider la signature</button>
@@ -1499,13 +1500,14 @@
                     <div class="sig-box" data-sig="chef">
                         <div class="role">Chef de mission</div>
                         <input type="text" id="sig-chef" placeholder="Nom et grade…" style="margin-top:6px;">
+                        <input type="text" id="sig-chef-mat" placeholder="Matricule…" style="margin-top:6px;" oninput="onSigMatChange('chef')">
                         <div style="display:flex; gap:8px; margin-top:6px;">
                             <input type="date" id="sig-chef-date" style="flex:1">
                         </div>
                         <div class="sig-wrap">
                             <canvas class="sig-pad" width="500" height="120"></canvas>
                             <button type="button" class="sig-clear no-print" title="Effacer">↺</button>
-                            <div class="sig-name-overlay" style="position:absolute; bottom:6px; right:8px; font-size:12px; font-weight:700; color:var(--c-primary); pointer-events:none; display:none;"></div>
+                            <div class="sig-name-overlay" style="position:absolute; bottom:6px; right:8px; font-size:12px; font-weight:700; color:var(--c-primary); pointer-events:none; display:none; text-align:right; line-height:1.25;"></div>
                         </div>
                         <div style="display:flex; gap:6px; margin-top:8px;">
                             <button type="button" class="sig-validate-btn no-print" onclick="validateSignature('chef')" style="flex:1; padding:8px; background:var(--c-success); color:#fff; border:0; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;">✓ Valider la signature</button>
@@ -1850,8 +1852,11 @@ function updateGlobalVerdict() {
 function updateRedacteur() {
     const sel = document.querySelector('input[name="redac"]:checked');
     const name = sel ? (sel.dataset.name || '') : '';
+    const mat  = sel ? (sel.dataset.matricule || '') : '';
     if (sel) {
         document.getElementById('sig-redac').value = name;
+        const matInput = document.getElementById('sig-redac-mat');
+        if (matInput) matInput.value = mat;
         // Auto-coche le télépilote correspondant si pas encore coché
         const row = sel.closest('.check-option');
         if (row) {
@@ -5431,16 +5436,22 @@ function addCustomPilot() {
     row.className = 'check-option';
     row.innerHTML = `
         <input type="checkbox" id="${id}" checked>
-        <label for="${id}" style="display:flex; gap:8px; align-items:center; flex:1;">
-            <input type="text" class="pilot-name" placeholder="Nom · Grade" style="flex:2; padding:5px 8px; font-size:12px;" oninput="onPilotNameOrRoleChange(this.closest('.check-option'))">
-            <select class="pilot-role" style="flex:1; padding:5px 8px; font-size:12px;" onchange="onPilotNameOrRoleChange(this.closest('.check-option'))">
+        <label for="${id}" style="display:flex; gap:8px; align-items:center; flex:1; flex-wrap:wrap;">
+            <input type="text" class="pilot-name" placeholder="Nom · Grade" style="flex:2; min-width:160px; padding:5px 8px; font-size:12px;" oninput="onPilotNameOrRoleChange(this.closest('.check-option'))">
+            <input type="text" class="pilot-matricule" placeholder="Matricule" style="flex:1; min-width:90px; padding:5px 8px; font-size:12px;" oninput="onPilotNameOrRoleChange(this.closest('.check-option'))">
+            <select class="pilot-role" style="flex:1; min-width:120px; padding:5px 8px; font-size:12px;" onchange="onPilotNameOrRoleChange(this.closest('.check-option'))">
                 <option>Télépilote</option>
                 <option>Observateur</option>
                 <option>Pilote + Observateur</option>
                 <option>Chef de dispositif</option>
             </select>
         </label>
-        <label class="redac-tool no-print"><input type="radio" name="redac" onchange="this.dataset.name = this.closest('.check-option').querySelector('input[type=text]').value; updateRedacteur();"> Rédacteur</label>
+        <label class="redac-tool no-print"><input type="radio" name="redac" onchange="
+            const r=this.closest('.check-option');
+            this.dataset.name=r.querySelector('.pilot-name').value;
+            this.dataset.matricule=r.querySelector('.pilot-matricule').value;
+            updateRedacteur();
+        "> Rédacteur</label>
         <span class="redac-label-pdf">(Rédacteur de la préparation mission)</span>
         <button type="button" class="no-print" onclick="this.closest('.check-option').remove(); refreshChefDispositif();" style="background:transparent; border:0; color:var(--c-danger); font-size:18px; cursor:pointer; padding:0 4px;">×</button>
     `;
@@ -5758,6 +5769,16 @@ function initSignaturePad(canvas) {
 /* ===================================================================
    Validation des signatures (verrouillage + nom apposé)
    =================================================================== */
+// Met à jour l'overlay (si la signature est déjà validée) quand on modifie le matricule
+function onSigMatChange(role) {
+    const box = document.querySelector(`.sig-box[data-sig="${role}"]`);
+    if (!box || box.dataset.locked !== '1') return;
+    const overlay = box.querySelector('.sig-name-overlay');
+    const name = (box.querySelector('input[type="text"]').value || '').trim();
+    const mat  = (box.querySelector(`#sig-${role}-mat`).value || '').trim();
+    overlay.innerHTML = `<div>${name}</div>${mat ? `<div style="font-size:11px; font-weight:500; opacity:.9;">Matricule ${mat}</div>` : ''}`;
+}
+
 function validateSignature(role) {
     const box = document.querySelector(`.sig-box[data-sig="${role}"]`);
     if (!box) return;
@@ -5774,15 +5795,18 @@ function validateSignature(role) {
     // Verrouille : désactive les inputs, le pad et les boutons
     nameInput.disabled = true;
     box.querySelector('input[type="date"]').disabled = true;
+    const matInput = box.querySelector(`#sig-${role}-mat`);
+    if (matInput) matInput.disabled = true;
     canvas.style.pointerEvents = 'none';
     box.querySelector('.sig-clear').style.display = 'none';
     const btn = box.querySelector('.sig-validate-btn');
     btn.disabled = true;
     btn.style.background = 'var(--c-muted)';
     btn.innerHTML = '🔒 Signature validée';
-    // Affiche le nom en bas à droite du pad en gras
+    // Affiche le nom (et matricule) en bas à droite du pad en gras
     const overlay = box.querySelector('.sig-name-overlay');
-    overlay.textContent = name;
+    const mat = matInput ? (matInput.value || '').trim() : '';
+    overlay.innerHTML = `<div>${name}</div>${mat ? `<div style="font-size:11px; font-weight:500; opacity:.9;">Matricule ${mat}</div>` : ''}`;
     overlay.style.display = 'block';
     // Marque le rôle comme verrouillé pour la persistance future éventuelle
     box.dataset.locked = '1';
@@ -5796,7 +5820,7 @@ function redoSignature(role) {
     if (!box) return;
     if (!confirm('Refaire la signature ?\nLe tracé actuel sera effacé.')) return;
     // Déverrouille
-    box.querySelector('input[type="text"]').disabled = false;
+    box.querySelectorAll('input[type="text"]').forEach(i => i.disabled = false);
     box.querySelector('input[type="date"]').disabled = false;
     const canvas = box.querySelector('.sig-pad');
     canvas.style.pointerEvents = '';
