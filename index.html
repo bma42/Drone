@@ -3988,10 +3988,18 @@ function kmlToGeoJSONFeatures(kmlText) {
 
     for (let i = 0; i < placemarks.length; i++) {
         const pm = placemarks[i];
+        // Le KML ZICAD officiel range les attributs dans <ExtendedData><SchemaData><SimpleData name="…">.
+        const props = {};
+        const simples = pm.getElementsByTagName('SimpleData');
+        for (let s = 0; s < simples.length; s++) {
+            const k = simples[s].getAttribute('name');
+            if (k) props[k] = (simples[s].textContent || '').trim();
+        }
         const nameEl = pm.getElementsByTagName('name')[0];
         const descEl = pm.getElementsByTagName('description')[0];
-        const name = nameEl ? (nameEl.textContent || '').trim() : 'ZICAD';
-        const desc = descEl ? (descEl.textContent || '').trim() : '';
+        const name = (nameEl && nameEl.textContent.trim())
+            || props.site || props.comm || props.toponyme || props.designation || 'ZICAD';
+        const desc = (descEl && descEl.textContent.trim()) || '';
         const polys = pm.getElementsByTagName('Polygon');
         const polygonsCoords = [];
         for (let p = 0; p < polys.length; p++) {
@@ -4021,7 +4029,7 @@ function kmlToGeoJSONFeatures(kmlText) {
         features.push({
             type: 'Feature',
             geometry,
-            properties: { nom: name, description: desc }
+            properties: Object.assign({ nom: name, description: desc }, props)
         });
     }
     return features;
@@ -4155,14 +4163,17 @@ function renderZicad(features, lat, lon) {
         const inside = pointInGeometry(lat, lon, f.geometry);
         const minDist = inside ? 0 : minDistToGeom(lat, lon, f.geometry);
         const p = f.properties || {};
+        const siteLabel = p.site || p.libelle || p.designation || p.toponyme || p.name || p.nom || 'ZICAD';
+        const commune = p.comm || p.commune || '';
         return {
             geom: f.geometry,
             center: c,
             inside,
             dist: minDist,
-            name: p.nom || p.libelle || p.designation || p.toponyme || p.name || 'ZICAD',
-            type: p.type || p.categorie || p.nature || '',
-            referenceJoue: p.reference || p.numero || ''
+            name: commune ? `${siteLabel} (${commune})` : siteLabel,
+            type: p.ministere || p.type || p.categorie || p.nature || '',
+            referenceJoue: p.area || p.reference || p.numero || '',
+            dateEffet: p.dateeffet || ''
         };
     }).filter(Boolean).sort((a, b) => a.dist - b.dist);
 
