@@ -1053,9 +1053,8 @@
                         <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;"><input type="radio" name="clearance-radio" value="non" style="accent-color:var(--c-danger);" onchange="toggleClearanceLate()"> Non</label>
                         <a href="https://clearance.aero" target="_blank" rel="noopener" class="no-print" style="margin-left:auto; font-size:12px; color:var(--c-accent); text-decoration:none; font-weight:500;">Faire la déclaration ↗</a>
                     </div>
-                    <div id="clearance-late-box" class="check-option" style="display:none; padding:8px 12px; background:#fef3c7; border:1px solid #fde68a; border-radius:6px; margin-top:6px;">
-                        <input type="checkbox" id="clearance-late" style="accent-color:var(--c-warning);">
-                        <label for="clearance-late" style="font-weight:600; color:#92400e;">⚠ Hors délais (préavis < 3 jours)</label>
+                    <div id="clearance-late-box" style="display:none; padding:8px 12px; background:#fef3c7; border:1px solid #fde68a; border-radius:6px; margin-top:6px; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <strong class="blink-warn" style="font-weight:700; color:#92400e;">⚠ Hors délais (préavis &lt; 3 jours)</strong>
                         <span class="blink-warn" style="margin-left:auto; font-size:11px; color:#7c2d12; font-weight:600;">→ prendre contact direct avec la tour de contrôle</span>
                     </div>
                     <div style="margin-top:6px; margin-bottom:14px; padding:8px 12px; background:#f7f9fc; border:1px solid var(--c-border); border-radius:6px; font-size:12px; line-height:1.7;">
@@ -5466,16 +5465,9 @@ document.addEventListener('change', (e) => {
 
 function toggleClearanceLate() {
     const box = document.getElementById('clearance-late-box');
-    const cb  = document.getElementById('clearance-late');
     const radio = document.querySelector('input[name="clearance-radio"]:checked');
     const value = radio ? radio.value : null;
-    if (value === 'non') {
-        box.style.display = 'flex';
-        cb.checked = true;          // coche automatiquement "Hors délais" dès que Non
-    } else {
-        box.style.display = 'none';
-        cb.checked = false;
-    }
+    box.style.display = (value === 'non') ? 'flex' : 'none';
 }
 
 function toggleHorsCircuit() {
