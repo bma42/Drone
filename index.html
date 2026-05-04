@@ -5666,6 +5666,25 @@ function populateRiskTable() {
             rows.push([`Densité de population ultra-dense (${Math.round(d)} hab/km², ${main.nom})`, 'Élevée', 'Élevée', 'Périmètre de sécurité étendu · STS PN 02 minimum · communication renforcée']);
         else if (cls.risk === 'Élevé')
             rows.push([`Densité urbaine dense (${Math.round(d)} hab/km², ${main.nom})`, 'Modérée', 'Élevée', 'Périmètre de sécurité tiers · briefing population']);
+
+        // Effet Venturi en agglomération : accélération du vent entre bâtiments,
+        // turbulences en aval des immeubles. D'autant plus marqué en présence
+        // d'IGH ou avec un vent ambiant déjà soutenu.
+        if (cls.risk === 'Élevé' || cls.risk === 'Très élevé' || (Array.isArray(STATE.igh) && STATE.igh.length > 0)) {
+            const wind = (STATE.weather && STATE.weather.wind) || 0;
+            const gust = (STATE.weather && STATE.weather.gust) || 0;
+            const ighCount = Array.isArray(STATE.igh) ? STATE.igh.length : 0;
+            let prob = 'Modérée', sev = 'Modérée';
+            if (wind > 25 || gust > 35 || ighCount > 0) { prob = 'Élevée'; sev = 'Élevée'; }
+            else if (cls.risk === 'Très élevé') { prob = 'Modérée'; sev = 'Élevée'; }
+            const ctx = ighCount > 0 ? `${ighCount} IGH/bâtiment haut autour` : 'tissu urbain dense';
+            const wTxt = wind ? ` · vent ${wind.toFixed(0)} km/h${gust ? ' (rafales ' + gust.toFixed(0) + ')' : ''}` : '';
+            rows.push([
+                `Effet Venturi en agglomération (${ctx}${wTxt})`,
+                prob, sev,
+                "Vent accéléré entre bâtiments · turbulences en aval des immeubles · maintenir une marge altitude > sommet du bâtiment le plus haut + 15-30 m · éviter les couloirs étroits · vigilance perte de portance soudaine"
+            ]);
+        }
     }
 
     // Risques liés à la voie ferrée électrifiée (caténaires)
