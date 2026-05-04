@@ -1662,6 +1662,8 @@ function updateElongation(val) {
     // Le module §10 affiche uniquement les voies dans la zone d'évolution
     // → on relance le rendu (filtre client) à chaque changement de rayon.
     if (STATE.traffic && STATE.lat != null) renderTrafficRoads(STATE.traffic, STATE.lat, STATE.lon);
+    // Recalcule les risques auto (la zone d'évolution change peut faire entrer/sortir une voie rapide)
+    if (typeof populateRiskTable === 'function' && STATE.lat != null) populateRiskTable();
     // Recadrage des cartes pour englober la nouvelle élongation (debounce léger pour éviter spam pendant slider drag)
     clearTimeout(_mapsRefitDebounce);
     _mapsRefitDebounce = setTimeout(refitAllMaps, 250);
@@ -4834,27 +4836,28 @@ function populateRiskTable() {
 
     // Risques liés aux voies rapides (autoroutes / routes nationales)
     if (Array.isArray(STATE.traffic) && STATE.traffic.length > 0) {
+        const R = STATE.radius || 1000;
+        const inZone = STATE.traffic.filter(r => r.dist <= R);
         const closest = STATE.traffic[0];
-        const isAutoroute = closest.cls.kind === 'autoroute';
-        const flowSat = STATE.traffic.some(r => r.flow.level === 'sature' && r.dist < 1000);
-        // Risque proximité immédiate (chute de drone sur chaussée à grande vitesse)
-        if (closest.dist < 500) {
-            const prob = closest.dist < 100 ? 'Élevée' : closest.dist < 250 ? 'Modérée' : 'Faible';
-            const sev = isAutoroute ? 'Élevée' : 'Élevée';
-            const flowTxt = closest.flow.level !== 'unknown' ? ` · circulation ${closest.flow.label.toLowerCase()}` : '';
+        if (inZone.length > 0) {
+            // Une voie rapide pénètre la zone d'évolution → risque majeur de chute sur chaussée
+            const r = inZone[0];
+            const isAuto = r.cls.kind === 'autoroute';
             rows.push([
-                `${closest.cls.label}${closest.numero ? ' ' + closest.numero : ''} à ${fmtDist(closest.dist)}${flowTxt}`,
-                prob, sev,
-                `Pas de survol direct de la chaussée · périmètre latéral aux voies · prévoir interruption en cas d'accident · coordination ${isAutoroute ? 'CRS / DIR / concessionnaire' : 'gendarmerie / DIR'}`,
-                { lat: closest.center.lat, lon: closest.center.lon }
+                `${r.cls.label}${r.numero ? ' ' + r.numero : ''} dans la zone d'évolution (à ${fmtDist(r.dist)})`,
+                'Élevée', 'Élevée',
+                `Pas de survol direct de la chaussée · périmètre latéral aux voies · interruption immédiate en cas d'incident · coordination ${isAuto ? 'CRS / DIR / concessionnaire autoroutier' : 'gendarmerie / DIR'}`,
+                { lat: r.center.lat, lon: r.center.lon }
             ]);
-        } else if (flowSat) {
-            const sat = STATE.traffic.find(r => r.flow.level === 'sature' && r.dist < 1000);
+        } else if (closest && closest.dist < 1500) {
+            // Voie rapide à proximité (hors zone) : risque modéré de déport
+            const isAuto = closest.cls.kind === 'autoroute';
             rows.push([
-                `Trafic saturé sur ${sat.cls.label}${sat.numero ? ' ' + sat.numero : ''} à ${fmtDist(sat.dist)}`,
-                'Modérée', 'Modérée',
-                "Voies d'évacuation potentiellement bloquées en cas d'incident · prévoir itinéraire de repli",
-                { lat: sat.center.lat, lon: sat.center.lon }
+                `${closest.cls.label}${closest.numero ? ' ' + closest.numero : ''} à ${fmtDist(closest.dist)} (hors zone)`,
+                closest.dist < 800 ? 'Modérée' : 'Faible',
+                isAuto ? 'Élevée' : 'Modérée',
+                'Surveillance dérive · pas de survol en cas de déport · périmètre latéral aux voies',
+                { lat: closest.center.lat, lon: closest.center.lon }
             ]);
         }
     }
