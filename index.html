@@ -237,7 +237,7 @@
             display: block; font-size: 11px; font-weight: 600; color: var(--c-muted);
             text-transform: uppercase; letter-spacing: .5px; margin-bottom: 5px;
         }
-        input[type="text"], input[type="date"], input[type="number"], select, textarea {
+        input[type="text"], input[type="date"], input[type="time"], input[type="number"], select, textarea {
             font-family: inherit; font-size: 13px; color: var(--c-text);
             width: 100%; padding: 9px 11px;
             border: 1px solid var(--c-border-strong); border-radius: var(--radius-sm);
@@ -254,22 +254,16 @@
         .row-3 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1fr); gap: 12px; }
         .row-2 > *, .row-3 > * { min-width: 0; }
         /* iOS Safari : neutralise le rendu natif des inputs date/heure pour qu'ils
-           se comportent comme un input text classique (même hauteur, contenu visible,
-           pas de débordement). font-size 16px évite aussi le zoom auto au focus. */
+           héritent du même look que les inputs text (taille, padding, bordure). */
         input[type="date"], input[type="time"], input[type="datetime-local"] {
             -webkit-appearance: none;
             appearance: none;
             min-width: 0;
             max-width: 100%;
-            font-size: 16px;
-            line-height: 1.2;
-            min-height: 38px;
             display: block;
         }
         input[type="date"]::-webkit-date-and-time-value,
         input[type="time"]::-webkit-date-and-time-value { text-align: left; }
-        input[type="date"]::-webkit-calendar-picker-indicator,
-        input[type="time"]::-webkit-calendar-picker-indicator { margin-left: 4px; }
         .field-group { margin-bottom: 14px; }
         .field-group:last-child { margin-bottom: 0; }
         .field-group .hint { font-size: 11px; color: var(--c-muted); margin-top: 4px; }
@@ -933,18 +927,19 @@
                         </select>
                     </div>
                 </div>
-                <div class="field-group row-2">
+                <div class="field-group row-2" style="position:relative;">
                     <div>
                         <label class="lbl">Heure de début</label>
-                        <div style="display:flex; gap:6px;">
-                            <input type="time" id="mission-start" class="accent-input" value="09:00" onchange="onTimeChange()" style="flex:1;">
-                            <button type="button" class="no-print" onclick="setNowMission()" title="Mettre l'heure actuelle (et fin = +1h)" style="background:var(--c-primary); color:#fff; border:0; border-radius:6px; padding:0 12px; font-size:11px; font-weight:600; cursor:pointer; white-space:nowrap;">Maintenant</button>
-                        </div>
+                        <input type="time" id="mission-start" class="accent-input" value="09:00" onchange="onTimeChange()">
                     </div>
                     <div>
                         <label class="lbl">Heure de fin</label>
                         <input type="time" id="mission-end" class="accent-input" value="11:00" onchange="onTimeChange()">
                     </div>
+                    <button type="button" class="no-print" onclick="setNowMission()" title="Mettre l'heure actuelle (et fin = +1h)" style="position:absolute; top:0; right:0; background:var(--c-primary); color:#fff; border:0; border-radius:6px; padding:5px 10px; font-size:11px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:4px; white-space:nowrap;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:12px; height:12px;"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                        Maintenant
+                    </button>
                     <div id="end-next-day-hint" style="display:none; grid-column:1/-1; margin-top:-6px; padding:6px 10px; background:#fef3c7; border:1px solid #fde68a; border-radius:4px; font-size:11px; color:#92400e; font-weight:600;">⏱ Mission sur 2 jours — l'heure de fin est sur le jour suivant.</div>
                 </div>
                 <div class="field-group row-2" id="prep-times-row" style="position:relative;">
@@ -956,7 +951,10 @@
                         <label class="lbl">Heure de briefing</label>
                         <input type="time" id="mission-briefing" value="08:30">
                     </div>
-                    <button type="button" id="prep-unlock-btn" class="no-print" onclick="unlockPrepTimes()" style="display:none; position:absolute; top:0; right:0; background:var(--c-warning); color:#fff; border:0; border-radius:6px; padding:5px 10px; font-size:11px; font-weight:600; cursor:pointer;">🔓 Réactiver</button>
+                    <button type="button" id="prep-unlock-btn" class="no-print" onclick="unlockPrepTimes()" style="display:none; position:absolute; top:0; right:0; background:var(--c-warning); color:#fff; border:0; border-radius:6px; padding:5px 10px; font-size:11px; font-weight:600; cursor:pointer; align-items:center; gap:4px; white-space:nowrap;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:12px; height:12px;"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                        Activer
+                    </button>
                 </div>
                 <div class="field-group row-2">
                     <div>
@@ -1792,7 +1790,7 @@ function setNowMission() {
     setup.disabled = true; brief.disabled = true;
     setup.style.opacity = '0.4'; brief.style.opacity = '0.4';
     document.querySelectorAll('#prep-times-row label').forEach(l => l.style.opacity = '0.4');
-    document.getElementById('prep-unlock-btn').style.display = 'inline-block';
+    document.getElementById('prep-unlock-btn').style.display = 'inline-flex';
     onTimeChange();
 }
 
