@@ -3969,50 +3969,71 @@ function initUasMap(items, lat, lon) {
 let zicadMap = null;
 let zicadElongationCircle = null;
 
+// Cache en mémoire pour le GeoJSON ZICAD complet (≈ quelques centaines de polygones France entière)
+let _zicadAllFeatures = null;
+
 async function fetchZicad(lat, lon) {
     setStatus('zicad', 'load');
-    document.getElementById('zicad-body').innerHTML = `<div class="empty-state">⏳ Récupération des ZICAD (IGN Géoplateforme)…</div>`;
+    document.getElementById('zicad-body').innerHTML = `<div class="empty-state">⏳ Récupération des ZICAD (data.gouv.fr · SGDSN)…</div>`;
 
-    // Bbox 15 km
-    const dLat = 15000 / 111000;
-    const dLon = 15000 / (111000 * Math.cos(lat * Math.PI / 180));
-    const bbox = `${(lon - dLon).toFixed(5)},${(lat - dLat).toFixed(5)},${(lon + dLon).toFixed(5)},${(lat + dLat).toFixed(5)}`;
-
-    // Plusieurs typenames possibles selon les évolutions du catalogue Géoplateforme.
-    // On tente en cascade jusqu'à obtenir une réponse valide.
-    const typenames = [
-        'TRANSPORTS.DRONES.ZICAD:zicad_lf',
-        'TRANSPORTS.DRONES.ZICAD:carte_zicad',
-        'PROTECTEDAREAS:zicad'
-    ];
-
-    let features = null, lastErr = null, usedTn = null;
-    for (const tn of typenames) {
-        const params = new URLSearchParams({
-            service: 'WFS', version: '2.0.0', request: 'GetFeature',
-            typenames: tn,
-            bbox: bbox + ',EPSG:4326',
-            srsname: 'EPSG:4326',
-            count: 200, outputFormat: 'application/json'
-        });
+    // L'IGN n'expose pas ZICAD via WFS public. Source officielle : SGDSN sur
+    // data.gouv.fr (jeu de données « Zones interdites à la captation »).
+    // On récupère le GeoJSON France entière une fois, puis filtre client-side.
+    if (!_zicadAllFeatures) {
+        const candidateSlugs = [
+            'donnees-zicad-zones-interdites-a-la-captation-de-donnees',
+            'zones-interdites-a-la-captation-des-donnees-par-aeronef-sans-personne-a-bord'
+        ];
+        let resourceUrl = null, lastErr = null;
+        for (const slug of candidateSlugs) {
+            try {
+                const r = await fetchWithTimeout(`https://www.data.gouv.fr/api/1/datasets/${slug}/`, {}, 12000);
+                if (!r.ok) { lastErr = new Error('HTTP ' + r.status); continue; }
+                const j = await r.json();
+                const res = (j.resources || []).find(x => {
+                    const f = String(x.format || '').toLowerCase();
+                    const u = String(x.url || '').toLowerCase();
+                    return f === 'geojson' || u.endsWith('.geojson') || u.endsWith('.json');
+                });
+                if (res && res.url) { resourceUrl = res.url; break; }
+            } catch (e) { lastErr = e; }
+        }
+        if (!resourceUrl) {
+            setStatus('zicad', 'err', 'indisponible');
+            document.getElementById('zicad-body').innerHTML = `
+                <div class="empty-state" style="margin-bottom:10px;">ZICAD indisponibles (jeu de données data.gouv.fr introuvable${lastErr ? ' · ' + lastErr.message : ''}). Consulter la <a href="https://www.geoportail.gouv.fr/carte?l1=TRANSPORTS.DRONES.ZICAD::GEOPORTAIL:OGC:WMTS(0.7)" target="_blank" rel="noopener" style="color:var(--c-primary);">carte officielle Géoportail</a>.</div>
+                <button class="no-print" onclick="if(STATE.lat) fetchZicad(STATE.lat, STATE.lon)" style="background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer;">↻ Réessayer</button>`;
+            return null;
+        }
         try {
-            const r = await fetchWithTimeout('https://data.geopf.fr/wfs/ows?' + params.toString(), {}, 15000);
-            if (!r.ok) { lastErr = new Error('HTTP ' + r.status); continue; }
-            const j = await r.json();
-            features = j.features || [];
-            usedTn = tn;
-            break;
-        } catch (e) { lastErr = e; }
+            const r2 = await fetchWithTimeout(resourceUrl, {}, 25000);
+            if (!r2.ok) throw new Error('HTTP ' + r2.status);
+            const geo = await r2.json();
+            _zicadAllFeatures = geo.features || [];
+        } catch (e) {
+            console.warn('ZICAD téléchargement:', e);
+            setStatus('zicad', 'err', 'indisponible');
+            document.getElementById('zicad-body').innerHTML = `
+                <div class="empty-state" style="margin-bottom:10px;">ZICAD indisponibles (téléchargement GeoJSON ${e.message || 'erreur'}). Consulter la <a href="https://www.geoportail.gouv.fr/carte?l1=TRANSPORTS.DRONES.ZICAD::GEOPORTAIL:OGC:WMTS(0.7)" target="_blank" rel="noopener" style="color:var(--c-primary);">carte officielle Géoportail</a>.</div>
+                <button class="no-print" onclick="if(STATE.lat) fetchZicad(STATE.lat, STATE.lon)" style="background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer;">↻ Réessayer</button>`;
+            return null;
+        }
     }
 
-    if (features == null) {
-        console.warn('ZICAD échec:', lastErr);
-        setStatus('zicad', 'err', 'indisponible');
-        document.getElementById('zicad-body').innerHTML = `
-            <div class="empty-state" style="margin-bottom:10px;">ZICAD indisponibles (${(lastErr && lastErr.message) || 'erreur réseau'}). Consulter la <a href="https://www.geoportail.gouv.fr/carte?l1=TRANSPORTS.DRONES.ZICAD::GEOPORTAIL:OGC:WMTS(0.7)" target="_blank" rel="noopener" style="color:var(--c-primary);">carte officielle Géoportail</a>.</div>
-            <button class="no-print" onclick="if(STATE.lat) fetchZicad(STATE.lat, STATE.lon)" style="background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer;">↻ Réessayer</button>`;
-        return null;
-    }
+    // Filtre par bbox 15 km autour du point
+    const R = 15000;
+    const dLat = R / 111000;
+    const dLon = R / (111000 * Math.cos(lat * Math.PI / 180));
+    const minLat = lat - dLat, maxLat = lat + dLat;
+    const minLon = lon - dLon, maxLon = lon + dLon;
+    const features = _zicadAllFeatures.filter(f => {
+        const c = zicadGeomCenter(f.geometry);
+        if (!c) return false;
+        if (c.lat >= minLat && c.lat <= maxLat && c.lon >= minLon && c.lon <= maxLon) return true;
+        // Inclut aussi les ZICAD très grandes dont le centroïde est hors bbox mais qui
+        // pourraient contenir le point (cas rare des emprises vastes).
+        return pointInGeometry(lat, lon, f.geometry);
+    });
 
     renderZicad(features, lat, lon);
     STATE.zicad = features;
