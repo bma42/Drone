@@ -4661,13 +4661,16 @@ function renderElevation(elevs, radius) {
         }
 
         // Étiquettes d'altitude aux deux extrémités de la courbe (cartouches crème)
+        // — sauf si l'extrémité correspond au min ou max de l'axe (déjà affiché via ▲/▼).
         const vL = s.values[0], vR = s.values[s.values.length - 1];
         const yL = yScale(vL), yR = yScale(vR);
-        // Décale verticalement vers l'intérieur du cadre pour rester lisible
+        const isExtreme = (i) => i === s.iMin || i === s.iMax;
         const offY = (yPos) => (yPos < H / 2 ? 16 : -8);
-        const edgeLabels =
-            labelTag(P + 18, yL + offY(yL), vL.toFixed(0) + ' m', s.color, 'middle') +
-            labelTag(W - P - 18, yR + offY(yR), vR.toFixed(0) + ' m', s.color, 'middle');
+        let edgeLabels = '';
+        if (!isExtreme(0))
+            edgeLabels += labelTag(P + 18, yL + offY(yL), vL.toFixed(0) + ' m', s.color, 'middle');
+        if (!isExtreme(s.values.length - 1))
+            edgeLabels += labelTag(W - P - 18, yR + offY(yR), vR.toFixed(0) + ' m', s.color, 'middle');
 
         // Règle d'élongation
         const rulerY = H + 16, rulerLabY = H + 30, rulerColor = '#475569';
