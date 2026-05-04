@@ -478,7 +478,7 @@
 
         /* ---------- Responsive ---------- */
         @media (max-width: 720px) {
-            .row-2, .row-3, .weather-grid, .sig-grid { grid-template-columns: 1fr; }
+            .row-2, .row-3, .weather-grid, .sig-grid, .elev-charts { grid-template-columns: 1fr; }
             .doc-header { grid-template-columns: 1fr; text-align: center; }
             .doc-header-meta { text-align: center; }
             .elev-wrap { flex-direction: column; }
@@ -4577,7 +4577,7 @@ async function fetchElevation(lat, lon, radius) {
 
 function renderElevation(elevs, radius) {
     const center = elevs[0];
-    // Reconstitue les 4 séries (chacune = 2*ELEV_HALF + 1 points avec centre inséré au milieu)
+    // Reconstitue les séries (chacune = 2*ELEV_HALF + 1 points avec centre inséré au milieu)
     const series = [];
     let cursor = 1;
     for (const ax of ELEV_AXES) {
@@ -4586,15 +4586,14 @@ function renderElevation(elevs, radius) {
         const neg = half.slice(0, ELEV_HALF);
         const pos = half.slice(ELEV_HALF);
         const values = [...neg, center, ...pos];
-        // Index et valeurs des extrêmes
         let iMin = 0, iMax = 0;
         for (let i = 1; i < values.length; i++) {
             if (values[i] < values[iMin]) iMin = i;
             if (values[i] > values[iMax]) iMax = i;
         }
         const dirAt = i => {
-            const off = (i - ELEV_HALF) / ELEV_HALF; // -1 à +1
-            const labelNeg = ax.name.split('–')[0]; // ex. "N" pour "N–S"
+            const off = (i - ELEV_HALF) / ELEV_HALF;
+            const labelNeg = ax.name.split('–')[0];
             const labelPos = ax.name.split('–')[1];
             if (off === 0) return 'centre';
             return (off < 0 ? labelNeg : labelPos) + ' ' + fmtDist(Math.abs(off) * radius);
@@ -4605,107 +4604,106 @@ function renderElevation(elevs, radius) {
     const avg = elevs.reduce((a, b) => a + b, 0) / elevs.length;
     const range = max - min;
 
-    const W = 480, H = 150, P = 14;
-    const N = ELEV_HALF * 2 + 1;
-    const xs = Array.from({ length: N }, (_, i) => P + (i / (N - 1)) * (W - 2 * P));
-    const yScale = v => H - P - ((v - min) / (range || 1)) * (H - 2 * P);
+    // Cartouche crème derrière chaque texte pour la lisibilité sur les courbes
+    const labelTag = (x, y, label, color, anchor) => {
+        anchor = anchor || 'middle';
+        const w = label.length * 6.0 + 8;
+        const h = 14;
+        let xRect = x - w / 2;
+        if (anchor === 'start') xRect = x - 2;
+        if (anchor === 'end')   xRect = x - w + 2;
+        return `<rect x="${xRect.toFixed(1)}" y="${(y - 10.5).toFixed(1)}" width="${w.toFixed(1)}" height="${h}" rx="3" ry="3" fill="#fef3c7" stroke="#fcd34d" stroke-width="0.6" opacity="0.94"/>` +
+               `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" font-size="10" font-weight="700" fill="${color}">${label}</text>`;
+    };
 
-    const polylines = series.map(s => {
-        const path = s.values.map((v, i) => (i === 0 ? 'M' : 'L') + xs[i].toFixed(1) + ',' + yScale(v).toFixed(1)).join(' ');
-        return `<path d="${path}" fill="none" stroke="${s.color}" stroke-width="1.6" stroke-linejoin="round" stroke-opacity=".9"/>`;
-    }).join('');
-
-    // Annotations min/max global (un point par extrême global) — rendus EN PREMIER pour pouvoir détecter les collisions
-    const globals = (() => {
-        let g = { min: { v: Infinity }, max: { v: -Infinity } };
-        series.forEach(s => {
-            if (s.vMin < g.min.v) g.min = { v: s.vMin, x: xs[s.iMin], y: yScale(s.vMin), color: s.color };
-            if (s.vMax > g.max.v) g.max = { v: s.vMax, x: xs[s.iMax], y: yScale(s.vMax), color: s.color };
-        });
-        return g;
-    })();
-    const annot = (() => {
-        const tag = (p, label, anchor) => `
-            <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="${p.color}" stroke="#fff" stroke-width="1.5"/>
-            <text x="${p.x.toFixed(1)}" y="${(p.y + (anchor === 'top' ? -6 : 12)).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="${p.color}">${label}</text>`;
-        return tag(globals.max, '▲ ' + globals.max.v.toFixed(0) + ' m', 'top')
-             + tag(globals.min, '▼ ' + globals.min.v.toFixed(0) + ' m', 'bot');
-    })();
-
-    // Étiquettes de hauteur aux extrémités de chaque courbe — sauf si la valeur correspond déjà au min ou au max global (déjà affiché via ▲▼)
-    const isGlobalExtreme = (v) =>
-        Math.abs(v - globals.min.v) < 0.5 || Math.abs(v - globals.max.v) < 0.5;
-
-    const curveLabels = series.map((s, idx) => {
-        const out = [];
-        const vL = s.values[0], vR = s.values[s.values.length - 1];
-        const xL = xs[0], xR = xs[xs.length - 1];
-        const yL = yScale(vL), yR = yScale(vR);
-        const offY = idx % 2 === 0 ? -7 : 12;
-        if (!isGlobalExtreme(vL))
-            out.push(`<text x="${(xL + 4).toFixed(1)}" y="${(yL + offY).toFixed(1)}" font-size="9" font-weight="700" fill="${s.color}">${vL.toFixed(0)} m</text>`);
-        if (!isGlobalExtreme(vR))
-            out.push(`<text x="${(xR - 4).toFixed(1)}" y="${(yR + offY).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" fill="${s.color}">${vR.toFixed(0)} m</text>`);
-        return out.join('');
-    }).join('');
-
-    // Étiquette « Zone de décollage » sous le trait rouge central
-    const takeoffLabel = `<text x="${W/2}" y="${(H - P + 11).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#dc2626">▼ Zone de décollage · ${center.toFixed(0)} m</text>`;
-
-    // Repères « Observateur » à ±1000 m si l'élongation dépasse 1 km
-    let observerMarkers = '';
-    if (radius > 1000) {
-        const xObsL = P + ((-1000 + radius) / (2 * radius)) * (W - 2 * P);
-        const xObsR = P + ((1000 + radius) / (2 * radius)) * (W - 2 * P);
-        const obsColor = '#d97706';
-        observerMarkers = `
-            <line x1="${xObsL.toFixed(1)}" y1="${P}" x2="${xObsL.toFixed(1)}" y2="${H-P}" stroke="${obsColor}" stroke-width="1" stroke-dasharray="4,3" opacity=".85"/>
-            <line x1="${xObsR.toFixed(1)}" y1="${P}" x2="${xObsR.toFixed(1)}" y2="${H-P}" stroke="${obsColor}" stroke-width="1" stroke-dasharray="4,3" opacity=".85"/>
-            <text x="${xObsL.toFixed(1)}" y="${(H - P + 11).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="${obsColor}">Observateur −1 km</text>
-            <text x="${xObsR.toFixed(1)}" y="${(H - P + 11).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="${obsColor}">Observateur +1 km</text>
-        `;
-    }
-
-    // Règle d'élongation : graduations symétriques de part et d'autre du centre
-    const rulerY = H + 16;          // ligne principale
-    const rulerLabY = H + 30;       // texte sous la ligne
-    const rulerColor = '#475569';
-    // Choisit un pas de graduation propre selon la radius
     const niceStep = (r) => {
         const candidates = [50, 100, 200, 250, 500, 1000, 2000];
         for (const c of candidates) if (r / c <= 5) return c;
         return 1000;
     };
-    const step = niceStep(radius);
-    // Génère les graduations intermédiaires uniquement (on saute les extrémités ±radius pour éviter le chevauchement avec les labels cardinaux)
-    const ticks = [];
-    for (let d = -radius + step; d <= radius - step + 0.5; d += step) {
-        const x = P + ((d + radius) / (2 * radius)) * (W - 2 * P);
-        const isCenter = Math.abs(d) < 1;
-        ticks.push({ x, d, isCenter });
-    }
-    // Ajoute les extrémités sans label
-    ticks.push({ x: P, d: -radius, isExtreme: true });
-    ticks.push({ x: W - P, d: radius, isExtreme: true });
 
-    const rulerLine = `<line x1="${P}" y1="${rulerY}" x2="${W-P}" y2="${rulerY}" stroke="${rulerColor}" stroke-width="1"/>`;
-    const rulerArrowL = `<path d="M ${P-2} ${rulerY} L ${P+5} ${rulerY-3} L ${P+5} ${rulerY+3} Z" fill="${rulerColor}"/>`;
-    const rulerArrowR = `<path d="M ${W-P+2} ${rulerY} L ${W-P-5} ${rulerY-3} L ${W-P-5} ${rulerY+3} Z" fill="${rulerColor}"/>`;
-    const rulerTicks = ticks.map(t => {
-        const tickH = (t.isCenter || t.isExtreme) ? 6 : 3;
-        const lbl = (t.isCenter || t.isExtreme) ? '' : (t.d < 0 ? '−' + Math.abs(t.d) : '+' + t.d) + ' m';
-        return `<line x1="${t.x.toFixed(1)}" y1="${rulerY - tickH/2}" x2="${t.x.toFixed(1)}" y2="${rulerY + tickH/2}" stroke="${rulerColor}" stroke-width="${(t.isCenter || t.isExtreme) ? 1.4 : 0.8}"/>` +
-               (lbl ? `<text x="${t.x.toFixed(1)}" y="${rulerLabY}" text-anchor="middle" font-size="9" fill="${rulerColor}">${lbl}</text>` : '');
-    }).join('');
-    // Étiquettes des extrémités : on garde la distance signée
-    const dispRadius = radius >= 1000 ? (radius / 1000).toFixed(radius % 1000 ? 1 : 0) + ' km' : radius + ' m';
-    const rulerExtremes = `
-        <text x="${P-1}" y="${rulerY - 5}" text-anchor="start" font-size="9" font-weight="700" fill="${rulerColor}">−${dispRadius}</text>
-        <text x="${W-P+1}" y="${rulerY - 5}" text-anchor="end" font-size="9" font-weight="700" fill="${rulerColor}">+${dispRadius}</text>
-    `;
-    const ruler = rulerLine + rulerArrowL + rulerArrowR + rulerTicks + rulerExtremes;
+    // Génère le SVG d'un axe (échelle Y locale au seul axe pour la lisibilité)
+    const axisSvg = (s) => {
+        const W = 460, H = 150, P = 14;
+        const N = s.values.length;
+        const xs = Array.from({ length: N }, (_, i) => P + (i / (N - 1)) * (W - 2 * P));
+        const localRange = (s.vMax - s.vMin) || 1;
+        const yScale = v => H - P - ((v - s.vMin) / localRange) * (H - 2 * P);
 
-    const legend = series.map(s => `<span style="display:inline-flex; align-items:center; gap:6px; margin-right:14px; font-size:11px;"><span style="width:14px; height:3px; background:${s.color}; display:inline-block; border-radius:2px;"></span>${s.name}</span>`).join('');
+        const path = s.values.map((v, i) => (i === 0 ? 'M' : 'L') + xs[i].toFixed(1) + ',' + yScale(v).toFixed(1)).join(' ');
+        const fill = s.values.map((v, i) => xs[i].toFixed(1) + ',' + yScale(v).toFixed(1)).join(' L ');
+        const polyline = `<path d="M ${fill} L ${(W - P).toFixed(1)},${(H - P).toFixed(1)} L ${P},${(H - P).toFixed(1)} Z" fill="${s.color}" fill-opacity="0.08"/>`
+                       + `<path d="${path}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round"/>`;
+
+        const xMax = xs[s.iMax], yMax = yScale(s.vMax);
+        const xMin = xs[s.iMin], yMin = yScale(s.vMin);
+        const annot =
+            `<circle cx="${xMax.toFixed(1)}" cy="${yMax.toFixed(1)}" r="3.5" fill="${s.color}" stroke="#fff" stroke-width="1.5"/>` +
+            labelTag(xMax, yMax - 8, '▲ ' + s.vMax.toFixed(0) + ' m', s.color) +
+            `<circle cx="${xMin.toFixed(1)}" cy="${yMin.toFixed(1)}" r="3.5" fill="${s.color}" stroke="#fff" stroke-width="1.5"/>` +
+            labelTag(xMin, yMin + 16, '▼ ' + s.vMin.toFixed(0) + ' m', s.color);
+
+        // Trait rouge centre + zone décollage
+        const takeoff = `<line x1="${W/2}" y1="${P}" x2="${W/2}" y2="${H-P}" stroke="#dc2626" stroke-width="1.2" stroke-dasharray="3,2"/>`;
+        const takeoffLabel = labelTag(W/2, H - P + 16, '▼ Décollage · ' + center.toFixed(0) + ' m', '#dc2626');
+
+        // Observateur à ±1000 m si élongation > 1 km
+        let observerMarkers = '';
+        if (radius > 1000) {
+            const xObsL = P + ((-1000 + radius) / (2 * radius)) * (W - 2 * P);
+            const xObsR = P + ((1000 + radius) / (2 * radius)) * (W - 2 * P);
+            const obsColor = '#d97706';
+            observerMarkers =
+                `<line x1="${xObsL.toFixed(1)}" y1="${P}" x2="${xObsL.toFixed(1)}" y2="${H-P}" stroke="${obsColor}" stroke-width="1" stroke-dasharray="4,3" opacity=".85"/>` +
+                `<line x1="${xObsR.toFixed(1)}" y1="${P}" x2="${xObsR.toFixed(1)}" y2="${H-P}" stroke="${obsColor}" stroke-width="1" stroke-dasharray="4,3" opacity=".85"/>`;
+        }
+
+        // Règle d'élongation
+        const rulerY = H + 16, rulerLabY = H + 30, rulerColor = '#475569';
+        const step = niceStep(radius);
+        const ticks = [];
+        for (let d = -radius + step; d <= radius - step + 0.5; d += step) {
+            const x = P + ((d + radius) / (2 * radius)) * (W - 2 * P);
+            const isCenter = Math.abs(d) < 1;
+            ticks.push({ x, d, isCenter });
+        }
+        ticks.push({ x: P, d: -radius, isExtreme: true });
+        ticks.push({ x: W - P, d: radius, isExtreme: true });
+
+        const rulerLine = `<line x1="${P}" y1="${rulerY}" x2="${W-P}" y2="${rulerY}" stroke="${rulerColor}" stroke-width="1"/>`;
+        const rulerArrowL = `<path d="M ${P-2} ${rulerY} L ${P+5} ${rulerY-3} L ${P+5} ${rulerY+3} Z" fill="${rulerColor}"/>`;
+        const rulerArrowR = `<path d="M ${W-P+2} ${rulerY} L ${W-P-5} ${rulerY-3} L ${W-P-5} ${rulerY+3} Z" fill="${rulerColor}"/>`;
+        const rulerTicks = ticks.map(t => {
+            const tickH = (t.isCenter || t.isExtreme) ? 6 : 3;
+            const lbl = (t.isCenter || t.isExtreme) ? '' : (t.d < 0 ? '−' + Math.abs(t.d) : '+' + t.d) + ' m';
+            return `<line x1="${t.x.toFixed(1)}" y1="${rulerY - tickH/2}" x2="${t.x.toFixed(1)}" y2="${rulerY + tickH/2}" stroke="${rulerColor}" stroke-width="${(t.isCenter || t.isExtreme) ? 1.4 : 0.8}"/>` +
+                   (lbl ? `<text x="${t.x.toFixed(1)}" y="${rulerLabY}" text-anchor="middle" font-size="9" fill="${rulerColor}">${lbl}</text>` : '');
+        }).join('');
+        const dispRadius = radius >= 1000 ? (radius / 1000).toFixed(radius % 1000 ? 1 : 0) + ' km' : radius + ' m';
+        const labels = [s.name.split('–')[0], s.name.split('–')[1]];
+        const rulerExtremes =
+            `<text x="${P-1}" y="${rulerY - 5}" text-anchor="start" font-size="9" font-weight="700" fill="${rulerColor}">${labels[0]} −${dispRadius}</text>` +
+            `<text x="${W-P+1}" y="${rulerY - 5}" text-anchor="end" font-size="9" font-weight="700" fill="${rulerColor}">${labels[1]} +${dispRadius}</text>`;
+        const ruler = rulerLine + rulerArrowL + rulerArrowR + rulerTicks + rulerExtremes;
+
+        return `
+            <div class="elev-svg-card" style="background:#f7f9fc; border:1px solid var(--c-border); border-radius:8px; padding:10px;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13px; font-weight:700; color:${s.color};">
+                    <span style="width:14px; height:3px; background:${s.color}; border-radius:2px;"></span>Axe ${s.name}
+                    <span style="margin-left:auto; font-size:11px; font-weight:500; color:var(--c-muted);">Δ ${(s.vMax - s.vMin).toFixed(0)} m</span>
+                </div>
+                <svg viewBox="0 0 ${W} ${H + 38}" style="display:block; width:100%; height:auto; overflow:visible;">
+                    ${observerMarkers}
+                    ${takeoff}
+                    ${polyline}
+                    ${annot}
+                    ${takeoffLabel}
+                    ${ruler}
+                </svg>
+            </div>`;
+    };
+
+    const charts = series.map(axisSvg).join('');
 
     const tableRows = series.map(s => `
         <tr>
@@ -4716,19 +4714,8 @@ function renderElevation(elevs, radius) {
         </tr>`).join('');
 
     document.getElementById('elev-body').innerHTML = `
-        <div class="elev-svg" style="margin-bottom:14px;">
-            <div style="font-size:11px; color:var(--c-muted); margin-bottom:6px;">Coupes du terrain Nord-Sud et Est-Ouest autour du point de mission (trait rouge au centre). ▲ point le plus haut, ▼ point le plus bas.</div>
-            <svg viewBox="0 0 ${W} ${H + 38}" style="display:block; width:100%; height:auto; overflow:visible;">
-                <line x1="${W/2}" y1="${P}" x2="${W/2}" y2="${H-P}" stroke="#dc2626" stroke-width="1" stroke-dasharray="3,2"/>
-                ${observerMarkers}
-                ${polylines}
-                ${curveLabels}
-                ${annot}
-                ${takeoffLabel}
-                ${ruler}
-            </svg>
-            <div style="margin-top:6px;">${legend}</div>
-        </div>
+        <div style="font-size:11px; color:var(--c-muted); margin-bottom:8px;">Coupes du terrain sur 2 axes (Nord–Sud et Est–Ouest) autour du point de mission. Trait rouge au centre = zone de décollage. ▲ point le plus haut, ▼ le plus bas.</div>
+        <div class="elev-charts" style="display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-bottom:14px;">${charts}</div>
         <div class="elev-stats" style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:14px;">
             <div class="metric"><div class="v">${center.toFixed(0)} <span style="font-size:11px; font-weight:500;">m</span></div><div class="k">Point de mission</div></div>
             <div class="metric"><div class="v">${min.toFixed(0)} <span style="font-size:11px; font-weight:500;">m</span></div><div class="k">Altitude min globale</div></div>
@@ -4739,10 +4726,47 @@ function renderElevation(elevs, radius) {
             <thead><tr><th>Axe</th><th>Altitude min</th><th>Altitude max</th><th>Dénivelé</th></tr></thead>
             <tbody>${tableRows}</tbody>
         </table>
+        <div style="font-size:11px; color:var(--c-muted); margin:10px 0 6px;">Vue satellite IGN avec les axes du transect tracés (pour situer les points de relief sur le terrain) :</div>
+        <div id="elev-sat-map" style="height:300px; width:100%; border-radius:6px; border:1px solid var(--c-border);"></div>
         <div style="font-size:11px; color:var(--c-muted); margin-top:8px;">Plage analysée&nbsp;: ${fmtDist(radius)} de part et d'autre, sur 4 directions cardinales (N, S, E, O).</div>
     `;
+    setTimeout(() => initElevSatMap(STATE.lat, STATE.lon, radius, series), 50);
     setStatus('elev', range > 100 ? 'warn' : 'ok', `Δ ${range.toFixed(0)} m`);
     STATE.elev = { min, max, avg, range, center };
+}
+
+let _elevSatMap = null;
+function initElevSatMap(lat, lon, radius, series) {
+    if (lat == null || lon == null) return;
+    const el = document.getElementById('elev-sat-map');
+    if (!el) return;
+    if (_elevSatMap) { try { _elevSatMap.remove(); } catch (e) {} _elevSatMap = null; }
+    _elevSatMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 14);
+    L.tileLayer('https://data.geopf.fr/wmts?layer=ORTHOIMAGERY.ORTHOPHOTOS&style=normal&tilematrixset=PM&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image/jpeg&TileMatrix={z}&TileCol={x}&TileRow={y}',
+        { attribution: '© IGN-F / Géoportail', maxZoom: 19 }).addTo(_elevSatMap);
+
+    series.forEach(s => {
+        const rad = s.bearing * Math.PI / 180;
+        const dN = radius * Math.cos(rad), dE = radius * Math.sin(rad);
+        const dLat = dN / 111000;
+        const dLon = dE / (111000 * Math.cos(lat * Math.PI / 180));
+        const p1 = [lat - dLat, lon - dLon];
+        const p2 = [lat + dLat, lon + dLon];
+        L.polyline([p1, p2], { color: s.color, weight: 4, opacity: 0.9 }).addTo(_elevSatMap).bindPopup(`<b>Axe ${s.name}</b><br>Δ ${(s.vMax - s.vMin).toFixed(0)} m`);
+        // Étiquette aux extrémités (+ et -)
+        const labels = s.name.split('–');
+        L.marker(p2, { icon: L.divIcon({ className: '', iconSize: null, iconAnchor: [0, 0],
+            html: `<div style="background:${s.color}; color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px; border:1.5px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.5);">${labels[1]}</div>`
+        })}).addTo(_elevSatMap);
+        L.marker(p1, { icon: L.divIcon({ className: '', iconSize: null, iconAnchor: [0, 0],
+            html: `<div style="background:${s.color}; color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px; border:1.5px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.5);">${labels[0]}</div>`
+        })}).addTo(_elevSatMap);
+    });
+
+    L.circleMarker([lat, lon], { radius: 7, color: '#dc2626', fillColor: '#dc2626', fillOpacity: 1, weight: 2 }).addTo(_elevSatMap).bindPopup('<b>Point de mission</b>');
+    L.circle([lat, lon], { radius: radius, color: '#fbbf24', fillColor: '#fbbf24', fillOpacity: 0.1, weight: 2, dashArray: '4,4' }).addTo(_elevSatMap).bindPopup(`<b>Élongation de vol</b><br>${radius} m`);
+    fitMapToRadius(_elevSatMap, lat, lon, radius);
+    setTimeout(() => _elevSatMap.invalidateSize(), 100);
 }
 
 /* ===================================================================
