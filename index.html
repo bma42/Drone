@@ -1257,7 +1257,7 @@
         <section class="card">
             <div class="card-head">
                 <div class="card-num">10</div>
-                <div class="card-title">Voies rapides routières<span class="sub">IGN BDTOPO · autoroutes &amp; routes nationales · filtrées sur la zone d'évolution</span></div>
+                <div class="card-title">Voies rapides routières<span class="sub">IGN BDTOPO · autoroutes &amp; routes nationales · rayon 10 km · mise en évidence dans la zone d'évolution</span></div>
                 <button type="button" class="no-print" onclick="if(STATE.lat) fetchTrafficRoads(STATE.lat, STATE.lon)" title="Rafraîchir" style="background:transparent; border:1px solid var(--c-border-strong); border-radius:4px; padding:3px 9px; cursor:pointer; font-size:11px; color:var(--c-text-soft); margin-right:8px;">↻ Rafraîchir</button>
                 <span class="card-status" id="status-traffic">en attente</span>
             </div>
@@ -3202,25 +3202,25 @@ async function fetchTrafficRoads(lat, lon) {
 }
 
 function renderTrafficRoads(roadsAll, lat, lon) {
-    // Filtrage sur la zone d'évolution drone : on ne garde que les voies dont
-    // le tracé pénètre dans le cercle d'élongation (distance min ≤ STATE.radius).
+    // On affiche TOUTES les voies classifiées dans le rayon de fetch et on met
+    // en évidence celles dont le tracé pénètre dans la zone d'évolution drone.
     const R = STATE.radius || 1000;
-    const roads = roadsAll.filter(r => r.dist <= R);
+    const roads = roadsAll.map(r => Object.assign({}, r, { inZone: r.dist <= R }));
 
     const autoroutes = roads.filter(r => r.cls.kind === 'autoroute');
     const nationales = roads.filter(r => r.cls.kind === 'nationale' || r.cls.kind === 'voie-rapide');
+    const inZone = roads.filter(r => r.inZone);
     const closest = roads[0];
-    const closestOutside = !closest && roadsAll[0] ? roadsAll[0] : null;
     const sature = roads.filter(r => r.flow.level === 'sature');
     const dense  = roads.filter(r => r.flow.level === 'dense');
 
     const flowBadge = (f) => `<span style="background:${f.color}; color:#fff; font-size:10px; font-weight:700; padding:1px 7px; border-radius:999px;">${f.label}</span>`;
 
     const rows = roads.length === 0
-        ? `<tr><td colspan="5" class="empty-state">Aucune autoroute ni route nationale dans la zone d'évolution${closestOutside ? ` (la plus proche : ${closestOutside.cls.label}${closestOutside.numero ? ' ' + closestOutside.numero : ''} à ${fmtDist(closestOutside.dist)})` : ''}.</td></tr>`
+        ? `<tr><td colspan="5" class="empty-state">Aucune autoroute ni route nationale dans 10 km.</td></tr>`
         : roads.slice(0, 12).map(r => `
-            <tr>
-                <td><strong>${r.cls.label}${r.numero ? ' ' + r.numero : ''}</strong><br><span style="color:var(--c-muted); font-size:11px;">${r.nature}</span></td>
+            <tr style="${r.inZone ? 'background:#fef3c7;' : ''}">
+                <td><strong>${r.cls.label}${r.numero ? ' ' + r.numero : ''}</strong>${r.inZone ? ' <span style="background:#d97706; color:#fff; font-size:9px; font-weight:700; padding:1px 6px; border-radius:999px; margin-left:4px;">EN ZONE</span>' : ''}<br><span style="color:var(--c-muted); font-size:11px;">${r.nature}</span></td>
                 <td style="font-size:11px;">${r.voies ? r.voies + ' voies' : '—'}${r.largeur ? '<br>' + r.largeur.toFixed(1) + ' m' : ''}</td>
                 <td>${flowBadge(r.flow)}${r.flow.vMoy ? '<br><span style="font-size:10px; color:var(--c-muted);">' + Math.round(r.flow.vMoy) + ' / ' + r.flow.vLibre + ' km/h</span>' : ''}</td>
                 <td style="font-size:11px;">${r.position == 0 ? 'Au sol' : r.position > 0 ? 'Surélevé' : 'Souterrain'}</td>
@@ -3231,15 +3231,15 @@ function renderTrafficRoads(roadsAll, lat, lon) {
         <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px;">
             <div class="metric ${autoroutes.length ? 'danger' : ''}"><div class="v">${autoroutes.length}</div><div class="k">Autoroutes</div></div>
             <div class="metric ${nationales.length ? 'alert' : ''}"><div class="v">${nationales.length}</div><div class="k">Nationales / voies rapides</div></div>
-            <div class="metric ${sature.length ? 'danger' : dense.length ? 'alert' : ''}"><div class="v">${sature.length + dense.length}</div><div class="k">Tronçons chargés</div></div>
-            <div class="metric"><div class="v">${closest ? fmtDist(closest.dist) : closestOutside ? fmtDist(closestOutside.dist) : '—'}</div><div class="k">${closest ? 'Plus proche' : 'Hors zone'}</div></div>
+            <div class="metric ${inZone.length ? 'danger' : ''}"><div class="v">${inZone.length}</div><div class="k">Dans zone évolution</div></div>
+            <div class="metric"><div class="v">${closest ? fmtDist(closest.dist) : '—'}</div><div class="k">Plus proche</div></div>
         </div>
         <div id="traffic-map" style="height:300px; width:100%; border-radius:6px; border:1px solid var(--c-border); margin-bottom:12px;"></div>
         <table class="tbl">
             <thead><tr><th>Voie</th><th>Voies / largeur</th><th>Conditions</th><th>Position</th><th style="text-align:right;">Distance</th></tr></thead>
             <tbody>${rows}</tbody>
         </table>
-        <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source IGN BDTOPO · zone d'évolution&nbsp;: ${R} m · ${roadsAll.length} voie(s) classée(s) dans 10 km, ${roads.length} dans la zone. Fluidité&nbsp;: vitesse moyenne VL (mesure terrain) / vitesse libre théorique (Fluide ≥ 85 % · Dense 65–85 % · Saturé < 65 %).</div>
+        <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source IGN BDTOPO · ${roads.length} voie(s) classée(s) dans 10 km · ${inZone.length} pénètre(nt) dans la zone d'évolution (${R} m). Fluidité&nbsp;: vitesse moyenne VL (mesure terrain) / vitesse libre théorique (Fluide ≥ 85 % · Dense 65–85 % · Saturé < 65 %).</div>
         <div style="margin-top:10px; padding:8px 12px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; font-size:12px;">
             <strong style="color:var(--c-danger);">⚠ Risque chute drone sur chaussée</strong>
             <span style="color:var(--c-muted);">— prévoir périmètre latéral aux voies, pas de survol direct, coordination CRS / DIR si élongation traverse l'axe.</span>
@@ -3266,16 +3266,24 @@ function initTrafficMap(roads, lat, lon) {
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', crossOrigin: true }).addTo(trafficMap);
 
     // Tracé sur la mini-carte du module + sur la carte principale (calque "Autoroutes / RN")
+    // Les voies pénétrant dans la zone d'évolution sont tracées plus épaisses + halo orange.
     if (STATE.layers && STATE.layers.roads) STATE.layers.roads.clearLayers();
     roads.forEach(r => {
         try {
-            const weight = r.cls.kind === 'autoroute' ? 4 : 3;
-            const popup = `<b>${r.cls.label}${r.numero ? ' ' + r.numero : ''}</b><br>${r.nature}${r.voies ? '<br>' + r.voies + ' voies' : ''}<br>Conditions&nbsp;: <b style="color:${r.flow.color};">${r.flow.label}</b>${r.flow.vMoy ? ' (' + Math.round(r.flow.vMoy) + ' km/h)' : ''}<br>${fmtDist(r.dist)}`;
-            L.geoJSON(r.geom, { style: { color: r.cls.color, weight, opacity: .9 } })
+            const baseWeight = r.cls.kind === 'autoroute' ? 4 : 3;
+            const weight  = r.inZone ? baseWeight + 2 : baseWeight;
+            const opacity = r.inZone ? 1 : 0.75;
+            const popup = `<b>${r.cls.label}${r.numero ? ' ' + r.numero : ''}</b>${r.inZone ? ' <span style="background:#d97706; color:#fff; font-size:9px; font-weight:700; padding:1px 6px; border-radius:999px;">EN ZONE</span>' : ''}<br>${r.nature}${r.voies ? '<br>' + r.voies + ' voies' : ''}<br>Conditions&nbsp;: <b style="color:${r.flow.color};">${r.flow.label}</b>${r.flow.vMoy ? ' (' + Math.round(r.flow.vMoy) + ' km/h)' : ''}<br>${fmtDist(r.dist)}`;
+            // Halo de mise en évidence pour les voies en zone d'évolution
+            if (r.inZone) {
+                L.geoJSON(r.geom, { style: { color: '#fbbf24', weight: weight + 4, opacity: 0.55 } }).addTo(trafficMap);
+                if (STATE.layers && STATE.layers.roads) L.geoJSON(r.geom, { style: { color: '#fbbf24', weight: weight + 4, opacity: 0.55 } }).addTo(STATE.layers.roads);
+            }
+            L.geoJSON(r.geom, { style: { color: r.cls.color, weight, opacity } })
               .bindPopup(popup)
               .addTo(trafficMap);
             if (STATE.layers && STATE.layers.roads) {
-                L.geoJSON(r.geom, { style: { color: r.cls.color, weight: Math.max(2, weight - 1), opacity: .85 } })
+                L.geoJSON(r.geom, { style: { color: r.cls.color, weight: Math.max(2, weight - 1), opacity } })
                   .bindPopup(popup)
                   .addTo(STATE.layers.roads);
             }
@@ -3286,7 +3294,10 @@ function initTrafficMap(roads, lat, lon) {
     trafficElongationCircle = STATE.radius
         ? L.circle([lat, lon], { radius: STATE.radius, color: '#d97706', fillColor: '#fbbf24', fillOpacity: .15, weight: 2 }).addTo(trafficMap).bindPopup(`<b>Élongation de vol</b><br>${STATE.radius} m`)
         : null;
-    fitMapToRadius(trafficMap, lat, lon, Math.max((STATE.radius || 1000) * 1.4, 800));
+    // Cadre la mini-carte sur la voie classifiée la plus proche (premier élément, déjà trié)
+    const nearest = roads[0];
+    const fitR = nearest ? Math.max(nearest.dist + 500, (STATE.radius || 1000) * 1.4) : 5000;
+    fitMapToRadius(trafficMap, lat, lon, fitR);
     setTimeout(() => trafficMap.invalidateSize(), 100);
 }
 
