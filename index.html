@@ -482,6 +482,32 @@
         /* ---------- Responsive ---------- */
         @media (max-width: 720px) {
             .row-2, .row-3, .weather-grid, .sig-grid, .elev-charts { grid-template-columns: 1fr; }
+            /* Tableau météo : chaque ligne sur 2 rangées (4 colonnes), avec étiquette de colonne au-dessus */
+            .weather-tbl thead { display: none; }
+            .weather-tbl tbody, .weather-tbl tr { display: block; }
+            .weather-tbl tr {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 2px 8px;
+                padding: 8px 6px;
+                border-top: 1px solid var(--c-border);
+            }
+            .weather-tbl tr td {
+                display: block;
+                padding: 0;
+                border: 0;
+                font-size: 12px;
+                line-height: 1.3;
+            }
+            .weather-tbl tr td::before {
+                content: attr(data-label);
+                display: block;
+                font-size: 9px;
+                font-weight: 600;
+                color: var(--c-muted);
+                text-transform: uppercase;
+                letter-spacing: .3px;
+            }
             .doc-header { grid-template-columns: 1fr; text-align: center; }
             .doc-header-meta { text-align: center; }
             .elev-wrap { flex-direction: column; }
@@ -2210,7 +2236,7 @@ async function fetchWeather(lat, lon, dateISO) {
         const lat2 = lat.toFixed(3), lon2 = lon.toFixed(3); // cache key arrondi à ~100m
         const cacheKey = `meteo_${lat2}_${lon2}_${dateISO}_${endDateISO}`;
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat2}&longitude=${lon2}` +
-            `&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m,visibility,cloud_cover,pressure_msl,precipitation` +
+            `&hourly=temperature_2m,relative_humidity_2m,dew_point_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m,visibility,cloud_cover,pressure_msl,precipitation` +
             `&timezone=auto&start_date=${dateISO}&end_date=${endDateISO}&wind_speed_unit=kmh`;
         const j = await cachedFetch(cacheKey, url, 60 * 60 * 1000); // cache 1 h
         STATE.weatherJson = j;
@@ -2311,7 +2337,11 @@ function renderWeather(j, dateISO) {
         const v  = h.visibility[i];
         const c  = h.cloud_cover[i];
         const tp = h.temperature_2m[i];
+        const dw = h.dew_point_2m ? h.dew_point_2m[i] : null;
         const pr = h.precipitation[i];
+        // Spread T° / point de rosée < 3°C → risque de brouillard / condensation optiques
+        const dewSpread = (dw != null) ? (tp - dw) : null;
+        const dewWarn = dewSpread != null && dewSpread < 3;
         // Statut horaire — seuils basés sur le drone le plus contraignant
         let row = 'go';
         if (w > W_WARN || g > W_WARN + 3 || v < 5000) row = 'warn';
@@ -2320,13 +2350,14 @@ function renderWeather(j, dateISO) {
         const dotColor = row === 'go' ? '#16a34a' : row === 'warn' ? '#d97706' : '#dc2626';
         hourRows.push(`
             <tr>
-                <td><strong>${hh}</strong> <span style="color:${dotColor}; font-size:14px;">${dot}</span></td>
-                <td><strong style="color:${w > W_LIMIT ? '#dc2626' : w > W_WARN ? '#d97706' : 'inherit'}">${w.toFixed(0)}</strong> km/h <span style="color:var(--c-muted); font-size:11px;">${dirCard(d)}</span></td>
-                <td><strong style="color:${g > W_LIMIT ? '#dc2626' : g > W_WARN + 3 ? '#d97706' : 'inherit'}">${g.toFixed(0)}</strong> km/h</td>
-                <td><strong style="color:${v < 1500 ? '#dc2626' : v < 5000 ? '#d97706' : 'inherit'}">${(v/1000).toFixed(1)}</strong> km</td>
-                <td>${c}%</td>
-                <td>${tp.toFixed(1)}°C</td>
-                <td><strong style="color:${pr > 0.1 ? '#dc2626' : 'inherit'}">${pr.toFixed(2)}</strong> mm</td>
+                <td data-label="Heure"><strong>${hh}</strong> <span style="color:${dotColor}; font-size:14px;">${dot}</span></td>
+                <td data-label="Vent"><strong style="color:${w > W_LIMIT ? '#dc2626' : w > W_WARN ? '#d97706' : 'inherit'}">${w.toFixed(0)}</strong> km/h <span style="color:var(--c-muted); font-size:11px;">${dirCard(d)}</span></td>
+                <td data-label="Rafales"><strong style="color:${g > W_LIMIT ? '#dc2626' : g > W_WARN + 3 ? '#d97706' : 'inherit'}">${g.toFixed(0)}</strong> km/h</td>
+                <td data-label="Visibilité"><strong style="color:${v < 1500 ? '#dc2626' : v < 5000 ? '#d97706' : 'inherit'}">${(v/1000).toFixed(1)}</strong> km</td>
+                <td data-label="Nuages">${c}%</td>
+                <td data-label="T°">${tp.toFixed(1)}°C</td>
+                <td data-label="Rosée"><span style="color:${dewWarn ? '#d97706' : 'inherit'}">${dw != null ? dw.toFixed(1) + '°C' : '—'}</span></td>
+                <td data-label="Précip."><strong style="color:${pr > 0.1 ? '#dc2626' : 'inherit'}">${pr.toFixed(2)}</strong> mm</td>
             </tr>`);
     }
 
@@ -2381,9 +2412,9 @@ function renderWeather(j, dateISO) {
             </div>
         </div>
 
-        <table class="tbl">
+        <table class="tbl weather-tbl">
             <thead>
-                <tr><th>Heure</th><th>Vent</th><th>Rafales</th><th>Visibilité</th><th>Nuages</th><th>T°</th><th>Précip.</th></tr>
+                <tr><th>Heure</th><th>Vent</th><th>Rafales</th><th>Visibilité</th><th>Nuages</th><th>T°</th><th>Rosée</th><th>Précip.</th></tr>
             </thead>
             <tbody>${hourRows.join('')}</tbody>
         </table>
