@@ -3146,16 +3146,12 @@ async function fetchTrafficRoads(lat, lon) {
     const dLon = 20000 / (111000 * Math.cos(lat * Math.PI / 180));
     const bbox = `${(lon - dLon).toFixed(5)},${(lat - dLat).toFixed(5)},${(lon + dLon).toFixed(5)},${(lat + dLat).toFixed(5)}`;
 
-    // Filtre CQL côté IGN : importance 1 (autoroutes) ou 2 (liaisons principales / RN majeures)
-    // → réduit massivement la réponse et garantit qu'on récupère bien la totalité du tracé
-    //   (sinon le cap de 1500 features explose vite à 20 km en zone dense).
     const params = new URLSearchParams({
         service: 'WFS', version: '2.0.0', request: 'GetFeature',
         typenames: 'BDTOPO_V3:troncon_de_route',
         bbox: bbox + ',EPSG:4326',
         srsname: 'EPSG:4326',
-        cql_filter: "cpx_classement_administratif IN ('Autoroute','Nationale','Autoroute non concédée') OR importance<=2",
-        count: 3000, outputFormat: 'application/json'
+        count: 5000, outputFormat: 'application/json'
     });
 
     try {
