@@ -1085,6 +1085,42 @@
                     </div>
                     <div id="finalite-text" style="display:none; margin-top:10px; display:flex; flex-direction:column; gap:8px;"></div>
                 </div>
+                <div id="judiciaire-box" style="display:none;" class="field-group">
+                    <label class="lbl">Cadre juridique de la mission (cadre judiciaire — art. 230-47 CPP)</label>
+                    <div class="hint" style="margin-bottom:6px;">Cocher le ou les motifs justifiant l'emploi du drone — toutes les descriptions retenues s'afficheront ci-dessous.</div>
+                    <div class="check-list">
+                        <div class="check-option"><input type="checkbox" class="judiciaire-cb" id="jud-1" value="1" onchange="updateJudiciaireText()"><label for="jud-1"><strong>Motif 1</strong> — Enquête ou instruction portant sur un crime ou délit puni d'au moins 3 ans d'emprisonnement</label></div>
+                        <div class="check-option"><input type="checkbox" class="judiciaire-cb" id="jud-2" value="2" onchange="updateJudiciaireText()"><label for="jud-2"><strong>Motif 2</strong> — Enquête ou instruction en recherche des causes de la mort ou de disparition</label></div>
+                        <div class="check-option"><input type="checkbox" class="judiciaire-cb" id="jud-3" value="3" onchange="updateJudiciaireText()"><label for="jud-3"><strong>Motif 3</strong> — Procédure de recherche d'une personne en fuite</label></div>
+                        <div class="check-option"><input type="checkbox" class="judiciaire-cb" id="jud-4" value="4" onchange="updateJudiciaireText()"><label for="jud-4"><strong>Motif 4</strong> — Captation en lieu privé (criminalité et délinquance organisées uniquement)</label></div>
+                    </div>
+                    <div id="judiciaire-text" style="display:none; margin-top:10px; flex-direction:column; gap:8px;"></div>
+                    <div style="margin-top:10px; padding:10px 14px; background:#eef3fb; border:1px solid #cdd9ee; border-left:4px solid var(--c-primary); border-radius:6px; font-size:12px; line-height:1.55; color:var(--c-text);">
+                        <strong style="color:var(--c-primary);">Article 230-47 du Code de procédure pénale</strong>
+                        <div style="margin-top:6px;">Les drones peuvent être utilisés <u>en lieu public</u> pour les nécessités&nbsp;:</div>
+                        <ul style="margin:4px 0 0 18px; padding:0;">
+                            <li>d'une enquête ou instruction portant sur un <strong>crime ou délit puni d'au moins 3 ans d'emprisonnement</strong>&nbsp;;</li>
+                            <li>d'une enquête ou instruction en <strong>recherche des causes de la mort ou de disparition</strong>&nbsp;;</li>
+                            <li>d'une <strong>procédure de recherche de personne en fuite</strong>.</li>
+                        </ul>
+                        <div style="margin-top:8px;">Le traitement des images captées <u>en lieu privé</u> (non accessible ou non visible directement depuis la voie publique) est autorisé uniquement en matière de <strong>criminalité et délinquance organisées</strong>.</div>
+                        <div style="margin-top:8px; padding-top:8px; border-top:1px dashed #cdd9ee;">L'autorisation est délivrée par le <strong>procureur de la République</strong> ou par le <strong>juge d'instruction</strong> pour une <strong>durée limitée</strong>.</div>
+                    </div>
+                    <div class="field-group row-2" style="margin-top:10px;">
+                        <div>
+                            <label class="lbl">Magistrat ayant délivré l'autorisation</label>
+                            <select id="jud-magistrat">
+                                <option value="">— Sélectionner —</option>
+                                <option>Procureur de la République</option>
+                                <option>Juge d'instruction</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="lbl">Durée d'autorisation</label>
+                            <input type="text" id="jud-duree" placeholder="Ex. : 48 h, jusqu'au 14/05/2026…">
+                        </div>
+                    </div>
+                </div>
                 <div class="field-group row-2">
                     <div>
                         <label class="lbl">Indicatif radio</label>
@@ -1674,10 +1710,38 @@ function toggleArrete() {
     const isAdmin = document.getElementById('cadre-select').value === "Cadre Administratif";
     document.getElementById('arrete-pref-box').style.display = isAdmin ? "block" : "none";
     document.getElementById('finalite-box').style.display = isAdmin ? "block" : "none";
+    document.getElementById('judiciaire-box').style.display = isAdmin ? "none" : "block";
     if (!isAdmin) {
         document.querySelectorAll('.finalite-cb').forEach(cb => cb.checked = false);
         updateFinaliteText();
+    } else {
+        document.querySelectorAll('.judiciaire-cb').forEach(cb => cb.checked = false);
+        updateJudiciaireText();
     }
+}
+
+const JUDICIAIRE_MOTIFS = {
+    "1": "Enquête ou instruction portant sur un crime ou délit puni d'au moins 3 ans d'emprisonnement (article 230-47 CPP).",
+    "2": "Enquête ou instruction en recherche des causes de la mort ou de disparition (article 230-47 CPP).",
+    "3": "Procédure de recherche d'une personne en fuite (article 230-47 CPP).",
+    "4": "Captation d'images en lieu privé non accessible / non visible depuis la voie publique — autorisée uniquement en matière de criminalité et délinquance organisées."
+};
+
+function updateJudiciaireText() {
+    const box = document.getElementById('judiciaire-text');
+    if (!box) return;
+    const checked = Array.from(document.querySelectorAll('.judiciaire-cb:checked'))
+        .map(cb => cb.value)
+        .sort();
+    if (checked.length === 0) {
+        box.style.display = 'none';
+        box.innerHTML = '';
+        return;
+    }
+    box.style.display = 'flex';
+    box.innerHTML = checked.map(v =>
+        `<div style="padding:10px 14px; background:#f7f9fc; border:1px solid var(--c-border); border-left:4px solid var(--c-primary); border-radius:6px; font-size:12px; line-height:1.55; color:var(--c-text);"><strong style="color:var(--c-primary);">Motif ${v} —</strong> ${JUDICIAIRE_MOTIFS[v]}</div>`
+    ).join('');
 }
 
 function updateFinaliteText() {
