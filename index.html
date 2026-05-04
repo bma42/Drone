@@ -922,7 +922,7 @@
                             <option value="">— Choisir un scénario —</option>
                             <option>STS PN 00.0 (opération Nano &lt; 250 g)</option>
                             <option>STS PN 01.1 (peuplé - rural / en vue &lt; 2 kg)</option>
-                            <option>STS PN 01.2 (peuplé - rural / hors vue &lt; 2 kg)</option>
+                            <option selected>STS PN 01.2 (peuplé - rural / hors vue &lt; 2 kg)</option>
                             <option>STS PN 02.0 (peuplée / hors vue &lt; 25 kg)</option>
                             <option>STS PN 03.0 (captif)</option>
                         </select>
@@ -1966,6 +1966,12 @@ function fastFly() {
         if (cb) cb.checked = true;
     });
     onVectorChange();
+    // Pré-sélectionne le scénario par défaut STS PN 01.2
+    const sc = document.getElementById('scenario-select');
+    if (sc) {
+        const opt = Array.from(sc.options).find(o => o.text.startsWith('STS PN 01.2'));
+        if (opt) sc.value = opt.value || opt.text;
+    }
     const btn = document.getElementById('fast-fly-btn');
     const original = btn.innerHTML;
     btn.innerHTML = '⏳ Position…'; btn.disabled = true;
