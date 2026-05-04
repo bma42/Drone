@@ -50,30 +50,34 @@
 
         /* ---------- Top bar ---------- */
         .topbar {
-            position: sticky; top: 12px; z-index: 2000;
+            position: sticky; top: 10px; z-index: 2000;
             background: linear-gradient(180deg, #0b3d91 0%, #082f70 100%);
             color: #fff;
             border-radius: var(--radius);
-            padding: 12px 16px;
-            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-            box-shadow: 0 8px 24px rgba(8, 47, 112, .25);
-            margin-bottom: 24px;
+            padding: 7px 12px;
+            display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
+            box-shadow: 0 6px 18px rgba(8, 47, 112, .22);
+            margin-bottom: 20px;
             transition: padding .25s ease, gap .2s ease, box-shadow .25s ease;
+            overflow: hidden;
         }
-        .topbar-brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: .2px; transition: gap .2s ease, font-size .2s ease; }
-        .topbar-brand svg { width: 22px; height: 22px; flex-shrink: 0; transition: width .2s ease, height .2s ease; }
-        .topbar-brand-text { transition: font-size .2s ease, line-height .2s ease; }
+        .topbar-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; letter-spacing: .2px; transition: gap .2s ease, font-size .2s ease; min-width: 0; flex-shrink: 1; }
+        .topbar-brand svg { width: 20px; height: 20px; flex-shrink: 0; transition: width .2s ease, height .2s ease; }
+        .topbar-brand-text { font-size: 13.5px; line-height: 1.1; transition: font-size .2s ease, line-height .2s ease; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .topbar-brand-sub {
-            font-weight: 400; opacity: .75; font-size: 12px;
-            max-height: 20px; overflow: hidden;
+            font-weight: 400; opacity: .75; font-size: 11px;
+            max-height: 0; overflow: hidden; margin: 0;
             transition: opacity .2s ease, max-height .25s ease, margin .2s ease;
         }
+        .topbar .btn { padding: 7px 11px; font-size: 12px; }
+        .topbar .btn svg { width: 13px; height: 13px; }
+        .topbar .verdict-pill { font-size: 12px; padding: 5px 11px; }
+        .topbar .pill { font-size: 10px; padding: 3px 8px; }
         /* État replié : on cache les éléments décoratifs et secondaires, on garde
            le verdict, le verrou (déconnexion), Fast Fly et Générer. */
-        .topbar.collapsed { padding: 6px 14px; gap: 8px; box-shadow: 0 4px 12px rgba(8,47,112,.35); }
-        .topbar.collapsed .topbar-brand svg { width: 18px; height: 18px; }
-        .topbar.collapsed .topbar-brand-text { font-size: 13px; line-height: 1; }
-        .topbar.collapsed .topbar-brand-sub { opacity: 0; max-height: 0; margin: 0; }
+        .topbar.collapsed { padding: 5px 12px; gap: 6px; box-shadow: 0 3px 10px rgba(8,47,112,.32); }
+        .topbar.collapsed .topbar-brand svg { width: 17px; height: 17px; }
+        .topbar.collapsed .topbar-brand-text { font-size: 12px; line-height: 1; }
         .topbar.collapsed [data-collapsible="hide"] {
             opacity: 0; max-width: 0; padding-left: 0; padding-right: 0;
             margin: 0; border: 0; pointer-events: none; visibility: hidden;
@@ -81,6 +85,11 @@
         [data-collapsible="hide"] {
             transition: opacity .2s ease, max-width .3s ease, padding .25s ease, margin .2s ease;
             max-width: 700px; overflow: hidden;
+        }
+        @media (max-width: 720px) {
+            /* Sur mobile : on autorise le wrap et on masque le titre pour gagner de la place */
+            .topbar { flex-wrap: wrap; }
+            .topbar-brand-text { display: none; }
         }
         .topbar-spacer { flex: 1; }
         .status-pills { display: flex; gap: 6px; flex-wrap: wrap; }
