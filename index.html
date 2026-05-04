@@ -895,7 +895,7 @@
                 <div class="field-group row-2">
                     <div class="slider-box">
                         <label class="lbl">Hauteur max&nbsp;: <span class="num" id="height-num">120</span> m</label>
-                        <input type="range" min="0" max="120" value="120" oninput="document.getElementById('height-num').innerText=this.value" class="no-print">
+                        <input type="range" min="0" max="120" value="120" oninput="document.getElementById('height-num').innerText=this.value; if(window.STATE && STATE.elev && STATE.elev.elevs) renderElevation(STATE.elev.elevs, STATE.elev.radius);" class="no-print">
                         <div id="elev-preview" style="margin-top:8px;"></div>
                     </div>
                     <div class="slider-box">
@@ -4756,18 +4756,29 @@ function renderElevation(elevs, radius) {
         return 1000;
     };
 
-    // Génère le SVG d'un axe (échelle Y locale au seul axe pour la lisibilité)
+    // Plafond de vol = altitude du point de décollage + Hauteur max (slider §1, en m AGL)
+    const heightMax = parseInt((document.getElementById('height-num') || {}).textContent || '120', 10) || 120;
+    const flightCeiling = center + heightMax;
+
+    // Génère le SVG d'un axe (échelle Y locale, élargie pour englober le plafond de vol)
     const axisSvg = (s) => {
         const W = 460, H = 150, P = 14;
         const N = s.values.length;
         const xs = Array.from({ length: N }, (_, i) => P + (i / (N - 1)) * (W - 2 * P));
-        const localRange = (s.vMax - s.vMin) || 1;
-        const yScale = v => H - P - ((v - s.vMin) / localRange) * (H - 2 * P);
+        const yMaxAxis = Math.max(s.vMax, flightCeiling);
+        const yMinAxis = s.vMin;
+        const localRange = (yMaxAxis - yMinAxis) || 1;
+        const yScale = v => H - P - ((v - yMinAxis) / localRange) * (H - 2 * P);
 
         const path = s.values.map((v, i) => (i === 0 ? 'M' : 'L') + xs[i].toFixed(1) + ',' + yScale(v).toFixed(1)).join(' ');
         const fill = s.values.map((v, i) => xs[i].toFixed(1) + ',' + yScale(v).toFixed(1)).join(' L ');
         const polyline = `<path d="M ${fill} L ${(W - P).toFixed(1)},${(H - P).toFixed(1)} L ${P},${(H - P).toFixed(1)} Z" fill="${s.color}" fill-opacity="0.08"/>`
                        + `<path d="${path}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round"/>`;
+
+        // Plafond de vol : ligne horizontale verte tirets + cartouche
+        const yCeil = Math.max(P + 6, Math.min(H - P, yScale(flightCeiling)));
+        const ceilLine = `<line x1="${P}" y1="${yCeil.toFixed(1)}" x2="${W-P}" y2="${yCeil.toFixed(1)}" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="6,3" opacity="0.95"/>` +
+                         labelTag(W - P - 60, yCeil - 6, 'Plafond ' + flightCeiling.toFixed(0) + ' m (+' + heightMax + ')', '#16a34a', 'end');
 
         const xMax = xs[s.iMax], yMax = yScale(s.vMax);
         const xMin = xs[s.iMin], yMin = yScale(s.vMin);
@@ -4843,6 +4854,7 @@ function renderElevation(elevs, radius) {
                 <svg viewBox="0 0 ${W} ${H + 38}" style="display:block; width:100%; height:auto; overflow:visible;">
                     ${takeoff}
                     ${polyline}
+                    ${ceilLine}
                     ${observerMarkers}
                     ${edgeLabels}
                     ${annot}
@@ -4881,7 +4893,7 @@ function renderElevation(elevs, radius) {
     `;
     setTimeout(() => initElevSatMap(STATE.lat, STATE.lon, radius, series), 50);
     setStatus('elev', range > 100 ? 'warn' : 'ok', `Δ ${range.toFixed(0)} m`);
-    STATE.elev = { min, max, avg, range, center, series };
+    STATE.elev = { min, max, avg, range, center, series, elevs, radius };
     renderElevPreview(series, radius);
 }
 
@@ -4899,8 +4911,15 @@ function renderElevPreview(series, radius) {
     const PT = 16, PB = 16;
     const N = s.values.length;
     const xs = Array.from({ length: N }, (_, i) => P + (i / (N - 1)) * (W - 2 * P));
-    const localRange = (s.vMax - s.vMin) || 1;
-    const yScale = v => H - PB - ((v - s.vMin) / localRange) * (H - PT - PB);
+    // Plafond de vol = altitude du décollage + Hauteur max (slider §1, AGL)
+    const heightMax = parseInt((document.getElementById('height-num') || {}).textContent || '120', 10) || 120;
+    const center = (STATE.elev && STATE.elev.center != null) ? STATE.elev.center : s.values[Math.floor(s.values.length / 2)];
+    const flightCeiling = center + heightMax;
+    const yMaxAxis = Math.max(s.vMax, flightCeiling);
+    const yMinAxis = s.vMin;
+    const localRange = (yMaxAxis - yMinAxis) || 1;
+    const yScale = v => H - PB - ((v - yMinAxis) / localRange) * (H - PT - PB);
+    const yCeil = Math.max(PT - 4, Math.min(H - PB, yScale(flightCeiling)));
     const path = s.values.map((v, i) => (i === 0 ? 'M' : 'L') + xs[i].toFixed(1) + ',' + yScale(v).toFixed(1)).join(' ');
     const fillPts = s.values.map((v, i) => xs[i].toFixed(1) + ',' + yScale(v).toFixed(1)).join(' L ');
     const fillPath = `M ${P},${H-PB} L ${fillPts} L ${(W-P).toFixed(1)},${(H-PB).toFixed(1)} Z`;
@@ -4918,6 +4937,8 @@ function renderElevPreview(series, radius) {
                 <path d="${fillPath}" fill="${s.color}" fill-opacity="0.10"/>
                 <path d="${path}" fill="none" stroke="${s.color}" stroke-width="1.6" stroke-linejoin="round"/>
                 <line x1="${W/2}" y1="${PT}" x2="${W/2}" y2="${H-PB}" stroke="#dc2626" stroke-width="1" stroke-dasharray="2,2"/>
+                <line x1="${P}" y1="${yCeil.toFixed(1)}" x2="${W-P}" y2="${yCeil.toFixed(1)}" stroke="#16a34a" stroke-width="1.4" stroke-dasharray="5,3" opacity="0.95"/>
+                <text x="${(W-P).toFixed(1)}" y="${(yCeil - 3).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" fill="#16a34a">Plafond +${heightMax} m</text>
                 <circle cx="${xMax.toFixed(1)}" cy="${yMax.toFixed(1)}" r="2.6" fill="${s.color}" stroke="#fff" stroke-width="1.2"/>
                 <circle cx="${xMin.toFixed(1)}" cy="${yMin.toFixed(1)}" r="2.6" fill="${s.color}" stroke="#fff" stroke-width="1.2"/>
                 <text x="${xMax.toFixed(1)}" y="${(yMax - 4).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="${s.color}">▲ ${s.vMax.toFixed(0)} m</text>
