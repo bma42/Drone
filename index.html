@@ -3972,6 +3972,74 @@ let zicadElongationCircle = null;
 // Cache en mémoire pour le GeoJSON ZICAD complet (≈ quelques centaines de polygones France entière)
 let _zicadAllFeatures = null;
 
+// Convertit un texte KML en tableau de Features GeoJSON (Polygon / MultiPolygon).
+function kmlToGeoJSONFeatures(kmlText) {
+    let doc;
+    try {
+        doc = new DOMParser().parseFromString(kmlText, 'text/xml');
+    } catch (e) { return []; }
+    if (doc.getElementsByTagName('parsererror').length) return [];
+    const placemarks = doc.getElementsByTagName('Placemark');
+    const features = [];
+    const parseRing = (text) => text.trim().split(/\s+/).map(s => {
+        const parts = s.split(',').map(parseFloat);
+        return [parts[0], parts[1]];
+    }).filter(p => isFinite(p[0]) && isFinite(p[1]));
+
+    for (let i = 0; i < placemarks.length; i++) {
+        const pm = placemarks[i];
+        const nameEl = pm.getElementsByTagName('name')[0];
+        const descEl = pm.getElementsByTagName('description')[0];
+        const name = nameEl ? (nameEl.textContent || '').trim() : 'ZICAD';
+        const desc = descEl ? (descEl.textContent || '').trim() : '';
+        const polys = pm.getElementsByTagName('Polygon');
+        const polygonsCoords = [];
+        for (let p = 0; p < polys.length; p++) {
+            const poly = polys[p];
+            const outer = poly.getElementsByTagName('outerBoundaryIs')[0];
+            if (!outer) continue;
+            const coordsEl = outer.getElementsByTagName('coordinates')[0];
+            if (!coordsEl) continue;
+            const ring = parseRing(coordsEl.textContent || '');
+            if (ring.length < 3) continue;
+            // Inner rings (trous)
+            const inners = poly.getElementsByTagName('innerBoundaryIs');
+            const allRings = [ring];
+            for (let q = 0; q < inners.length; q++) {
+                const ic = inners[q].getElementsByTagName('coordinates')[0];
+                if (ic) {
+                    const r = parseRing(ic.textContent || '');
+                    if (r.length >= 3) allRings.push(r);
+                }
+            }
+            polygonsCoords.push(allRings);
+        }
+        if (polygonsCoords.length === 0) continue;
+        const geometry = polygonsCoords.length === 1
+            ? { type: 'Polygon', coordinates: polygonsCoords[0] }
+            : { type: 'MultiPolygon', coordinates: polygonsCoords };
+        features.push({
+            type: 'Feature',
+            geometry,
+            properties: { nom: name, description: desc }
+        });
+    }
+    return features;
+}
+
+const ZICAD_LEGAL_NOTICE = `
+    <div style="margin-top:10px; padding:12px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; font-size:12px; line-height:1.55;">
+        <strong style="color:var(--c-danger);">⚠ Captation aérienne d'images interdite</strong>
+        — Les ZICAD (zones interdites à la captation aérienne de données) sont définies par l'<strong>arrêté du 10 avril 2017</strong> pris en application de l'<strong>article L. 6224-1 du Code des transports</strong>.
+        <div style="margin-top:6px;">Tout survol par un aéronef sans personne à bord avec captation d'images, vidéos ou données est <strong>interdit sauf autorisation expresse</strong> délivrée par le préfet (ou le Ministère des Armées pour les sites de défense).</div>
+        <div style="margin-top:6px; color:var(--c-muted);">Demande d'autorisation préalable obligatoire · joindre au dossier le motif opérationnel et le plan de vol détaillé.</div>
+    </div>`;
+
+function zicadGeoportailLinkBtn(lat, lon) {
+    const url = `https://www.geoportail.gouv.fr/carte?c=${lon.toFixed(5)},${lat.toFixed(5)}&z=12&l0=GEOGRAPHICALGRIDSYSTEMS.MAPS::GEOPORTAIL:OGC:WMTS(1)&l1=TRANSPORTS.DRONES.ZICAD::GEOPORTAIL:OGC:WMTS(0.7)&permalink=yes`;
+    return `<a href="${url}" target="_blank" rel="noopener" class="no-print" style="display:inline-flex; align-items:center; gap:6px; margin-top:8px; padding:8px 12px; background:var(--c-primary); color:#fff; border-radius:6px; font-size:12px; font-weight:600; text-decoration:none;">↗ Ouvrir la carte ZICAD officielle (Géoportail)</a>`;
+}
+
 async function fetchZicad(lat, lon) {
     setStatus('zicad', 'load');
     document.getElementById('zicad-body').innerHTML = `<div class="empty-state">⏳ Récupération des ZICAD (data.gouv.fr · SGDSN)…</div>`;
@@ -3980,62 +4048,71 @@ async function fetchZicad(lat, lon) {
     // data.gouv.fr (jeu de données « Zones interdites à la captation »).
     // On récupère le GeoJSON France entière une fois, puis filtre client-side.
     if (!_zicadAllFeatures) {
-        let resourceUrl = null, lastErr = null;
-        // 1) Recherche directe sur l'API CKAN data.gouv.fr (mot-clé "ZICAD")
-        try {
-            const sr = await fetchWithTimeout('https://www.data.gouv.fr/api/1/datasets/?q=ZICAD&page_size=10', {}, 12000);
-            if (sr.ok) {
-                const sj = await sr.json();
-                for (const ds of (sj.data || [])) {
-                    const res = (ds.resources || []).find(x => {
-                        const f = String(x.format || '').toLowerCase();
-                        const u = String(x.url || '').toLowerCase();
-                        return f === 'geojson' || u.endsWith('.geojson') || u.endsWith('.json');
-                    });
-                    if (res && res.url) { resourceUrl = res.url; break; }
-                }
-            } else { lastErr = new Error('search HTTP ' + sr.status); }
-        } catch (e) { lastErr = e; }
+        let lastErr = null;
+        // 1) Source primaire : KML officiel hébergé localement (arrêté 10/2024 — Géoportail).
+        //    Évite les soucis CORS et garantit la disponibilité.
+        const kmlSources = [
+            './Arrete_ZICAD_10-2024.kml',
+            'https://www.geoportail.gouv.fr/depot/layers/ORTHOIMAGERY.ORTHOPHOS.RESTRICTEDAREAS/kml/Arrete_ZICAD_10-2024.kml'
+        ];
+        for (const url of kmlSources) {
+            try {
+                const r = await fetchWithTimeout(url, {}, 25000);
+                if (!r.ok) { lastErr = new Error('KML HTTP ' + r.status); continue; }
+                const text = await r.text();
+                const feats = kmlToGeoJSONFeatures(text);
+                if (feats.length > 0) { _zicadAllFeatures = feats; break; }
+                lastErr = new Error('KML vide');
+            } catch (e) { lastErr = e; }
+        }
 
-        // 2) Fallback : essais directs de slugs connus
-        if (!resourceUrl) {
+        // 2) Fallback : data.gouv.fr (slug officiel SGDSN/data.gouv).
+        if (!_zicadAllFeatures) {
             const candidateSlugs = [
+                'zones-interdites-a-la-captation-aerienne-des-donnees-zicad',
                 'donnees-zicad-zones-interdites-a-la-captation-de-donnees',
-                'zones-interdites-a-la-captation-des-donnees-par-aeronef-sans-personne-a-bord',
-                'zones-interdites-a-la-captation-aerienne-de-donnees'
+                'zones-interdites-a-la-captation-des-donnees-par-aeronef-sans-personne-a-bord'
             ];
+            let resourceUrl = null, resourceFormat = null;
             for (const slug of candidateSlugs) {
                 try {
                     const r = await fetchWithTimeout(`https://www.data.gouv.fr/api/1/datasets/${slug}/`, {}, 12000);
-                    if (!r.ok) { lastErr = new Error('HTTP ' + r.status); continue; }
+                    if (!r.ok) { lastErr = new Error('dataset HTTP ' + r.status); continue; }
                     const j = await r.json();
                     const res = (j.resources || []).find(x => {
                         const f = String(x.format || '').toLowerCase();
                         const u = String(x.url || '').toLowerCase();
-                        return f === 'geojson' || u.endsWith('.geojson') || u.endsWith('.json');
+                        return f === 'geojson' || f === 'kml' || u.endsWith('.geojson') || u.endsWith('.kml');
                     });
-                    if (res && res.url) { resourceUrl = res.url; break; }
+                    if (res && res.url) {
+                        resourceUrl = res.url;
+                        resourceFormat = (res.format || res.url).toLowerCase().endsWith('kml') ? 'kml' : 'geojson';
+                        break;
+                    }
+                } catch (e) { lastErr = e; }
+            }
+            if (resourceUrl) {
+                try {
+                    const r2 = await fetchWithTimeout(resourceUrl, {}, 25000);
+                    if (!r2.ok) throw new Error('resource HTTP ' + r2.status);
+                    if (resourceFormat === 'kml') {
+                        const text = await r2.text();
+                        _zicadAllFeatures = kmlToGeoJSONFeatures(text);
+                    } else {
+                        const geo = await r2.json();
+                        _zicadAllFeatures = geo.features || [];
+                    }
                 } catch (e) { lastErr = e; }
             }
         }
-        if (!resourceUrl) {
+
+        if (!_zicadAllFeatures || _zicadAllFeatures.length === 0) {
             setStatus('zicad', 'err', 'indisponible');
             document.getElementById('zicad-body').innerHTML = `
-                <div class="empty-state" style="margin-bottom:10px;">ZICAD indisponibles (jeu de données data.gouv.fr introuvable${lastErr ? ' · ' + lastErr.message : ''}). Consulter la <a href="https://www.geoportail.gouv.fr/carte?l1=TRANSPORTS.DRONES.ZICAD::GEOPORTAIL:OGC:WMTS(0.7)" target="_blank" rel="noopener" style="color:var(--c-primary);">carte officielle Géoportail</a>.</div>
-                <button class="no-print" onclick="if(STATE.lat) fetchZicad(STATE.lat, STATE.lon)" style="background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer;">↻ Réessayer</button>`;
-            return null;
-        }
-        try {
-            const r2 = await fetchWithTimeout(resourceUrl, {}, 25000);
-            if (!r2.ok) throw new Error('HTTP ' + r2.status);
-            const geo = await r2.json();
-            _zicadAllFeatures = geo.features || [];
-        } catch (e) {
-            console.warn('ZICAD téléchargement:', e);
-            setStatus('zicad', 'err', 'indisponible');
-            document.getElementById('zicad-body').innerHTML = `
-                <div class="empty-state" style="margin-bottom:10px;">ZICAD indisponibles (téléchargement GeoJSON ${e.message || 'erreur'}). Consulter la <a href="https://www.geoportail.gouv.fr/carte?l1=TRANSPORTS.DRONES.ZICAD::GEOPORTAIL:OGC:WMTS(0.7)" target="_blank" rel="noopener" style="color:var(--c-primary);">carte officielle Géoportail</a>.</div>
-                <button class="no-print" onclick="if(STATE.lat) fetchZicad(STATE.lat, STATE.lon)" style="background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer;">↻ Réessayer</button>`;
+                <div class="empty-state" style="margin-bottom:10px;">ZICAD indisponibles automatiquement${lastErr ? ' (' + lastErr.message + ')' : ''} — la consultation reste obligatoire avant tout vol avec captation.</div>
+                ${zicadGeoportailLinkBtn(lat, lon)}
+                ${ZICAD_LEGAL_NOTICE}
+                <button class="no-print" onclick="_zicadAllFeatures = null; if(STATE.lat) fetchZicad(STATE.lat, STATE.lon)" style="margin-top:10px; background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer;">↻ Réessayer</button>`;
             return null;
         }
     }
