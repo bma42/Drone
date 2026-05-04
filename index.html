@@ -4864,13 +4864,15 @@ function renderElevPreview(series, radius) {
     const s = candidates[Math.floor(Math.random() * candidates.length)];
 
     const W = 360, H = 76, P = 8;
+    // Marge interne supplémentaire pour les étiquettes ▲/▼ au-dessus/en-dessous
+    const PT = 16, PB = 16;
     const N = s.values.length;
     const xs = Array.from({ length: N }, (_, i) => P + (i / (N - 1)) * (W - 2 * P));
     const localRange = (s.vMax - s.vMin) || 1;
-    const yScale = v => H - P - ((v - s.vMin) / localRange) * (H - 2 * P);
+    const yScale = v => H - PB - ((v - s.vMin) / localRange) * (H - PT - PB);
     const path = s.values.map((v, i) => (i === 0 ? 'M' : 'L') + xs[i].toFixed(1) + ',' + yScale(v).toFixed(1)).join(' ');
     const fillPts = s.values.map((v, i) => xs[i].toFixed(1) + ',' + yScale(v).toFixed(1)).join(' L ');
-    const fillPath = `M ${P},${H-P} L ${fillPts} L ${(W-P).toFixed(1)},${(H-P).toFixed(1)} Z`;
+    const fillPath = `M ${P},${H-PB} L ${fillPts} L ${(W-P).toFixed(1)},${(H-PB).toFixed(1)} Z`;
     const xMax = xs[s.iMax], yMax = yScale(s.vMax);
     const xMin = xs[s.iMin], yMin = yScale(s.vMin);
 
@@ -4881,10 +4883,10 @@ function renderElevPreview(series, radius) {
                 Coupe ${s.name}
                 <span style="margin-left:auto; color:var(--c-muted); font-weight:500;">Δ ${(s.vMax - s.vMin).toFixed(0)} m · ${fmtDist(radius)}</span>
             </div>
-            <svg viewBox="0 0 ${W} ${H}" style="display:block; width:100%; height:auto;">
+            <svg viewBox="0 0 ${W} ${H}" style="display:block; width:100%; height:auto; overflow:visible;">
                 <path d="${fillPath}" fill="${s.color}" fill-opacity="0.10"/>
                 <path d="${path}" fill="none" stroke="${s.color}" stroke-width="1.6" stroke-linejoin="round"/>
-                <line x1="${W/2}" y1="${P}" x2="${W/2}" y2="${H-P}" stroke="#dc2626" stroke-width="1" stroke-dasharray="2,2"/>
+                <line x1="${W/2}" y1="${PT}" x2="${W/2}" y2="${H-PB}" stroke="#dc2626" stroke-width="1" stroke-dasharray="2,2"/>
                 <circle cx="${xMax.toFixed(1)}" cy="${yMax.toFixed(1)}" r="2.6" fill="${s.color}" stroke="#fff" stroke-width="1.2"/>
                 <circle cx="${xMin.toFixed(1)}" cy="${yMin.toFixed(1)}" r="2.6" fill="${s.color}" stroke="#fff" stroke-width="1.2"/>
                 <text x="${xMax.toFixed(1)}" y="${(yMax - 4).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="${s.color}">▲ ${s.vMax.toFixed(0)} m</text>
