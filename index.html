@@ -985,6 +985,14 @@
                         </select>
                     </div>
                 </div>
+                <div class="field-group">
+                    <label class="lbl">Mode de vol</label>
+                    <select id="vlos-select" onchange="onVlosChange()">
+                        <option value="VLOS" selected>VLOS — Vue directe (3 km de visibilité recommandés)</option>
+                        <option value="BVLOS">BVLOS — Hors vue (5 km de visibilité horizontale)</option>
+                    </select>
+                    <div class="hint" style="margin-top:4px; font-size:11px; color:var(--c-text-soft);" id="vlos-hint">VLOS&nbsp;: vol à vue, télépilote ou observateur garde l'aéronef en contact visuel direct permanent (visibilité ≥ 3 km recommandée).</div>
+                </div>
                 <div class="field-group row-2">
                     <div>
                         <label class="lbl">Tenue</label>
@@ -1710,6 +1718,17 @@ const FINALITES = {
     "5": "La surveillance des frontières, en vue de lutter contre leur franchissement irrégulier.",
     "6": "Le secours aux personnes."
 };
+
+function onVlosChange() {
+    const sel = document.getElementById('vlos-select');
+    const hint = document.getElementById('vlos-hint');
+    if (!sel || !hint) return;
+    if (sel.value === 'BVLOS') {
+        hint.textContent = "BVLOS : vol hors vue, l'aéronef évolue au-delà du contact visuel direct du télépilote (visibilité horizontale ≥ 5 km exigée).";
+    } else {
+        hint.innerHTML = "VLOS&nbsp;: vol à vue, télépilote ou observateur garde l'aéronef en contact visuel direct permanent (visibilité ≥ 3 km recommandée).";
+    }
+}
 
 function toggleArrete() {
     const isAdmin = document.getElementById('cadre-select').value === "Cadre Administratif";
