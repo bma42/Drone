@@ -587,14 +587,12 @@
 <body>
 
 <!-- ============= LOCK SCREEN =============
-     Pour changer le mot de passe : remplace la ligne PWD_HASH ci-dessous par le SHA-256
-     de ton nouveau mot de passe. Calcul rapide :
-       echo -n "MON_NOUVEAU_PWD" | shasum -a 256
-     ou en ligne : https://emn178.github.io/online-tools/sha256.html
-     Mot de passe par défaut : drone42
+     Authentification par matricule + nom (en majuscules).
+     Pour ajouter / modifier un télépilote : éditer la table PILOT_AUTH ci-dessous.
+     Hash = SHA-256 du nom de famille en majuscules (ex. echo -n "MOTTER" | shasum -a 256).
 ============================================== -->
 <div id="lock-screen" style="position:fixed; inset:0; background:linear-gradient(135deg, #0b3d91 0%, #082f70 100%); display:flex; align-items:center; justify-content:center; z-index:99999; font-family:'Inter', system-ui, sans-serif;">
-    <div style="background:#fff; border-radius:16px; padding:32px 36px; width:min(90vw, 360px); box-shadow:0 20px 60px rgba(0,0,0,.3); text-align:center;">
+    <div style="background:#fff; border-radius:16px; padding:32px 36px; width:min(90vw, 380px); box-shadow:0 20px 60px rgba(0,0,0,.3); text-align:center;">
         <div style="width:64px; height:64px; margin:0 auto 16px; border-radius:50%; background:#0b3d91; color:#fff; display:flex; align-items:center; justify-content:center;">
             <svg class="drone-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:36px; height:36px;">
                 <line x1="6" y1="6" x2="9.5" y2="9.5"/><line x1="18" y1="6" x2="14.5" y2="9.5"/>
@@ -614,43 +612,62 @@
             <span id="lock-bio-label">Face ID / Touch ID</span>
         </button>
         <form id="lock-form" onsubmit="return tryUnlock(event)">
-            <input type="password" id="lock-pwd" placeholder="Mot de passe" autofocus
+            <input type="text" id="lock-matricule" placeholder="Matricule" autofocus autocomplete="username" inputmode="numeric"
+                style="width:100%; padding:12px 14px; border:1px solid #d1d1d6; border-radius:8px; font-size:14px; box-sizing:border-box; outline:none; font-family:inherit; margin-bottom:10px;">
+            <input type="password" id="lock-pwd" placeholder="Nom (mot de passe)" autocomplete="current-password"
                 style="width:100%; padding:12px 14px; border:1px solid #d1d1d6; border-radius:8px; font-size:14px; box-sizing:border-box; outline:none; font-family:inherit;">
-            <div id="lock-err" style="display:none; color:#dc2626; font-size:12px; margin-top:8px;">Mot de passe incorrect</div>
+            <div id="lock-err" style="display:none; color:#dc2626; font-size:12px; margin-top:8px;">Matricule ou nom incorrect</div>
             <label style="display:flex; align-items:center; gap:8px; margin-top:12px; font-size:12px; color:#4b5563; cursor:pointer; user-select:none;">
                 <input type="checkbox" id="lock-remember" style="accent-color:#0b3d91; width:16px; height:16px; cursor:pointer;">
                 Se souvenir de moi sur cet appareil
             </label>
-            <button type="submit" style="margin-top:14px; width:100%; padding:12px; background:#0b3d91; color:#fff; border:0; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit;">Déverrouiller</button>
+            <button type="submit" style="margin-top:14px; width:100%; padding:12px; background:#0b3d91; color:#fff; border:0; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit;">Se connecter</button>
             <button type="button" id="lock-enroll-btn" onclick="enrollWebAuthn()" style="display:none; margin-top:8px; width:100%; padding:8px; background:transparent; color:#0b3d91; border:1px dashed #0b3d91; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; font-family:inherit;">⨁ Activer Face ID / Touch ID pour cet appareil</button>
         </form>
     </div>
 </div>
 
 <script>
-    // SHA-256("drone42")
-    const PWD_HASH = "c5d4dbbda6db2aad81a791fdb6771aa210afbf92b2ddd409aba136d35d2c1be8";
+    // Annuaire matricule → SHA-256(nom en MAJUSCULES). Le sel "drone:" est ajouté
+    // pour éviter les collisions avec un dictionnaire SHA-256 standard.
+    const PILOT_AUTH = {
+        "471946":  "a9ed80fc49d892180aa45feebbee25325cc21646c98f83dbbd4ad2cebfdf57d7", // AMATO
+        "455254":  "6341c8b01fa7287faff1bef625ed6dd44d664cf36ef5cbd7e382b5843d0bfd4c", // ROUCAIROL
+        "0472323": "f5824ea9472813b13f5e37f657cc93e77f4a61f42e0870be4bd23f919c514577", // DUDECK
+        "496397":  "e37a6908fad55c1b2a1420c6305f2c60542d6472b44ae6bb067600daa617c409", // MOTTER
+        "0477206": "eae5abdc9884ed6b7a67db672aad1eed9be122b59725bcddc6326d3dc5276168", // FOURNIE
+        "0235519": "6ddb05ec0f61510e86f84491497c5db2cf267f5273399cf92514792d4e842be5"  // KAOULALA
+    };
     async function sha256(s) {
         const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
         return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
-    function unlockApp(persist) {
-        if (persist) localStorage.setItem('drone_unlock_persist', PWD_HASH);
-        else sessionStorage.setItem('drone_unlock', '1');
+    function unlockApp(persist, mat) {
+        const session = mat ? JSON.stringify({ mat, ts: Date.now() }) : '1';
+        if (persist) localStorage.setItem('drone_unlock_persist', session);
+        else sessionStorage.setItem('drone_unlock', session);
         const ls = document.getElementById('lock-screen');
         if (ls) ls.remove();
     }
 
     async function tryUnlock(e) {
         e.preventDefault();
-        const v = document.getElementById('lock-pwd').value;
+        const mat = document.getElementById('lock-matricule').value.trim();
+        const v = document.getElementById('lock-pwd').value.trim().toUpperCase();
         const remember = document.getElementById('lock-remember').checked;
+        const expected = PILOT_AUTH[mat];
+        if (!expected) {
+            document.getElementById('lock-err').textContent = 'Matricule inconnu';
+            document.getElementById('lock-err').style.display = 'block';
+            document.getElementById('lock-matricule').focus();
+            return false;
+        }
         const h = await sha256(v);
-        if (h === PWD_HASH) {
-            unlockApp(remember);
-            // Propose d'activer la biométrie si non encore activée et que le navigateur la supporte
+        if (h === expected) {
+            unlockApp(remember, mat);
             if (remember) maybeOfferEnroll();
         } else {
+            document.getElementById('lock-err').textContent = 'Matricule ou nom incorrect';
             document.getElementById('lock-err').style.display = 'block';
             document.getElementById('lock-pwd').value = '';
             document.getElementById('lock-pwd').focus();
@@ -658,8 +675,7 @@
         return false;
     }
     // Bypass si déverrouillage déjà obtenu
-    if (localStorage.getItem('drone_unlock_persist') === PWD_HASH ||
-        sessionStorage.getItem('drone_unlock') === '1') {
+    if (localStorage.getItem('drone_unlock_persist') || sessionStorage.getItem('drone_unlock')) {
         document.getElementById('lock-screen').remove();
     }
     function lockApp() {
