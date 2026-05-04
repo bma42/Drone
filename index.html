@@ -704,6 +704,18 @@
         } catch (e) { return false; }
     }
     async function enrollWebAuthn() {
+        // L'enrôlement biométrique nécessite une connexion préalable matricule + nom :
+        // on récupère le matricule depuis la session déverrouillée pour l'associer
+        // au credential biométrique.
+        let mat = '';
+        try {
+            const saved = localStorage.getItem('drone_unlock_persist') || sessionStorage.getItem('drone_unlock');
+            if (saved && saved !== '1') mat = (JSON.parse(saved) || {}).mat || '';
+        } catch (e) {}
+        if (!mat || !PILOT_AUTH[mat]) {
+            alert('Connectez-vous d\'abord avec matricule + nom avant d\'activer la biométrie.');
+            return;
+        }
         try {
             const challenge = crypto.getRandomValues(new Uint8Array(32));
             const userId = crypto.getRandomValues(new Uint8Array(16));
@@ -711,7 +723,7 @@
                 publicKey: {
                     challenge,
                     rp: { name: 'Générateur Mission Drone' },
-                    user: { id: userId, name: 'mission@local', displayName: 'Mission Drone' },
+                    user: { id: userId, name: 'matricule-' + mat, displayName: 'Matricule ' + mat },
                     pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
                     authenticatorSelection: { userVerification: 'required', authenticatorAttachment: 'platform', residentKey: 'preferred' },
                     timeout: 60000, attestation: 'none'
@@ -719,16 +731,20 @@
             });
             if (!cred) throw new Error('null credential');
             localStorage.setItem('drone_webauthn_id', b64u(cred.rawId));
-            // Active immédiatement le mode bio
-            unlockApp(true);
-            alert('✓ Face ID / Touch ID activé pour cet appareil.');
+            localStorage.setItem('drone_webauthn_mat', mat);
+            unlockApp(true, mat);
+            alert('✓ Face ID / Touch ID activé pour le matricule ' + mat + '.');
         } catch (e) {
             alert("Échec de l'activation biométrique : " + (e.message || e));
         }
     }
     async function tryWebAuthn() {
         const credIdB64 = localStorage.getItem('drone_webauthn_id');
-        if (!credIdB64) { alert('Aucune empreinte enregistrée'); return; }
+        const savedMat  = localStorage.getItem('drone_webauthn_mat') || '';
+        if (!credIdB64 || !savedMat || !PILOT_AUTH[savedMat]) {
+            alert('Aucune authentification biométrique enregistrée — connectez-vous d\'abord avec matricule + nom.');
+            return;
+        }
         const btn = document.getElementById('lock-bio-btn');
         const origLabel = document.getElementById('lock-bio-label').textContent;
         document.getElementById('lock-bio-label').textContent = '⏳ Authentification…';
@@ -743,7 +759,7 @@
                     timeout: 60000
                 }
             });
-            if (assertion) unlockApp(true);
+            if (assertion) unlockApp(true, savedMat);
         } catch (e) {
             document.getElementById('lock-err').textContent = 'Authentification biométrique annulée';
             document.getElementById('lock-err').style.display = 'block';
@@ -760,14 +776,20 @@
             if (btn) btn.style.display = 'block';
         });
     }
-    // À l'ouverture du lock screen : montre le bouton bio si déjà enrôlé
+    // À l'ouverture du lock screen : montre le bouton bio si déjà enrôlé pour un matricule connu
     (async () => {
         const ok = await webAuthnSupported();
         const credIdB64 = localStorage.getItem('drone_webauthn_id');
+        const credMat   = localStorage.getItem('drone_webauthn_mat');
+        // Auto-purge d'un enrôlement orphelin (matricule absent ou non reconnu)
+        if (credIdB64 && (!credMat || !PILOT_AUTH[credMat])) {
+            localStorage.removeItem('drone_webauthn_id');
+            localStorage.removeItem('drone_webauthn_mat');
+        }
         const bioBtn = document.getElementById('lock-bio-btn');
         const enrollBtn = document.getElementById('lock-enroll-btn');
         if (!bioBtn) return; // déjà déverrouillé
-        if (ok && credIdB64) {
+        if (ok && credIdB64 && credMat && PILOT_AUTH[credMat]) {
             bioBtn.style.display = 'flex';
             // Détection auto type biométrique
             const ua = navigator.userAgent;
