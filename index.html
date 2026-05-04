@@ -1721,12 +1721,46 @@ function cachedFetch(key, url, ttlMs = 30 * 60 * 1000) {
 function fmtDist(m) { return m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(1) + ' km'; }
 
 // Cadre la carte sur un cercle de rayon = max(élongation, données analysées) + padding
-function fitMapToRadius(map, lat, lon, dataRadiusM) {
+// Cadre la carte au plus juste : englobe le contenu réellement tracé (markers,
+// polylines, polygons) plutôt que le rayon théorique d'analyse, tout en gardant
+// le point de mission + le cercle d'élongation visibles. Le maxZoom évite de
+// trop zoomer quand un seul élément est très proche.
+function fitMapToRadius(map, lat, lon, dataRadiusM, opts) {
+    opts = opts || {};
+    const maxZoom = opts.maxZoom != null ? opts.maxZoom : 15;
+    let bounds = null;
+    const extend = (b) => { bounds = bounds ? bounds.extend(b) : L.latLngBounds(b.getSouthWest ? b.getSouthWest() : b, b.getNorthEast ? b.getNorthEast() : b); };
+    map.eachLayer(layer => {
+        // Ignore les tuiles (TileLayer ne fournit pas de bounds géographique pertinent)
+        if (layer instanceof L.TileLayer) return;
+        if (typeof layer.getBounds === 'function') {
+            try {
+                const b = layer.getBounds();
+                if (b && b.isValid && b.isValid()) extend(b);
+            } catch (e) {}
+        } else if (typeof layer.getLatLng === 'function') {
+            const ll = layer.getLatLng();
+            if (ll) extend(L.latLngBounds(ll, ll));
+        }
+    });
+    // Garantit l'inclusion du point de mission et du cercle d'élongation
+    if (lat != null && lon != null) {
+        const minR = Math.max(STATE.radius || 0, 200);
+        const dLat = minR / 111000;
+        const dLon = minR / (111000 * Math.cos(lat * Math.PI / 180));
+        const minBounds = L.latLngBounds([lat - dLat, lon - dLon], [lat + dLat, lon + dLon]);
+        extend(minBounds);
+    }
+    if (bounds && bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [22, 22], maxZoom });
+        return;
+    }
+    // Fallback : aucun contenu → cercle théorique
     const r = Math.max(STATE.radius || 0, dataRadiusM || 0);
-    if (!r) return;
+    if (!r || lat == null) return;
     const tmp = L.circle([lat, lon], { radius: r * 1.05, opacity: 0, fillOpacity: 0 });
     tmp.addTo(map);
-    map.fitBounds(tmp.getBounds(), { padding: [20, 20] });
+    map.fitBounds(tmp.getBounds(), { padding: [22, 22], maxZoom });
     map.removeLayer(tmp);
 }
 
