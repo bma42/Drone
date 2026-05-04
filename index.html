@@ -3217,18 +3217,31 @@ function renderTrafficRoads(roadsAll, lat, lon) {
     const R = STATE.radius || 1000;
     const roads = roadsAll.map(r => Object.assign({}, r, { inZone: r.dist <= R }));
 
-    const autoroutes = roads.filter(r => r.cls.kind === 'autoroute');
-    const nationales = roads.filter(r => r.cls.kind === 'nationale' || r.cls.kind === 'voie-rapide');
-    const inZone = roads.filter(r => r.inZone);
-    const closest = roads[0];
-    const sature = roads.filter(r => r.flow.level === 'sature');
-    const dense  = roads.filter(r => r.flow.level === 'dense');
+    // OSM découpe chaque axe en dizaines de tronçons (ways). Pour les compteurs et
+    // le tableau, on agrège par numéro de route (ou nom à défaut) en gardant le
+    // tronçon le plus proche, et on indique combien de tronçons sont en zone.
+    const groupKey = r => r.numero || r.name || (r.cls.kind + ':' + r.center.lat.toFixed(3) + ',' + r.center.lon.toFixed(3));
+    const byRoute = new Map();
+    roads.forEach(r => {
+        const k = groupKey(r);
+        const cur = byRoute.get(k);
+        if (!cur || r.dist < cur.dist) byRoute.set(k, r);
+        if (cur) cur.inZone = cur.inZone || r.inZone;
+    });
+    const uniqRoads = Array.from(byRoute.values()).sort((a, b) => a.dist - b.dist);
+
+    const autoroutes = uniqRoads.filter(r => r.cls.kind === 'autoroute');
+    const nationales = uniqRoads.filter(r => r.cls.kind === 'nationale' || r.cls.kind === 'voie-rapide');
+    const inZone = uniqRoads.filter(r => r.inZone);
+    const closest = uniqRoads[0];
+    const sature = uniqRoads.filter(r => r.flow.level === 'sature');
+    const dense  = uniqRoads.filter(r => r.flow.level === 'dense');
 
     const flowBadge = (f) => `<span style="background:${f.color}; color:#fff; font-size:10px; font-weight:700; padding:1px 7px; border-radius:999px;">${f.label}</span>`;
 
-    const rows = roads.length === 0
+    const rows = uniqRoads.length === 0
         ? `<tr><td colspan="5" class="empty-state">Aucune autoroute ni route nationale dans 10 km.</td></tr>`
-        : roads.slice(0, 12).map(r => `
+        : uniqRoads.slice(0, 12).map(r => `
             <tr style="${r.inZone ? 'background:#fef3c7;' : ''}">
                 <td><strong>${r.cls.label}${r.numero ? ' ' + r.numero : ''}</strong>${r.inZone ? ' <span style="background:#d97706; color:#fff; font-size:9px; font-weight:700; padding:1px 6px; border-radius:999px; margin-left:4px;">EN ZONE</span>' : ''}${r.name ? '<br><span style="color:var(--c-muted); font-size:11px;">' + r.name + '</span>' : ''}</td>
                 <td style="font-size:11px;">${r.voies ? r.voies + ' voies' : '—'}${r.largeur ? '<br>' + r.largeur.toFixed(1) + ' m' : ''}</td>
@@ -3249,7 +3262,7 @@ function renderTrafficRoads(roadsAll, lat, lon) {
             <thead><tr><th>Voie</th><th>Voies / largeur</th><th>Conditions</th><th>Position</th><th style="text-align:right;">Distance</th></tr></thead>
             <tbody>${rows}</tbody>
         </table>
-        <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source OpenStreetMap (Overpass API) · ${roads.length} voie(s) classée(s) dans 10 km · ${inZone.length} pénètre(nt) dans la zone d'évolution (${R} m). La colonne « Conditions » affiche la vitesse maximale tagguée OSM (pas de mesure temps-réel).</div>
+        <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source OpenStreetMap (Overpass API) · ${uniqRoads.length} voie(s) unique(s) dans 10 km (${roads.length} tronçons OSM) · ${inZone.length} pénètre(nt) dans la zone d'évolution (${R} m). La colonne « Conditions » affiche la vitesse maximale tagguée OSM (pas de mesure temps-réel).</div>
         <div style="margin-top:10px; padding:8px 12px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; font-size:12px;">
             <strong style="color:var(--c-danger);">⚠ Risque chute drone sur chaussée</strong>
             <span style="color:var(--c-muted);">— prévoir périmètre latéral aux voies, pas de survol direct, coordination CRS / DIR si élongation traverse l'axe.</span>
