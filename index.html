@@ -88,8 +88,15 @@
             max-width: 700px; overflow: hidden;
         }
         @media (max-width: 720px) {
-            .topbar { flex-wrap: wrap; }
+            /* Mobile : titre sur la 1re ligne, tous les boutons groupés sur la 2e */
+            .topbar { flex-wrap: wrap; padding: 6px 10px; gap: 6px; }
             .topbar-brand-sub { display: none; }
+            .topbar-brand { flex-basis: 100%; }
+            .topbar-spacer { display: none; }
+            .topbar .btn { padding: 6px 9px; font-size: 11px; }
+            .topbar .btn svg { width: 12px; height: 12px; }
+            .topbar .verdict-pill { font-size: 10.5px; padding: 4px 9px; letter-spacing: .3px; }
+            .topbar .verdict-pill svg { width: 13px; height: 13px; }
         }
         .topbar-spacer { flex: 1; }
         .status-pills { display: flex; gap: 6px; flex-wrap: wrap; }
