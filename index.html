@@ -2253,11 +2253,19 @@ function renderWeather(j, dateISO) {
     const reasons = [];
     if (wind > W_WARN || gust > W_WARN + 5) { verdict = 'warn'; reasons.push(`vent ${wind.toFixed(0)} km/h (rafales ${gust.toFixed(0)})`); }
     if (vis < 5000) { verdict = 'warn'; reasons.push(`visibilité ${vis} m`); }
-    if (precip > 0.5) { verdict = 'warn'; reasons.push(`précipitations ${precip.toFixed(1)} mm`); }
+    // Pluie : tout dépassement > 0.1 mm/h sur la fenêtre de mission est rédhibitoire
+    // (drones non IPxx, optiques + risque givrage en altitude).
+    const maxPrecipHourly = Math.max(...range('precipitation'));
+    if (maxPrecipHourly > 0.1) { verdict = 'no'; reasons.push(`pluie ${maxPrecipHourly.toFixed(2)} mm/h > 0,1`); }
     if (wind > W_LIMIT || gust > W_LIMIT || vis < 1500) {
-        verdict = 'no'; vmsg = 'Conditions défavorables au vol — au-dessus de la résistance constructeur (43,2 km/h)';
+        verdict = 'no';
         if (wind > W_LIMIT) reasons.push(`vent ${wind.toFixed(0)} > 43,2 km/h`);
         if (gust > W_LIMIT) reasons.push(`rafales ${gust.toFixed(0)} > 43,2 km/h`);
+    }
+    if (verdict === 'no') {
+        if (wind > W_LIMIT || gust > W_LIMIT) vmsg = 'Conditions défavorables au vol — au-dessus de la résistance constructeur (43,2 km/h)';
+        else if (maxPrecipHourly > 0.1)         vmsg = 'Conditions défavorables au vol — précipitations supérieures à 0,1 mm/h';
+        else                                      vmsg = 'Conditions défavorables au vol';
     } else if (verdict === 'warn') vmsg = 'Vigilance — vol sous conditions';
 
     const verdictLabel = verdict === 'go' ? 'GO' : verdict === 'warn' ? 'VIGILANCE' : 'NO-GO';
@@ -2278,8 +2286,8 @@ function renderWeather(j, dateISO) {
         const pr = h.precipitation[i];
         // Statut horaire — seuils basés sur le drone le plus contraignant
         let row = 'go';
-        if (w > W_WARN || g > W_WARN + 3 || v < 5000 || pr > 0.5) row = 'warn';
-        if (w > W_LIMIT || g > W_LIMIT || v < 1500) row = 'no';
+        if (w > W_WARN || g > W_WARN + 3 || v < 5000) row = 'warn';
+        if (w > W_LIMIT || g > W_LIMIT || v < 1500 || pr > 0.1) row = 'no';
         const dot = row === 'go' ? '●' : row === 'warn' ? '●' : '●';
         const dotColor = row === 'go' ? '#16a34a' : row === 'warn' ? '#d97706' : '#dc2626';
         hourRows.push(`
@@ -2290,7 +2298,7 @@ function renderWeather(j, dateISO) {
                 <td><strong style="color:${v < 1500 ? '#dc2626' : v < 5000 ? '#d97706' : 'inherit'}">${(v/1000).toFixed(1)}</strong> km</td>
                 <td>${c}%</td>
                 <td>${tp.toFixed(1)}°C</td>
-                <td><strong style="color:${pr > 0.5 ? '#d97706' : 'inherit'}">${pr.toFixed(1)}</strong> mm</td>
+                <td><strong style="color:${pr > 0.1 ? '#dc2626' : 'inherit'}">${pr.toFixed(2)}</strong> mm</td>
             </tr>`);
     }
 
@@ -2356,7 +2364,7 @@ function renderWeather(j, dateISO) {
     `;
     document.getElementById('meteo-body').innerHTML = html;
     setStatus('meteo', verdict === 'no' ? 'err' : verdict === 'warn' ? 'warn' : 'ok', verdictLabel);
-    STATE.weather = { wind, gust, vis, precip, verdict };
+    STATE.weather = { wind, gust, vis, precip, maxPrecipHourly, verdict };
     updateGlobalVerdict();
 }
 
@@ -5177,9 +5185,18 @@ function populateRiskTable() {
     // Risques liés à la météo
     if (STATE.weather) {
         if (STATE.weather.verdict === 'no')
-            rows.push(['Conditions météo défavorables (vent / visibilité)', 'Élevée', 'Élevée', 'Reporter la mission ou attendre fenêtre favorable']);
+            rows.push(['Conditions météo défavorables (vent / visibilité / pluie)', 'Élevée', 'Élevée', 'Reporter la mission ou attendre fenêtre favorable']);
         else if (STATE.weather.verdict === 'warn')
             rows.push(['Conditions météo dégradées', 'Modérée', 'Modérée', 'Vol sous surveillance accrue · prévoir retour rapide']);
+    }
+
+    // Risque pluie (drones non IPxx → court-circuit moteurs / ESC, optiques embuées, perte de portance)
+    if (STATE.weather && STATE.weather.maxPrecipHourly != null) {
+        const p = STATE.weather.maxPrecipHourly;
+        if (p > 0.1)
+            rows.push([`Précipitations ${p.toFixed(2)} mm/h pendant la mission`, 'Élevée', 'Élevée', "Vol interdit — drones non étanches (IPxx) · risque court-circuit moteurs/ESC · optiques inutilisables · reporter ou attendre fin de l'épisode pluvieux"]);
+        else if (p > 0)
+            rows.push([`Précipitations légères ${p.toFixed(2)} mm/h prévues`, 'Modérée', 'Modérée', "Surveillance précipitations · prévoir capot/protection · interruption au premier signe d'aggravation"]);
     }
 
     // Risques liés à l'indice Kp / GNSS
