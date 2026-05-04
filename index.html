@@ -4647,7 +4647,7 @@ function renderElevation(elevs, radius) {
         const takeoff = `<line x1="${W/2}" y1="${P}" x2="${W/2}" y2="${H-P}" stroke="#dc2626" stroke-width="1.2" stroke-dasharray="3,2"/>`;
         const takeoffLabel = labelTag(W/2, H - P + 16, '▼ Décollage · ' + center.toFixed(0) + ' m', '#dc2626');
 
-        // Observateur à ±1000 m si élongation > 1 km
+        // Observateur à ±1000 m si élongation > 1 km — label avec cartouche crème
         let observerMarkers = '';
         if (radius > 1000) {
             const xObsL = P + ((-1000 + radius) / (2 * radius)) * (W - 2 * P);
@@ -4655,8 +4655,19 @@ function renderElevation(elevs, radius) {
             const obsColor = '#d97706';
             observerMarkers =
                 `<line x1="${xObsL.toFixed(1)}" y1="${P}" x2="${xObsL.toFixed(1)}" y2="${H-P}" stroke="${obsColor}" stroke-width="1" stroke-dasharray="4,3" opacity=".85"/>` +
-                `<line x1="${xObsR.toFixed(1)}" y1="${P}" x2="${xObsR.toFixed(1)}" y2="${H-P}" stroke="${obsColor}" stroke-width="1" stroke-dasharray="4,3" opacity=".85"/>`;
+                `<line x1="${xObsR.toFixed(1)}" y1="${P}" x2="${xObsR.toFixed(1)}" y2="${H-P}" stroke="${obsColor}" stroke-width="1" stroke-dasharray="4,3" opacity=".85"/>` +
+                labelTag(xObsL, P + 8, 'Observateur −1 km', obsColor) +
+                labelTag(xObsR, P + 8, 'Observateur +1 km', obsColor);
         }
+
+        // Étiquettes d'altitude aux deux extrémités de la courbe (cartouches crème)
+        const vL = s.values[0], vR = s.values[s.values.length - 1];
+        const yL = yScale(vL), yR = yScale(vR);
+        // Décale verticalement vers l'intérieur du cadre pour rester lisible
+        const offY = (yPos) => (yPos < H / 2 ? 16 : -8);
+        const edgeLabels =
+            labelTag(P + 18, yL + offY(yL), vL.toFixed(0) + ' m', s.color, 'middle') +
+            labelTag(W - P - 18, yR + offY(yR), vR.toFixed(0) + ' m', s.color, 'middle');
 
         // Règle d'élongation
         const rulerY = H + 16, rulerLabY = H + 30, rulerColor = '#475569';
@@ -4693,9 +4704,10 @@ function renderElevation(elevs, radius) {
                     <span style="margin-left:auto; font-size:11px; font-weight:500; color:var(--c-muted);">Δ ${(s.vMax - s.vMin).toFixed(0)} m</span>
                 </div>
                 <svg viewBox="0 0 ${W} ${H + 38}" style="display:block; width:100%; height:auto; overflow:visible;">
-                    ${observerMarkers}
                     ${takeoff}
                     ${polyline}
+                    ${observerMarkers}
+                    ${edgeLabels}
                     ${annot}
                     ${takeoffLabel}
                     ${ruler}
