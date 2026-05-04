@@ -3144,17 +3144,33 @@ async function fetchAntennas(lat, lon) {
     }
 }
 
+function setAntennasFilter(value) {
+    STATE.antennasFilter = value;
+    if (Array.isArray(STATE.antennas) && STATE.lat != null) {
+        renderAntennas(STATE.antennas, STATE.lat, STATE.lon);
+    }
+}
+
 function renderAntennas(items, lat, lon) {
-    const tall = items.filter(i => i.h && i.h >= 30).length;
-    const com  = items.filter(i => i.type === 'communication').length;
-    const close = items[0];
+    // Filtre par hauteur — par défaut, on n'affiche que les antennes ≥ 30 m
+    // (les seules réellement pertinentes pour le risque drone).
+    const filter = STATE.antennasFilter || 'tall';
+    const filtered = filter === 'tall'
+        ? items.filter(i => i.h && i.h >= 30)
+        : filter === 'short'
+            ? items.filter(i => !i.h || i.h < 30)
+            : items;
+
+    const tallCount  = items.filter(i => i.h && i.h >= 30).length;
+    const shortCount = items.filter(i => !i.h || i.h < 30).length;
+    const com  = filtered.filter(i => i.type === 'communication').length;
 
     const labelKind = k => ({ tower: 'Pylône', mast: 'Mât', antenna: 'Antenne', communications_tower: 'Tour télécom' }[k] || k);
     const labelType = t => t === 'communication' ? 'Télécom' : t === 'observation' ? 'Observation' : t === 'siren' ? 'Sirène' : t || '—';
 
-    const rows = items.length === 0
-        ? `<tr><td colspan="5" class="empty-state">Aucune antenne / mât référencé OSM dans un rayon de 3 km.</td></tr>`
-        : items.slice(0, 12).map(i => {
+    const rows = filtered.length === 0
+        ? `<tr><td colspan="5" class="empty-state">Aucune antenne ${filter === 'tall' ? '≥ 30 m' : filter === 'short' ? '< 30 m' : ''} dans un rayon de 3 km.</td></tr>`
+        : filtered.slice(0, 12).map(i => {
             const tall = i.h && i.h >= 30;
             return `<tr>
                 <td><strong>${labelKind(i.kind)}</strong>${i.name ? '<br><span style="color:var(--c-muted); font-size:11px;">' + i.name + '</span>' : ''}</td>
@@ -3166,20 +3182,28 @@ function renderAntennas(items, lat, lon) {
         }).join('');
 
     document.getElementById('antennas-body').innerHTML = `
+        <div class="no-print" style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+            <label class="lbl" style="margin:0; font-size:11px; color:var(--c-text-soft); white-space:nowrap;">Hauteur :</label>
+            <select onchange="setAntennasFilter(this.value)" style="flex:1; max-width:240px; padding:6px 8px; font-size:12px;">
+                <option value="tall"${filter === 'tall' ? ' selected' : ''}>Antennes ≥ 30 m (par défaut)</option>
+                <option value="short"${filter === 'short' ? ' selected' : ''}>Antennes &lt; 30 m</option>
+                <option value="all"${filter === 'all' ? ' selected' : ''}>Toutes les antennes</option>
+            </select>
+        </div>
         <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px;">
-            <div class="metric"><div class="v">${items.length}</div><div class="k">Total</div></div>
+            <div class="metric"><div class="v">${filtered.length}</div><div class="k">${filter === 'tall' ? '≥ 30 m affichées' : filter === 'short' ? '< 30 m affichées' : 'Total affichées'}</div></div>
             <div class="metric ${com > 0 ? 'alert' : ''}"><div class="v">${com}</div><div class="k">Télécom</div></div>
-            <div class="metric ${tall > 0 ? 'danger' : ''}"><div class="v">${tall}</div><div class="k">≥ 30 m</div></div>
+            <div class="metric ${tallCount > 0 ? 'danger' : ''}"><div class="v">${tallCount}</div><div class="k">≥ 30 m total</div></div>
         </div>
         <div id="antennas-map" style="height:280px; width:100%; border-radius:6px; border:1px solid var(--c-border); margin-bottom:12px;"></div>
         <table class="tbl">
             <thead><tr><th>Type</th><th>Usage</th><th>Hauteur</th><th>Opérateur</th><th style="text-align:right;">Distance</th></tr></thead>
             <tbody>${rows}</tbody>
         </table>
-        <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source OpenStreetMap · rayon analysé&nbsp;: 3 km · top 12 affiché.</div>
+        <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source OpenStreetMap · rayon analysé&nbsp;: 3 km · ${items.length} antenne(s) au total (${tallCount} ≥ 30 m, ${shortCount} &lt; 30 m) · top 12 affiché.</div>
     `;
-    setTimeout(() => initAntennasMap(items, lat, lon), 50);
-    setStatus('antennas', items.length === 0 ? 'ok' : (tall > 0 ? 'warn' : 'ok'),
+    setTimeout(() => initAntennasMap(filtered, lat, lon), 50);
+    setStatus('antennas', items.length === 0 ? 'ok' : (tallCount > 0 ? 'warn' : 'ok'),
               `${items.length} pt${items.length > 1 ? 's' : ''}`);
 }
 
