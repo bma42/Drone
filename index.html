@@ -1631,6 +1631,7 @@ STATE.layers.lines     = L.layerGroup().addTo(map);
 STATE.layers.buildings = L.layerGroup().addTo(map);
 STATE.layers.wind      = L.layerGroup().addTo(map);
 STATE.layers.roads     = L.layerGroup().addTo(map);
+STATE.layers.elevAxis  = L.layerGroup().addTo(map);
 
 L.control.layers(null, {
     "Aérodromes / héliports": STATE.layers.heliports,
@@ -1639,6 +1640,7 @@ L.control.layers(null, {
     "Éoliennes": STATE.layers.wind,
     "Bâtiments hauts": STATE.layers.buildings,
     "Autoroutes / RN": STATE.layers.roads,
+    "Coupe altimétrique": STATE.layers.elevAxis,
 }, { collapsed: true }).addTo(map);
 
 // Bouton plein écran pour la carte (toggle natif Fullscreen API)
@@ -4926,6 +4928,9 @@ function renderElevPreview(series, radius) {
     const xMax = xs[s.iMax], yMax = yScale(s.vMax);
     const xMin = xs[s.iMin], yMin = yScale(s.vMin);
 
+    // Trace l'axe choisi sur la carte principale (calque dédié) + marqueurs ▲ ▼
+    drawElevAxisOnMainMap(s, radius, heightMax, flightCeiling);
+
     el.innerHTML = `
         <div style="background:#f7f9fc; border:1px solid var(--c-border); border-radius:6px; padding:6px 8px;">
             <div style="display:flex; gap:6px; align-items:center; font-size:11px; color:${s.color}; font-weight:700; margin-bottom:2px;">
@@ -4946,6 +4951,70 @@ function renderElevPreview(series, radius) {
             </svg>
         </div>
     `;
+}
+
+// Trace l'axe altimétrique choisi (celui de l'aperçu §1) sur la carte principale,
+// avec un dégradé de couleur selon l'altitude + marqueurs ▲ max et ▼ min.
+function drawElevAxisOnMainMap(s, radius, heightMax, flightCeiling) {
+    if (!STATE.lat || !STATE.layers || !STATE.layers.elevAxis) return;
+    const lat = STATE.lat, lon = STATE.lon;
+    STATE.layers.elevAxis.clearLayers();
+
+    const rad = s.bearing * Math.PI / 180;
+    const dN = radius * Math.cos(rad), dE = radius * Math.sin(rad);
+    const dLat = dN / 111000;
+    const dLon = dE / (111000 * Math.cos(lat * Math.PI / 180));
+    const p1 = [lat - dLat, lon - dLon]; // côté négatif (N pour N–S, E pour E–O… non, label[0])
+    const p2 = [lat + dLat, lon + dLon];
+
+    // Trait principal
+    L.polyline([p1, p2], { color: s.color, weight: 4, opacity: 0.9, dashArray: '4,3' })
+        .bindPopup(`<b>Coupe altimétrique — Axe ${s.name}</b><br>Δ ${(s.vMax - s.vMin).toFixed(0)} m sur ±${fmtDist(radius)}<br>Plafond vol&nbsp;: ${flightCeiling.toFixed(0)} m (+${heightMax} m AGL)`)
+        .addTo(STATE.layers.elevAxis);
+
+    // Position du ▲ max et ▼ min le long de l'axe (offset linéaire entre p1 et p2 selon iMin/iMax sur N points)
+    const N = s.values.length;
+    const posAt = (i) => {
+        const t = i / (N - 1); // 0 (côté p1) à 1 (côté p2)
+        return [p1[0] + (p2[0] - p1[0]) * t, p1[1] + (p2[1] - p1[1]) * t];
+    };
+
+    const labels = s.name.split('–'); // [labelNeg, labelPos]
+    const dirOf = (i) => {
+        const t = i / (N - 1);
+        if (Math.abs(t - 0.5) < 0.02) return 'centre';
+        return (t < 0.5 ? labels[0] : labels[1]) + ' ' + fmtDist(Math.abs(t - 0.5) * 2 * radius);
+    };
+
+    L.marker(posAt(s.iMax), {
+        icon: L.divIcon({
+            className: '', iconSize: null, iconAnchor: [0, 0],
+            html: `<div style="background:${s.color}; color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px; border:1.5px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.5);">▲ ${s.vMax.toFixed(0)} m</div>`
+        })
+    }).bindPopup(`<b>Point haut de la coupe ${s.name}</b><br>Altitude ${s.vMax.toFixed(0)} m · ${dirOf(s.iMax)}`)
+      .addTo(STATE.layers.elevAxis);
+
+    L.marker(posAt(s.iMin), {
+        icon: L.divIcon({
+            className: '', iconSize: null, iconAnchor: [0, 0],
+            html: `<div style="background:${s.color}; color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px; border:1.5px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.5);">▼ ${s.vMin.toFixed(0)} m</div>`
+        })
+    }).bindPopup(`<b>Point bas de la coupe ${s.name}</b><br>Altitude ${s.vMin.toFixed(0)} m · ${dirOf(s.iMin)}`)
+      .addTo(STATE.layers.elevAxis);
+
+    // Étiquettes cardinales aux extrémités
+    L.marker(p1, {
+        icon: L.divIcon({
+            className: '', iconSize: null, iconAnchor: [0, 0],
+            html: `<div style="background:#fff; color:${s.color}; font-size:10px; font-weight:700; padding:1px 5px; border-radius:8px; border:1.5px solid ${s.color}; box-shadow:0 1px 2px rgba(0,0,0,.3);">${labels[0]}</div>`
+        })
+    }).addTo(STATE.layers.elevAxis);
+    L.marker(p2, {
+        icon: L.divIcon({
+            className: '', iconSize: null, iconAnchor: [0, 0],
+            html: `<div style="background:#fff; color:${s.color}; font-size:10px; font-weight:700; padding:1px 5px; border-radius:8px; border:1.5px solid ${s.color}; box-shadow:0 1px 2px rgba(0,0,0,.3);">${labels[1]}</div>`
+        })
+    }).addTo(STATE.layers.elevAxis);
 }
 
 let _elevSatMap = null;
