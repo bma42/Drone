@@ -1652,6 +1652,12 @@ function updateElongation(val) {
     if (railElongationCircle) railElongationCircle.setRadius(STATE.radius);
     if (naturalElongationCircle) naturalElongationCircle.setRadius(STATE.radius);
     if (trafficElongationCircle) trafficElongationCircle.setRadius(STATE.radius);
+    // Met à jour le contenu du popup d'élongation sur toutes les cartes
+    const popupHtml = `<b>Élongation de vol</b><br>${STATE.radius} m`;
+    [linesElongationCircle, antennasElongationCircle, sevesoElongationCircle,
+     uasElongationCircle, ighElongationCircle, airspaceElongationCircle,
+     railElongationCircle, naturalElongationCircle, trafficElongationCircle]
+        .forEach(c => { if (c && c.setPopupContent) c.setPopupContent(popupHtml); });
     // Le module §10 affiche uniquement les voies dans la zone d'évolution
     // → on relance le rendu (filtre client) à chaque changement de rayon.
     if (STATE.traffic && STATE.lat != null) renderTrafficRoads(STATE.traffic, STATE.lat, STATE.lon);
