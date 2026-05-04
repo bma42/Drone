@@ -3110,11 +3110,17 @@ function trafficRoadCenter(geom) {
 }
 
 function trafficClassifyRoad(p) {
-    const cl = (p.cl_admin || '').toLowerCase();
-    const nat = (p.nature || '').toLowerCase();
-    if (cl.includes('autoroute') || nat.includes('autorout')) return { kind: 'autoroute', label: 'Autoroute', color: '#dc2626', priority: 3 };
-    if (cl.includes('national')) return { kind: 'nationale', label: 'Route nationale', color: '#d97706', priority: 2 };
-    if (nat.includes('type autoroutier')) return { kind: 'voie-rapide', label: 'Voie rapide', color: '#b45309', priority: 2 };
+    // BDTOPO V3 expose tantôt `cl_admin`, tantôt `cpx_classement_administratif`
+    const cl  = String(p.cl_admin || p.classement_administratif || p.cpx_classement_administratif || '').toLowerCase();
+    const nat = String(p.nature || '').toLowerCase();
+    const imp = parseInt(p.importance, 10);
+    const numero = String(p.numero || p.cpx_numero || p.numero_route || '').toUpperCase();
+    if (cl.includes('autoroute') || nat.includes('autorout') || imp === 1 || /^A\d/.test(numero))
+        return { kind: 'autoroute', label: 'Autoroute', color: '#dc2626', priority: 3 };
+    if (cl.includes('national') || /^N\d/.test(numero) || /^RN\s*\d/.test(numero))
+        return { kind: 'nationale', label: 'Route nationale', color: '#d97706', priority: 2 };
+    if (nat.includes('type autoroutier') || (imp === 2 && nat.includes('2 chauss')))
+        return { kind: 'voie-rapide', label: 'Voie rapide', color: '#b45309', priority: 2 };
     return null;
 }
 
@@ -3140,12 +3146,16 @@ async function fetchTrafficRoads(lat, lon) {
     const dLon = 20000 / (111000 * Math.cos(lat * Math.PI / 180));
     const bbox = `${(lon - dLon).toFixed(5)},${(lat - dLat).toFixed(5)},${(lon + dLon).toFixed(5)},${(lat + dLat).toFixed(5)}`;
 
+    // Filtre CQL côté IGN : importance 1 (autoroutes) ou 2 (liaisons principales / RN majeures)
+    // → réduit massivement la réponse et garantit qu'on récupère bien la totalité du tracé
+    //   (sinon le cap de 1500 features explose vite à 20 km en zone dense).
     const params = new URLSearchParams({
         service: 'WFS', version: '2.0.0', request: 'GetFeature',
         typenames: 'BDTOPO_V3:troncon_de_route',
         bbox: bbox + ',EPSG:4326',
         srsname: 'EPSG:4326',
-        count: 1500, outputFormat: 'application/json'
+        cql_filter: "cpx_classement_administratif IN ('Autoroute','Nationale','Autoroute non concédée') OR importance<=2",
+        count: 3000, outputFormat: 'application/json'
     });
 
     try {
@@ -3166,8 +3176,8 @@ async function fetchTrafficRoads(lat, lon) {
                 dist: haversine(lat, lon, c.lat, c.lon),
                 cls,
                 nature: p.nature || '—',
-                numero: p.numero || '',
-                voies: parseInt(p.nombre_de_voies, 10) || null,
+                numero: String(p.numero || p.cpx_numero || p.numero_route || '').toUpperCase(),
+                voies: parseInt(p.nombre_de_voies || p.nb_voies, 10) || null,
                 largeur: parseFloat(p.largeur_de_chaussee) || null,
                 position: p.position_par_rapport_au_sol,
                 flow: trafficFlowState(p)
