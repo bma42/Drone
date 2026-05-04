@@ -2042,7 +2042,18 @@ function updateGlobalVerdict() {
     if (kp != null && kp >= 5 && state !== 'no') state = 'no';
     else if (kp != null && kp >= 4 && state === 'go') state = 'warn';
     pill.dataset.state = state;
-    pill.innerHTML = ICONS[state] + (state === 'go' ? 'GO' : state === 'warn' ? 'VIGILANCE' : 'NO-GO');
+    let label = state === 'go' ? 'GO' : state === 'warn' ? 'VIGILANCE' : 'NO-GO';
+    if (state === 'no' && w.nextGoTime) {
+        const d = new Date(w.nextGoTime);
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const dd = new Date(d); dd.setHours(0, 0, 0, 0);
+        const diffDays = Math.round((dd.getTime() - today.getTime()) / 86400000);
+        const day = diffDays === 0 ? '' : diffDays === 1 ? 'demain ' : d.toLocaleDateString('fr-FR', { weekday: 'short' }) + ' ';
+        label += ` › ${day}${hh}h${mm}`;
+    }
+    pill.innerHTML = ICONS[state] + label;
 }
 
 function updateRedacteur() {
@@ -2471,8 +2482,47 @@ function renderWeather(j, dateISO) {
         else                                      vmsg = 'Conditions défavorables au vol';
     } else if (verdict === 'warn') vmsg = 'Vigilance — vol sous conditions';
 
+    // Si verdict NO-GO : recherche heure par heure de la prochaine plage favorable
+    // (vent ≤ W_WARN, rafales ≤ W_WARN+5, visibilité ≥ 5 km, pluie ≤ 0,1 mm/h).
+    let nextGoTime = null;
+    if (verdict === 'no') {
+        for (let i = iEnd + 1; i < h.time.length; i++) {
+            const ww = h.wind_speed_10m[i];
+            const gg = h.wind_gusts_10m[i];
+            const vv = h.visibility[i];
+            const pp = h.precipitation[i];
+            if (ww <= W_WARN && gg <= W_WARN + 5 && vv >= 5000 && pp <= 0.1) {
+                nextGoTime = h.time[i];
+                break;
+            }
+        }
+    }
+    const fmtNextGo = (iso, opts) => {
+        if (!iso) return '';
+        opts = opts || {};
+        const d = new Date(iso);
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const dd = new Date(d); dd.setHours(0, 0, 0, 0);
+        const diffDays = Math.round((dd.getTime() - today.getTime()) / 86400000);
+        let day = '';
+        if (diffDays === 0) day = opts.short ? '' : "aujourd'hui ";
+        else if (diffDays === 1) day = 'demain ';
+        else day = d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' }) + ' ';
+        return `${day}${hh}h${mm}`;
+    };
+
     const verdictLabel = verdict === 'go' ? 'GO' : verdict === 'warn' ? 'VIGILANCE' : 'NO-GO';
-    const detailTxt = reasons.length ? 'Points de vigilance : ' + reasons.join(' · ') : 'Conditions météo favorables sur toute la fenêtre de mission.';
+    let detailTxt;
+    if (verdict === 'no') {
+        const baseTxt = reasons.length ? 'Points de vigilance : ' + reasons.join(' · ') : 'Conditions défavorables.';
+        detailTxt = baseTxt + (nextGoTime
+            ? ' · <strong style="color:var(--c-success);">Prochaine plage favorable : ' + fmtNextGo(nextGoTime) + '</strong>'
+            : ' · Aucune plage favorable identifiée dans les prévisions disponibles.');
+    } else {
+        detailTxt = reasons.length ? 'Points de vigilance : ' + reasons.join(' · ') : 'Conditions météo favorables sur toute la fenêtre de mission.';
+    }
 
     const dirCard = (deg) => ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'][Math.round(deg/22.5) % 16];
 
@@ -2572,7 +2622,7 @@ function renderWeather(j, dateISO) {
     `;
     document.getElementById('meteo-body').innerHTML = html;
     setStatus('meteo', verdict === 'no' ? 'err' : verdict === 'warn' ? 'warn' : 'ok', verdictLabel);
-    STATE.weather = { wind, gust, vis, precip, maxPrecipHourly, verdict };
+    STATE.weather = { wind, gust, vis, precip, maxPrecipHourly, verdict, nextGoTime };
     updateGlobalVerdict();
 }
 
