@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Étude de faisabilité — Mission drone</title>
 
     <link rel="preconnect" href="https://fonts.bunny.net">
@@ -34,7 +34,7 @@
         }
 
         * { box-sizing: border-box; }
-        html, body { margin: 0; padding: 0; }
+        html, body { margin: 0; padding: 0; overflow-x: hidden; max-width: 100%; -webkit-text-size-adjust: 100%; touch-action: pan-y; }
         body {
             font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
             background: var(--c-bg);
