@@ -3980,23 +3980,43 @@ async function fetchZicad(lat, lon) {
     // data.gouv.fr (jeu de données « Zones interdites à la captation »).
     // On récupère le GeoJSON France entière une fois, puis filtre client-side.
     if (!_zicadAllFeatures) {
-        const candidateSlugs = [
-            'donnees-zicad-zones-interdites-a-la-captation-de-donnees',
-            'zones-interdites-a-la-captation-des-donnees-par-aeronef-sans-personne-a-bord'
-        ];
         let resourceUrl = null, lastErr = null;
-        for (const slug of candidateSlugs) {
-            try {
-                const r = await fetchWithTimeout(`https://www.data.gouv.fr/api/1/datasets/${slug}/`, {}, 12000);
-                if (!r.ok) { lastErr = new Error('HTTP ' + r.status); continue; }
-                const j = await r.json();
-                const res = (j.resources || []).find(x => {
-                    const f = String(x.format || '').toLowerCase();
-                    const u = String(x.url || '').toLowerCase();
-                    return f === 'geojson' || u.endsWith('.geojson') || u.endsWith('.json');
-                });
-                if (res && res.url) { resourceUrl = res.url; break; }
-            } catch (e) { lastErr = e; }
+        // 1) Recherche directe sur l'API CKAN data.gouv.fr (mot-clé "ZICAD")
+        try {
+            const sr = await fetchWithTimeout('https://www.data.gouv.fr/api/1/datasets/?q=ZICAD&page_size=10', {}, 12000);
+            if (sr.ok) {
+                const sj = await sr.json();
+                for (const ds of (sj.data || [])) {
+                    const res = (ds.resources || []).find(x => {
+                        const f = String(x.format || '').toLowerCase();
+                        const u = String(x.url || '').toLowerCase();
+                        return f === 'geojson' || u.endsWith('.geojson') || u.endsWith('.json');
+                    });
+                    if (res && res.url) { resourceUrl = res.url; break; }
+                }
+            } else { lastErr = new Error('search HTTP ' + sr.status); }
+        } catch (e) { lastErr = e; }
+
+        // 2) Fallback : essais directs de slugs connus
+        if (!resourceUrl) {
+            const candidateSlugs = [
+                'donnees-zicad-zones-interdites-a-la-captation-de-donnees',
+                'zones-interdites-a-la-captation-des-donnees-par-aeronef-sans-personne-a-bord',
+                'zones-interdites-a-la-captation-aerienne-de-donnees'
+            ];
+            for (const slug of candidateSlugs) {
+                try {
+                    const r = await fetchWithTimeout(`https://www.data.gouv.fr/api/1/datasets/${slug}/`, {}, 12000);
+                    if (!r.ok) { lastErr = new Error('HTTP ' + r.status); continue; }
+                    const j = await r.json();
+                    const res = (j.resources || []).find(x => {
+                        const f = String(x.format || '').toLowerCase();
+                        const u = String(x.url || '').toLowerCase();
+                        return f === 'geojson' || u.endsWith('.geojson') || u.endsWith('.json');
+                    });
+                    if (res && res.url) { resourceUrl = res.url; break; }
+                } catch (e) { lastErr = e; }
+            }
         }
         if (!resourceUrl) {
             setStatus('zicad', 'err', 'indisponible');
