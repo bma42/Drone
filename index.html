@@ -250,8 +250,10 @@
         input[type="range"] { width: 100%; padding: 0; accent-color: var(--c-primary); }
         textarea { resize: vertical; min-height: 60px; }
 
-        .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+        .row-2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px; }
+        .row-3 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1fr); gap: 12px; }
+        .row-2 > *, .row-3 > * { min-width: 0; }
+        input[type="date"], input[type="time"], input[type="datetime-local"] { min-width: 0; max-width: 100%; }
         .field-group { margin-bottom: 14px; }
         .field-group:last-child { margin-bottom: 0; }
         .field-group .hint { font-size: 11px; color: var(--c-muted); margin-top: 4px; }
