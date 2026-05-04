@@ -2478,10 +2478,14 @@ async function fetchEnvironment(lat, lon, radius) {
     }
 }
 
+// Icône hélicoptère monochrome (héritage `currentColor`) — analogue à ✈ pour les héliports / hélistations.
+const HELI_SVG = `<svg viewBox="0 0 24 16" width="12" height="8" fill="currentColor" style="vertical-align:-1px; display:inline-block;"><rect x="1.5" y="0.8" width="21" height="1.6" rx="0.8"/><rect x="11.2" y="2.3" width="1.6" height="3.2"/><path d="M4.5 5.3 H17 L20 8.8 H22 V10.4 H19.5 L18 9.7 H17 V11.4 H4 L3 8 Z"/><rect x="3.5" y="13.5" width="14" height="1.6" rx="0.8"/></svg>`;
+
 function renderEnvironment(platforms, lat0, lon0) {
+    const symFor = k => k === 'aerodrome' ? '✈' : HELI_SVG; // héliport ET hélistation
     const iconFor = (p) => {
         const color = p.kind === 'aerodrome' ? '#dc2626' : p.kind === 'heliport' ? '#d97706' : '#0891b2';
-        const sym = p.kind === 'aerodrome' ? '✈' : p.kind === 'heliport' ? '🚁' : '○';
+        const sym = symFor(p.kind);
         const label = p.icao ? p.icao : (p.name || p.kind);
         return L.divIcon({
             className: '', iconSize: null, iconAnchor: [0, 0],
@@ -2495,7 +2499,7 @@ function renderEnvironment(platforms, lat0, lon0) {
     });
 
     const labelKind = k => k === 'aerodrome' ? 'Aérodrome' : k === 'heliport' ? 'Héliport' : 'Hélistation';
-    const symKind   = k => k === 'aerodrome' ? '✈' : k === 'heliport' ? '🚁' : '○';
+    const symKind   = symFor;
 
     const tableRows = platforms.length === 0
         ? `<tr><td colspan="4" class="empty-state">Aucune plateforme aéronautique recensée dans un rayon de 20 km.</td></tr>`
