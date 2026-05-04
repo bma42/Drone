@@ -1257,7 +1257,7 @@
         <section class="card">
             <div class="card-head">
                 <div class="card-num">10</div>
-                <div class="card-title">Voies rapides routières<span class="sub">IGN BDTOPO · autoroutes &amp; routes nationales · conditions de circulation · rayon 20 km</span></div>
+                <div class="card-title">Voies rapides routières<span class="sub">IGN BDTOPO · autoroutes &amp; routes nationales · filtrées sur la zone d'évolution</span></div>
                 <button type="button" class="no-print" onclick="if(STATE.lat) fetchTrafficRoads(STATE.lat, STATE.lon)" title="Rafraîchir" style="background:transparent; border:1px solid var(--c-border-strong); border-radius:4px; padding:3px 9px; cursor:pointer; font-size:11px; color:var(--c-text-soft); margin-right:8px;">↻ Rafraîchir</button>
                 <span class="card-status" id="status-traffic">en attente</span>
             </div>
@@ -1635,6 +1635,10 @@ function updateElongation(val) {
     if (airspaceElongationCircle) airspaceElongationCircle.setRadius(STATE.radius);
     if (railElongationCircle) railElongationCircle.setRadius(STATE.radius);
     if (naturalElongationCircle) naturalElongationCircle.setRadius(STATE.radius);
+    if (trafficElongationCircle) trafficElongationCircle.setRadius(STATE.radius);
+    // Le module §10 affiche uniquement les voies dans la zone d'évolution
+    // → on relance le rendu (filtre client) à chaque changement de rayon.
+    if (STATE.traffic && STATE.lat != null) renderTrafficRoads(STATE.traffic, STATE.lat, STATE.lon);
     // Recadrage des cartes pour englober la nouvelle élongation (debounce léger pour éviter spam pendant slider drag)
     clearTimeout(_mapsRefitDebounce);
     _mapsRefitDebounce = setTimeout(refitAllMaps, 250);
@@ -3110,17 +3114,17 @@ function trafficRoadCenter(geom) {
 }
 
 function trafficClassifyRoad(p) {
-    // BDTOPO V3 expose tantôt `cl_admin`, tantôt `cpx_classement_administratif`
-    const cl  = String(p.cl_admin || p.classement_administratif || p.cpx_classement_administratif || '').toLowerCase();
+    // Le WFS public BDTOPO V3 n'expose pas cl_admin / cpx_classement_administratif :
+    // on s'appuie sur `numero` (A6, N88, D108…), `importance` (1-5) et `nature`.
     const nat = String(p.nature || '').toLowerCase();
     const imp = parseInt(p.importance, 10);
-    const numero = String(p.numero || p.cpx_numero || p.numero_route || '').toUpperCase();
-    if (cl.includes('autoroute') || nat.includes('autorout') || imp === 1 || /^A\d/.test(numero))
-        return { kind: 'autoroute', label: 'Autoroute', color: '#dc2626', priority: 3 };
-    if (cl.includes('national') || /^N\d/.test(numero) || /^RN\s*\d/.test(numero))
-        return { kind: 'nationale', label: 'Route nationale', color: '#d97706', priority: 2 };
-    if (nat.includes('type autoroutier') || (imp === 2 && nat.includes('2 chauss')))
-        return { kind: 'voie-rapide', label: 'Voie rapide', color: '#b45309', priority: 2 };
+    const num = String(p.numero || p.cpx_numero || '').trim().toUpperCase();
+    const isA = /^A[\s\-]?\d/.test(num);
+    const isN = /^N[\s\-]?\d/.test(num) || /^RN[\s\-]?\d/.test(num);
+    if (isA) return { kind: 'autoroute', label: 'Autoroute', color: '#dc2626', priority: 3, num };
+    if (isN) return { kind: 'nationale', label: 'Route nationale', color: '#d97706', priority: 2, num };
+    if (nat.includes('type autoroutier')) return { kind: 'voie-rapide', label: 'Voie rapide', color: '#b45309', priority: 2, num };
+    if (imp === 1) return { kind: 'voie-rapide', label: 'Voie rapide', color: '#b45309', priority: 2, num };
     return null;
 }
 
@@ -3141,9 +3145,11 @@ async function fetchTrafficRoads(lat, lon) {
     setStatus('traffic', 'load');
     document.getElementById('traffic-body').innerHTML = `<div class="empty-state">⏳ Récupération des autoroutes / routes nationales (IGN BDTOPO)…</div>`;
 
-    // Bbox 20 km
-    const dLat = 20000 / 111000;
-    const dLon = 20000 / (111000 * Math.cos(lat * Math.PI / 180));
+    // Bbox 10 km : couvre largement n'importe quelle zone d'évolution drone
+    // (max 2 km avec observateur), avec une marge confortable pour le risque de proximité.
+    const FETCH_RADIUS = 10000;
+    const dLat = FETCH_RADIUS / 111000;
+    const dLon = FETCH_RADIUS / (111000 * Math.cos(lat * Math.PI / 180));
     const bbox = `${(lon - dLon).toFixed(5)},${(lat - dLat).toFixed(5)},${(lon + dLon).toFixed(5)},${(lat + dLat).toFixed(5)}`;
 
     const params = new URLSearchParams({
@@ -3166,13 +3172,15 @@ async function fetchTrafficRoads(lat, lon) {
             const c = trafficRoadCenter(f.geometry);
             if (!c) return null;
             const p = f.properties || {};
+            // Distance minimale du tracé au point d'opération (pas du centroïde)
+            const minD = minDistToGeom(lat, lon, f.geometry);
             return {
                 geom: f.geometry,
                 center: c,
-                dist: haversine(lat, lon, c.lat, c.lon),
+                dist: minD,
                 cls,
                 nature: p.nature || '—',
-                numero: String(p.numero || p.cpx_numero || p.numero_route || '').toUpperCase(),
+                numero: cls.num || String(p.numero || p.cpx_numero || '').toUpperCase(),
                 voies: parseInt(p.nombre_de_voies || p.nb_voies, 10) || null,
                 largeur: parseFloat(p.largeur_de_chaussee) || null,
                 position: p.position_par_rapport_au_sol,
@@ -3180,8 +3188,8 @@ async function fetchTrafficRoads(lat, lon) {
             };
         }).filter(Boolean).sort((a, b) => a.dist - b.dist);
 
-        renderTrafficRoads(roads, lat, lon);
         STATE.traffic = roads;
+        renderTrafficRoads(roads, lat, lon);
         return roads;
     } catch (e) {
         console.warn('Traffic IGN:', e);
@@ -3193,18 +3201,24 @@ async function fetchTrafficRoads(lat, lon) {
     }
 }
 
-function renderTrafficRoads(roads, lat, lon) {
+function renderTrafficRoads(roadsAll, lat, lon) {
+    // Filtrage sur la zone d'évolution drone : on ne garde que les voies dont
+    // le tracé pénètre dans le cercle d'élongation (distance min ≤ STATE.radius).
+    const R = STATE.radius || 1000;
+    const roads = roadsAll.filter(r => r.dist <= R);
+
     const autoroutes = roads.filter(r => r.cls.kind === 'autoroute');
     const nationales = roads.filter(r => r.cls.kind === 'nationale' || r.cls.kind === 'voie-rapide');
     const closest = roads[0];
+    const closestOutside = !closest && roadsAll[0] ? roadsAll[0] : null;
     const sature = roads.filter(r => r.flow.level === 'sature');
     const dense  = roads.filter(r => r.flow.level === 'dense');
 
     const flowBadge = (f) => `<span style="background:${f.color}; color:#fff; font-size:10px; font-weight:700; padding:1px 7px; border-radius:999px;">${f.label}</span>`;
 
     const rows = roads.length === 0
-        ? `<tr><td colspan="5" class="empty-state">Aucune autoroute ni route nationale dans 20 km.</td></tr>`
-        : roads.slice(0, 10).map(r => `
+        ? `<tr><td colspan="5" class="empty-state">Aucune autoroute ni route nationale dans la zone d'évolution${closestOutside ? ` (la plus proche : ${closestOutside.cls.label}${closestOutside.numero ? ' ' + closestOutside.numero : ''} à ${fmtDist(closestOutside.dist)})` : ''}.</td></tr>`
+        : roads.slice(0, 12).map(r => `
             <tr>
                 <td><strong>${r.cls.label}${r.numero ? ' ' + r.numero : ''}</strong><br><span style="color:var(--c-muted); font-size:11px;">${r.nature}</span></td>
                 <td style="font-size:11px;">${r.voies ? r.voies + ' voies' : '—'}${r.largeur ? '<br>' + r.largeur.toFixed(1) + ' m' : ''}</td>
@@ -3218,14 +3232,14 @@ function renderTrafficRoads(roads, lat, lon) {
             <div class="metric ${autoroutes.length ? 'danger' : ''}"><div class="v">${autoroutes.length}</div><div class="k">Autoroutes</div></div>
             <div class="metric ${nationales.length ? 'alert' : ''}"><div class="v">${nationales.length}</div><div class="k">Nationales / voies rapides</div></div>
             <div class="metric ${sature.length ? 'danger' : dense.length ? 'alert' : ''}"><div class="v">${sature.length + dense.length}</div><div class="k">Tronçons chargés</div></div>
-            <div class="metric"><div class="v">${closest ? fmtDist(closest.dist) : '—'}</div><div class="k">Plus proche</div></div>
+            <div class="metric"><div class="v">${closest ? fmtDist(closest.dist) : closestOutside ? fmtDist(closestOutside.dist) : '—'}</div><div class="k">${closest ? 'Plus proche' : 'Hors zone'}</div></div>
         </div>
         <div id="traffic-map" style="height:300px; width:100%; border-radius:6px; border:1px solid var(--c-border); margin-bottom:12px;"></div>
         <table class="tbl">
             <thead><tr><th>Voie</th><th>Voies / largeur</th><th>Conditions</th><th>Position</th><th style="text-align:right;">Distance</th></tr></thead>
             <tbody>${rows}</tbody>
         </table>
-        <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source IGN BDTOPO · vitesse moyenne VL (mesure terrain) comparée à la vitesse libre théorique pour estimer la fluidité (Fluide ≥ 85 % · Dense 65–85 % · Saturé < 65 %).</div>
+        <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source IGN BDTOPO · zone d'évolution&nbsp;: ${R} m · ${roadsAll.length} voie(s) classée(s) dans 10 km, ${roads.length} dans la zone. Fluidité&nbsp;: vitesse moyenne VL (mesure terrain) / vitesse libre théorique (Fluide ≥ 85 % · Dense 65–85 % · Saturé < 65 %).</div>
         <div style="margin-top:10px; padding:8px 12px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; font-size:12px;">
             <strong style="color:var(--c-danger);">⚠ Risque chute drone sur chaussée</strong>
             <span style="color:var(--c-muted);">— prévoir périmètre latéral aux voies, pas de survol direct, coordination CRS / DIR si élongation traverse l'axe.</span>
@@ -3272,7 +3286,7 @@ function initTrafficMap(roads, lat, lon) {
     trafficElongationCircle = STATE.radius
         ? L.circle([lat, lon], { radius: STATE.radius, color: '#d97706', fillColor: '#fbbf24', fillOpacity: .15, weight: 2 }).addTo(trafficMap).bindPopup(`<b>Élongation de vol</b><br>${STATE.radius} m`)
         : null;
-    fitMapToRadius(trafficMap, lat, lon, 20000);
+    fitMapToRadius(trafficMap, lat, lon, Math.max((STATE.radius || 1000) * 1.4, 800));
     setTimeout(() => trafficMap.invalidateSize(), 100);
 }
 
