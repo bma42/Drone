@@ -253,7 +253,23 @@
         .row-2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px; }
         .row-3 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1fr); gap: 12px; }
         .row-2 > *, .row-3 > * { min-width: 0; }
-        input[type="date"], input[type="time"], input[type="datetime-local"] { min-width: 0; max-width: 100%; }
+        /* iOS Safari : neutralise le rendu natif des inputs date/heure pour qu'ils
+           se comportent comme un input text classique (même hauteur, contenu visible,
+           pas de débordement). font-size 16px évite aussi le zoom auto au focus. */
+        input[type="date"], input[type="time"], input[type="datetime-local"] {
+            -webkit-appearance: none;
+            appearance: none;
+            min-width: 0;
+            max-width: 100%;
+            font-size: 16px;
+            line-height: 1.2;
+            min-height: 38px;
+            display: block;
+        }
+        input[type="date"]::-webkit-date-and-time-value,
+        input[type="time"]::-webkit-date-and-time-value { text-align: left; }
+        input[type="date"]::-webkit-calendar-picker-indicator,
+        input[type="time"]::-webkit-calendar-picker-indicator { margin-left: 4px; }
         .field-group { margin-bottom: 14px; }
         .field-group:last-child { margin-bottom: 0; }
         .field-group .hint { font-size: 11px; color: var(--c-muted); margin-top: 4px; }
@@ -1047,9 +1063,9 @@
 
                 <div id="arrete-pref-box" style="display:none;" class="field-group">
                     <label class="lbl">Détails de l'arrêté préfectoral</label>
-                    <div class="row-2" style="min-width:0;">
-                        <input type="text" placeholder="Numéro de l'arrêté…" style="min-width:0; width:100%; max-width:100%; box-sizing:border-box;">
-                        <input type="date" style="min-width:0; width:100%; max-width:100%; box-sizing:border-box;">
+                    <div class="row-2">
+                        <input type="text" placeholder="Numéro de l'arrêté…">
+                        <input type="date">
                     </div>
                 </div>
                 <div id="finalite-box" style="display:none;" class="field-group">
