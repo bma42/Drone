@@ -471,12 +471,37 @@
         }
         .sig-clear:hover { color: var(--c-danger); border-color: var(--c-danger); }
 
-        /* ---------- Footer (PDF) ---------- */
+        /* ---------- Footer (PDF + écran) ---------- */
         .doc-footer {
-            margin-top: 18px; padding: 10px 18px;
-            font-size: 10px; color: var(--c-muted);
-            border-top: 1px solid var(--c-border);
-            display: flex; justify-content: space-between;
+            margin-top: 22px; padding: 18px 22px;
+            background: linear-gradient(180deg, #f7f9fc 0%, #eef3fb 100%);
+            border: 1px solid var(--c-border);
+            border-radius: var(--radius);
+            color: var(--c-text-soft);
+            font-size: 11px; line-height: 1.55;
+            box-shadow: var(--shadow-sm);
+        }
+        .doc-footer-grid {
+            display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px;
+        }
+        @media (max-width: 720px) { .doc-footer-grid { grid-template-columns: 1fr; gap: 14px; } }
+        .doc-footer h4 {
+            margin: 0 0 6px; font-size: 11px; font-weight: 700;
+            color: var(--c-primary); text-transform: uppercase; letter-spacing: .6px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .doc-footer h4 svg { width: 13px; height: 13px; flex-shrink: 0; }
+        .doc-footer ul { margin: 0; padding: 0 0 0 14px; font-size: 11px; }
+        .doc-footer ul li { margin-bottom: 2px; }
+        .doc-footer-bottom {
+            margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--c-border-strong);
+            display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+            font-size: 10.5px; color: var(--c-muted);
+        }
+        .doc-footer-bottom strong { color: var(--c-primary); }
+        @media print {
+            .doc-footer { background: #fff; box-shadow: none; }
+            .doc-footer h4 { color: #1a2332; }
         }
 
         /* ---------- Responsive ---------- */
@@ -624,6 +649,10 @@
             <button type="submit" style="margin-top:14px; width:100%; padding:12px; background:#0b3d91; color:#fff; border:0; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit;">Se connecter</button>
             <button type="button" id="lock-enroll-btn" onclick="enrollWebAuthn()" style="display:none; margin-top:8px; width:100%; padding:8px; background:transparent; color:#0b3d91; border:1px dashed #0b3d91; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; font-family:inherit;">⨁ Activer Face ID / Touch ID pour cet appareil</button>
         </form>
+        <div style="margin-top:22px; padding-top:14px; border-top:1px solid #e3e7ec; font-size:11px; color:#6b7280; line-height:1.5;">
+            <div style="font-weight:600; color:#0b3d91;">Créé par Sylvain MOTTER</div>
+            <div style="margin-top:2px;">Outil interne — accès restreint au dispositif drone</div>
+        </div>
     </div>
 </div>
 
@@ -1593,8 +1622,53 @@
         </section>
 
         <div class="doc-footer">
-            <span>Document généré localement — données auto&nbsp;: Open-Meteo, OpenStreetMap, BAN.</span>
-            <span id="footer-date">—</span>
+            <div class="doc-footer-grid">
+                <div>
+                    <h4>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                        Sources de données
+                    </h4>
+                    <ul>
+                        <li>IGN Géoplateforme — BDTOPO, orthophotos, ZICAD</li>
+                        <li>Open-Meteo — météo, point de rosée, élévation</li>
+                        <li>OpenStreetMap / Overpass — voies rapides</li>
+                        <li>SIA / IGN — restrictions UAS, espaces aériens</li>
+                        <li>BAN — adresses · GéoRisques — Seveso · SNCF Navitia</li>
+                        <li>OpenAIP, CheckWX — METAR/TAF · NOAA SWPC — Kp</li>
+                        <li>SGDSN — ZICAD (arrêté du 10/04/2017, CT L. 6224-1)</li>
+                    </ul>
+                </div>
+                <div>
+                    <h4>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        Sécurité &amp; confidentialité
+                    </h4>
+                    <ul>
+                        <li>Authentification matricule + nom (SHA-256)</li>
+                        <li>Biométrie WebAuthn (Face&nbsp;ID / Touch&nbsp;ID / Hello)</li>
+                        <li>Aucune donnée envoyée à un serveur tiers</li>
+                        <li>Génération PDF locale, signature numérique sur l'appareil</li>
+                        <li>HTTPS bout en bout (GitHub Pages)</li>
+                        <li>Stockage local chiffré par le navigateur</li>
+                    </ul>
+                </div>
+                <div>
+                    <h4>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        Conception
+                    </h4>
+                    <ul style="list-style:none; padding-left:0;">
+                        <li><strong style="color:var(--c-text);">Sylvain MOTTER</strong></li>
+                        <li>Brigadier-Chef · Matricule 496397</li>
+                        <li style="margin-top:6px; color:var(--c-muted);">Outil interne d'aide à la décision opérationnelle</li>
+                        <li style="color:var(--c-muted);">Étude de faisabilité — Mission drone</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="doc-footer-bottom">
+                <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong></span>
+            </div>
         </div>
 
     </div>
