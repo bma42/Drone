@@ -3123,7 +3123,7 @@ function trafficClassifyRoad(tags) {
         return { kind: 'autoroute', label: 'Autoroute', color: '#dc2626', priority: 3, num: ref };
     if (isN || (hw === 'trunk' && ref))
         return { kind: 'nationale', label: 'Route nationale', color: '#d97706', priority: 2, num: ref };
-    if (hw === 'trunk' || hw === 'motorway_link' || hw === 'trunk_link')
+    if (hw === 'trunk')
         return { kind: 'voie-rapide', label: 'Voie rapide', color: '#b45309', priority: 2, num: ref };
     return null;
 }
@@ -3144,9 +3144,7 @@ async function fetchTrafficRoads(lat, lon) {
     const query = `[out:json][timeout:25];
 (
   way["highway"="motorway"](around:${FETCH_RADIUS},${lat},${lon});
-  way["highway"="motorway_link"](around:${FETCH_RADIUS},${lat},${lon});
   way["highway"="trunk"](around:${FETCH_RADIUS},${lat},${lon});
-  way["highway"="trunk_link"](around:${FETCH_RADIUS},${lat},${lon});
   way["highway"="primary"]["ref"~"^N\\\\s*\\\\d"](around:${FETCH_RADIUS},${lat},${lon});
   way["ref"~"^A\\\\s*\\\\d"](around:${FETCH_RADIUS},${lat},${lon});
 );
