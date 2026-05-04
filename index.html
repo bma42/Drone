@@ -1479,6 +1479,7 @@ STATE.layers.towers    = L.layerGroup().addTo(map);
 STATE.layers.lines     = L.layerGroup().addTo(map);
 STATE.layers.buildings = L.layerGroup().addTo(map);
 STATE.layers.wind      = L.layerGroup().addTo(map);
+STATE.layers.roads     = L.layerGroup().addTo(map);
 
 L.control.layers(null, {
     "Aérodromes / héliports": STATE.layers.heliports,
@@ -1486,6 +1487,7 @@ L.control.layers(null, {
     "Lignes HT": STATE.layers.lines,
     "Éoliennes": STATE.layers.wind,
     "Bâtiments hauts": STATE.layers.buildings,
+    "Autoroutes / RN": STATE.layers.roads,
 }, { collapsed: true }).addTo(map);
 
 // Bouton plein écran pour la carte (toggle natif Fullscreen API)
@@ -3243,12 +3245,20 @@ function initTrafficMap(roads, lat, lon) {
     trafficMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 13);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', crossOrigin: true }).addTo(trafficMap);
 
-    roads.slice(0, 120).forEach(r => {
+    // Tracé sur la mini-carte du module + sur la carte principale (calque "Autoroutes / RN")
+    if (STATE.layers && STATE.layers.roads) STATE.layers.roads.clearLayers();
+    roads.forEach(r => {
         try {
             const weight = r.cls.kind === 'autoroute' ? 4 : 3;
+            const popup = `<b>${r.cls.label}${r.numero ? ' ' + r.numero : ''}</b><br>${r.nature}${r.voies ? '<br>' + r.voies + ' voies' : ''}<br>Conditions&nbsp;: <b style="color:${r.flow.color};">${r.flow.label}</b>${r.flow.vMoy ? ' (' + Math.round(r.flow.vMoy) + ' km/h)' : ''}<br>${fmtDist(r.dist)}`;
             L.geoJSON(r.geom, { style: { color: r.cls.color, weight, opacity: .9 } })
-              .bindPopup(`<b>${r.cls.label}${r.numero ? ' ' + r.numero : ''}</b><br>${r.nature}${r.voies ? '<br>' + r.voies + ' voies' : ''}<br>Conditions&nbsp;: <b style="color:${r.flow.color};">${r.flow.label}</b>${r.flow.vMoy ? ' (' + Math.round(r.flow.vMoy) + ' km/h)' : ''}<br>${fmtDist(r.dist)}`)
+              .bindPopup(popup)
               .addTo(trafficMap);
+            if (STATE.layers && STATE.layers.roads) {
+                L.geoJSON(r.geom, { style: { color: r.cls.color, weight: Math.max(2, weight - 1), opacity: .85 } })
+                  .bindPopup(popup)
+                  .addTo(STATE.layers.roads);
+            }
         } catch (e) { /* skip */ }
     });
 
