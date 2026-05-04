@@ -898,6 +898,11 @@
                         <div class="hint no-print">Niveau de batterie déclenchant l'ordre de retour / atterrissage immédiat.</div>
                     </div>
                 </div>
+                <button type="button" id="sat-map-btn" class="no-print" onclick="toggleSatMap()" style="margin-top:10px; width:100%; padding:11px 14px; background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px; height:16px;"><circle cx="12" cy="12" r="3"/><path d="M12 1v6"/><path d="M12 17v6"/><path d="M4.22 4.22l4.24 4.24"/><path d="M15.54 15.54l4.24 4.24"/><path d="M1 12h6"/><path d="M17 12h6"/><path d="M4.22 19.78l4.24-4.24"/><path d="M15.54 8.46l4.24-4.24"/></svg>
+                    <span id="sat-map-btn-label">Ajouter carte satellite</span>
+                </button>
+                <div id="map-sat" style="display:none; height:320px; width:100%; margin-top:10px; border-radius:var(--radius-sm); border:1px solid var(--c-border);"></div>
             </div>
         </section>
         <!-- §2 Identification -->
@@ -1491,6 +1496,47 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
 let marker = L.marker([0, 0]).addTo(map);
 let rangeCircle = L.circle([0, 0], { color: '#0066cc', fillColor: '#0066cc', fillOpacity: .12, weight: 2 }).addTo(map);
 
+/* -------- Carte satellite secondaire (toggle) -------- */
+let satMap = null, satMarker = null, satRangeCircle = null;
+function toggleSatMap() {
+    const div = document.getElementById('map-sat');
+    const label = document.getElementById('sat-map-btn-label');
+    if (div.style.display === 'none' || !div.style.display) {
+        div.style.display = 'block';
+        if (!satMap) {
+            const c = (STATE.lat != null) ? [STATE.lat, STATE.lon] : map.getCenter();
+            const z = map.getZoom();
+            satMap = L.map('map-sat', { scrollWheelZoom: false }).setView(c, z);
+            // IGN orthophotos (couverture France haute résolution) + fallback Esri World Imagery (monde)
+            L.tileLayer(
+                'https://data.geopf.fr/wmts?layer=ORTHOIMAGERY.ORTHOPHOTOS&style=normal&tilematrixset=PM&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image/jpeg&TileMatrix={z}&TileCol={x}&TileRow={y}',
+                { attribution: '© IGN-F / Géoportail · © Esri', maxZoom: 19, errorTileUrl: '' }
+            ).addTo(satMap);
+            L.tileLayer(
+                'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                { attribution: '© Esri', maxZoom: 19, opacity: 0 }
+            ).addTo(satMap);
+            satMarker = L.marker([0, 0]).addTo(satMap);
+            satRangeCircle = L.circle([0, 0], { color: '#fbbf24', fillColor: '#fbbf24', fillOpacity: .15, weight: 2 }).addTo(satMap);
+            // Synchronisation avec la carte principale (déplacement / zoom)
+            map.on('move zoom', () => {
+                if (!satMap) return;
+                satMap.setView(map.getCenter(), map.getZoom(), { animate: false });
+            });
+        }
+        if (STATE.lat != null) {
+            satMap.setView([STATE.lat, STATE.lon], Math.max(map.getZoom(), 14));
+            satMarker.setLatLng([STATE.lat, STATE.lon]);
+            satRangeCircle.setLatLng([STATE.lat, STATE.lon]).setRadius(STATE.radius || 1000);
+        }
+        setTimeout(() => satMap.invalidateSize(), 100);
+        label.textContent = 'Masquer carte satellite';
+    } else {
+        div.style.display = 'none';
+        label.textContent = 'Ajouter carte satellite';
+    }
+}
+
 STATE.layers.heliports = L.layerGroup().addTo(map);
 STATE.layers.towers    = L.layerGroup().addTo(map);
 STATE.layers.lines     = L.layerGroup().addTo(map);
@@ -1643,6 +1689,7 @@ function updateElongation(val) {
     document.getElementById('elong-num').innerText = val;
     STATE.radius = parseInt(val);
     rangeCircle.setRadius(STATE.radius);
+    if (satRangeCircle) satRangeCircle.setRadius(STATE.radius);
     // Réplique le cercle d'élongation sur les cartes secondaires
     if (linesElongationCircle) linesElongationCircle.setRadius(STATE.radius);
     if (antennasElongationCircle) antennasElongationCircle.setRadius(STATE.radius);
@@ -2007,6 +2054,9 @@ function selectAddr(label, lat, lon, dept) {
     map.setView([lat, lon], 14);
     marker.setLatLng([lat, lon]);
     rangeCircle.setLatLng([lat, lon]);
+    if (satMarker) satMarker.setLatLng([lat, lon]);
+    if (satRangeCircle) satRangeCircle.setLatLng([lat, lon]);
+    if (satMap) satMap.setView([lat, lon], Math.max(map.getZoom(), 14));
     updateElongation(document.getElementById('elong-slider').value);
     setTimeout(() => map.invalidateSize(), 200);
     refreshAuto();
