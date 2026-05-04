@@ -3230,7 +3230,7 @@ function renderTrafficRoads(roadsAll, lat, lon) {
         ? `<tr><td colspan="5" class="empty-state">Aucune autoroute ni route nationale dans 10 km.</td></tr>`
         : roads.slice(0, 12).map(r => `
             <tr style="${r.inZone ? 'background:#fef3c7;' : ''}">
-                <td><strong>${r.cls.label}${r.numero ? ' ' + r.numero : ''}</strong>${r.inZone ? ' <span style="background:#d97706; color:#fff; font-size:9px; font-weight:700; padding:1px 6px; border-radius:999px; margin-left:4px;">EN ZONE</span>' : ''}<br><span style="color:var(--c-muted); font-size:11px;">${r.nature}</span></td>
+                <td><strong>${r.cls.label}${r.numero ? ' ' + r.numero : ''}</strong>${r.inZone ? ' <span style="background:#d97706; color:#fff; font-size:9px; font-weight:700; padding:1px 6px; border-radius:999px; margin-left:4px;">EN ZONE</span>' : ''}${r.name ? '<br><span style="color:var(--c-muted); font-size:11px;">' + r.name + '</span>' : ''}</td>
                 <td style="font-size:11px;">${r.voies ? r.voies + ' voies' : '—'}${r.largeur ? '<br>' + r.largeur.toFixed(1) + ' m' : ''}</td>
                 <td>${flowBadge(r.flow)}${r.flow.vMoy ? '<br><span style="font-size:10px; color:var(--c-muted);">' + Math.round(r.flow.vMoy) + ' / ' + r.flow.vLibre + ' km/h</span>' : ''}</td>
                 <td style="font-size:11px;">${r.position == 0 ? 'Au sol' : r.position > 0 ? 'Surélevé' : 'Souterrain'}</td>
