@@ -1257,7 +1257,7 @@
         <section class="card">
             <div class="card-head">
                 <div class="card-num">10</div>
-                <div class="card-title">Voies rapides routières<span class="sub">IGN BDTOPO · autoroutes &amp; routes nationales · conditions de circulation · rayon 5 km</span></div>
+                <div class="card-title">Voies rapides routières<span class="sub">IGN BDTOPO · autoroutes &amp; routes nationales · conditions de circulation · rayon 20 km</span></div>
                 <button type="button" class="no-print" onclick="if(STATE.lat) fetchTrafficRoads(STATE.lat, STATE.lon)" title="Rafraîchir" style="background:transparent; border:1px solid var(--c-border-strong); border-radius:4px; padding:3px 9px; cursor:pointer; font-size:11px; color:var(--c-text-soft); margin-right:8px;">↻ Rafraîchir</button>
                 <span class="card-status" id="status-traffic">en attente</span>
             </div>
@@ -3133,9 +3133,9 @@ async function fetchTrafficRoads(lat, lon) {
     setStatus('traffic', 'load');
     document.getElementById('traffic-body').innerHTML = `<div class="empty-state">⏳ Récupération des autoroutes / routes nationales (IGN BDTOPO)…</div>`;
 
-    // Bbox 5 km
-    const dLat = 5000 / 111000;
-    const dLon = 5000 / (111000 * Math.cos(lat * Math.PI / 180));
+    // Bbox 20 km
+    const dLat = 20000 / 111000;
+    const dLon = 20000 / (111000 * Math.cos(lat * Math.PI / 180));
     const bbox = `${(lon - dLon).toFixed(5)},${(lat - dLat).toFixed(5)},${(lon + dLon).toFixed(5)},${(lat + dLat).toFixed(5)}`;
 
     const params = new URLSearchParams({
@@ -3143,11 +3143,11 @@ async function fetchTrafficRoads(lat, lon) {
         typenames: 'BDTOPO_V3:troncon_de_route',
         bbox: bbox + ',EPSG:4326',
         srsname: 'EPSG:4326',
-        count: 500, outputFormat: 'application/json'
+        count: 1500, outputFormat: 'application/json'
     });
 
     try {
-        const r = await fetchWithTimeout('https://data.geopf.fr/wfs/ows?' + params.toString(), {}, 15000);
+        const r = await fetchWithTimeout('https://data.geopf.fr/wfs/ows?' + params.toString(), {}, 20000);
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const j = await r.json();
         const features = j.features || [];
@@ -3195,7 +3195,7 @@ function renderTrafficRoads(roads, lat, lon) {
     const flowBadge = (f) => `<span style="background:${f.color}; color:#fff; font-size:10px; font-weight:700; padding:1px 7px; border-radius:999px;">${f.label}</span>`;
 
     const rows = roads.length === 0
-        ? `<tr><td colspan="5" class="empty-state">Aucune autoroute ni route nationale dans 5 km.</td></tr>`
+        ? `<tr><td colspan="5" class="empty-state">Aucune autoroute ni route nationale dans 20 km.</td></tr>`
         : roads.slice(0, 10).map(r => `
             <tr>
                 <td><strong>${r.cls.label}${r.numero ? ' ' + r.numero : ''}</strong><br><span style="color:var(--c-muted); font-size:11px;">${r.nature}</span></td>
@@ -3256,7 +3256,7 @@ function initTrafficMap(roads, lat, lon) {
     trafficElongationCircle = STATE.radius
         ? L.circle([lat, lon], { radius: STATE.radius, color: '#d97706', fillColor: '#fbbf24', fillOpacity: .15, weight: 2 }).addTo(trafficMap).bindPopup(`<b>Élongation de vol</b><br>${STATE.radius} m`)
         : null;
-    fitMapToRadius(trafficMap, lat, lon, 5000);
+    fitMapToRadius(trafficMap, lat, lon, 20000);
     setTimeout(() => trafficMap.invalidateSize(), 100);
 }
 
