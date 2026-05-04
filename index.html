@@ -365,6 +365,7 @@
         /* ---------- Elevation chart ---------- */
         .elev-wrap { display: flex; gap: 16px; align-items: stretch; }
         .elev-svg { flex: 1; background: #f7f9fc; border: 1px solid var(--c-border); border-radius: var(--radius-sm); padding: 8px; }
+        .elev-charts { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
         .elev-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-width: 180px; }
 
         /* ---------- Kp index gauge ---------- */
@@ -4812,7 +4813,7 @@ function renderElevation(elevs, radius) {
 
     document.getElementById('elev-body').innerHTML = `
         <div style="font-size:11px; color:var(--c-muted); margin-bottom:8px;">Coupes du terrain sur 2 axes (Nord–Sud et Est–Ouest) autour du point de mission. Trait rouge au centre = zone de décollage. ▲ point le plus haut, ▼ le plus bas.</div>
-        <div class="elev-charts" style="display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-bottom:14px;">${charts}</div>
+        <div class="elev-charts" style="margin-bottom:14px;">${charts}</div>
         <div class="elev-stats" style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:14px;">
             <div class="metric"><div class="v">${center.toFixed(0)} <span style="font-size:11px; font-weight:500;">m</span></div><div class="k">Point de mission</div></div>
             <div class="metric"><div class="v">${min.toFixed(0)} <span style="font-size:11px; font-weight:500;">m</span></div><div class="k">Altitude min globale</div></div>
