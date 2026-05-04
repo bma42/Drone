@@ -4989,7 +4989,7 @@ function drawElevAxisOnMainMap(s, radius, heightMax, flightCeiling) {
     L.marker(posAt(s.iMax), {
         icon: L.divIcon({
             className: '', iconSize: null, iconAnchor: [0, 0],
-            html: `<div style="background:${s.color}; color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px; border:1.5px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.5);">▲ ${s.vMax.toFixed(0)} m</div>`
+            html: `<div style="background:${s.color}; color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px; border:1.5px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.5); white-space:nowrap;">▲ ${s.vMax.toFixed(0)}&nbsp;m</div>`
         })
     }).bindPopup(`<b>Point haut de la coupe ${s.name}</b><br>Altitude ${s.vMax.toFixed(0)} m · ${dirOf(s.iMax)}`)
       .addTo(STATE.layers.elevAxis);
@@ -4997,7 +4997,7 @@ function drawElevAxisOnMainMap(s, radius, heightMax, flightCeiling) {
     L.marker(posAt(s.iMin), {
         icon: L.divIcon({
             className: '', iconSize: null, iconAnchor: [0, 0],
-            html: `<div style="background:${s.color}; color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px; border:1.5px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.5);">▼ ${s.vMin.toFixed(0)} m</div>`
+            html: `<div style="background:${s.color}; color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px; border:1.5px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.5); white-space:nowrap;">▼ ${s.vMin.toFixed(0)}&nbsp;m</div>`
         })
     }).bindPopup(`<b>Point bas de la coupe ${s.name}</b><br>Altitude ${s.vMin.toFixed(0)} m · ${dirOf(s.iMin)}`)
       .addTo(STATE.layers.elevAxis);
