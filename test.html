@@ -3,96 +3,112 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carte 3D Minimaliste</title>
-    <link href="maplibre-gl.css" rel="stylesheet" />
+    <title>Carte 3D Urbaine Minimaliste</title>
+    
+    <!-- Fichiers MapLibre GL JS -->
+    <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; background-color: #f2f2f2; }
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #fdfdfd; }
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        
+        /* Masquer les contrôles par défaut pour le minimalisme ou les styliser */
+        .maplibregl-ctrl-attrib { display: none; }
     </style>
 </head>
 <body>
 
 <div id="map"></div>
 
-<script src="maplibre-gl.js"></script>
+<script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
 
 <script>
     const map = new maplibregl.Map({
         container: 'map',
-        // Style de base très clair
         style: 'https://tiles.openfreemap.org/styles/positron', 
-        center: [2.349, 48.856],
+        center: [2.349, 48.856], // Paris par défaut
         zoom: 16,
-        pitch: 75, // Inclinaison forte par défaut
+        pitch: 70, 
         bearing: 0,
         antialias: true,
-        maxPitch: 85, // Autorise une vue presque à l'horizontale (profil)
-        dragRotate: true
+        maxPitch: 85,           // Autorise une inclinaison presque horizontale
+        dragRotate: true,       // Rotation libre (clic droit ou Ctrl+clic)
+        touchZoomRotate: true   // Rotation libre sur mobile (deux doigts)
     });
 
-    map.addControl(new maplibregl.NavigationControl(), 'top-right');
+    map.on('load', () => {
+        
+        // --- 1. CONFIGURATION DE LA SOURCE (Correctif disparition zoom) ---
+        // On récupère la source et on augmente le maxzoom pour permettre l'overscaling
+        if (map.getSource('openmaptiles')) {
+            map.getSource('openmaptiles').maxzoom = 22;
+        }
 
- map.on('load', () => {
-    
-    // --- ÉTAPE 0 : Forcer le comportement de la source ---
-    // On redéfinit la source 'openmaptiles' pour autoriser le zoom infini (overscaling)
-    // Cela évite que les bâtiments disparaissent au zoom 18+
-    const source = map.getSource('openmaptiles');
-    if (source) {
-        source.maxzoom = 22; 
-    }
+        // --- 2. ÉPURATION DU STYLE (Minimalisme) ---
+        const layers = map.getStyle().layers;
+        layers.forEach(layer => {
+            // On masque tout ce qui n'est pas le fond ou les bâtiments
+            const isBuilding = layer.id.includes('building');
+            const isBackground = layer.type === 'background';
+            
+            if (!isBuilding && !isBackground) {
+                map.setLayoutProperty(layer.id, 'visibility', 'none');
+            }
+        });
 
-    // --- ÉTAPE 1 : Épuration du style ---
-    const layers = map.getStyle().layers;
-    layers.forEach(layer => {
-        if (layer.type !== 'background' && !layer.id.includes('building')) {
-            map.setLayoutProperty(layer.id, 'visibility', 'none');
+        // --- 3. COUCHE BÂTIMENTS 3D ---
+        map.addLayer({
+            'id': '3d-buildings-main',
+            'source': 'openmaptiles',
+            'source-layer': 'building',
+            'type': 'fill-extrusion',
+            'minzoom': 13,
+            'paint': {
+                'fill-extrusion-color': '#ffffff',
+                'fill-extrusion-height': ['get', 'render_height'],
+                'fill-extrusion-base': ['get', 'render_min_height'],
+                'fill-extrusion-opacity': 0.85,
+                'fill-extrusion-vertical-gradient': true // Aide à la perception du relief
+            }
+        });
+
+        // --- 4. ÉTIQUETTES DE HAUTEUR (> 30m) ---
+        map.addLayer({
+            'id': 'labels-height-30m',
+            'source': 'openmaptiles',
+            'source-layer': 'building',
+            'type': 'symbol',
+            'minzoom': 15.5,
+            'filter': ['>=', ['get', 'render_height'], 30],
+            'layout': {
+                'text-field': ['concat', ['get', 'render_height'], 'm'],
+                'text-size': 11,
+                'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                'text-allow-overlap': true,      // Crucial pour les vues de profil
+                'text-ignore-placement': true,    // Force l'affichage malgré la densité
+                'text-anchor': 'center'
+            },
+            'paint': {
+                'text-color': '#444',
+                'text-halo-color': 'rgba(255,255,255,0.8)',
+                'text-halo-width': 1.5
+            }
+        });
+
+        // --- 5. INTERACTION ---
+        // Rotation libre avec clic droit maintenu
+        map.addControl(new maplibregl.NavigationControl({
+            visualizePitch: true
+        }), 'top-right');
+    });
+
+    // Correction supplémentaire pour éviter que les tuiles ne "clignotent" lors d'un zoom rapide
+    map.on('zoom', () => {
+        const currentZoom = map.getZoom();
+        if (currentZoom > 18) {
+            // Maintien des données existantes si on dépasse les limites des tuiles vectorielles
         }
     });
 
-    // --- ÉTAPE 2 : Bâtiments (Ajout de l'option de rendu de loin) ---
-    map.addLayer({
-        'id': '3d-buildings',
-        'source': 'openmaptiles',
-        'source-layer': 'building',
-        'type': 'fill-extrusion',
-        'minzoom': 13,
-        'paint': {
-            'fill-extrusion-color': '#ffffff',
-            'fill-extrusion-height': ['get', 'render_height'],
-            'fill-extrusion-base': ['get', 'render_min_height'],
-            'fill-extrusion-opacity': 0.9,
-            // Optionnel : ajoute une légère bordure pour mieux voir les volumes en vue rasante
-            'fill-extrusion-vertical-gradient': true 
-        }
-    });
-
-    // --- ÉTAPE 3 : Étiquettes ---
-    map.addLayer({
-        'id': 'building-labels-30m',
-        'source': 'openmaptiles',
-        'source-layer': 'building',
-        'type': 'symbol',
-        'minzoom': 15,
-        'filter': ['>=', ['get', 'render_height'], 30],
-        'layout': {
-            'text-field': ['concat', ['get', 'render_height'], 'm'],
-            'text-size': 12,
-            'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-            'text-allow-overlap': true, // Évite que l'étiquette disparaisse si une autre est proche
-            'text-ignore-placement': true 
-        },
-        'paint': {
-            'text-color': '#555',
-            'text-halo-color': '#fff',
-            'text-halo-width': 1.5
-        }
-    });
-});
-
-    // Rotation libre avec clic droit ou Ctrl + Clic
-    map.dragRotate.enable();
-    map.touchZoomRotate.enableRotation();
 </script>
 </body>
 </html>
