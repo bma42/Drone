@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carte 3D Urbaine Optimisée</title>
+    <title>Carte 3D - Zoom Extrême</title>
     <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #fdfdfd; }
@@ -27,7 +27,7 @@
 <script>
     const defaultSettings = {
         center: [2.349, 48.856],
-        zoom: 17.5, // Zoom plus proche pour voir les bâtiments immédiatement
+        zoom: 18,
         pitch: 75,
         bearing: -10
     };
@@ -41,8 +41,9 @@
         bearing: defaultSettings.bearing,
         antialias: true,
         maxPitch: 85,
-        // On augmente la capacité de mise en cache pour éviter les trous
-        maxTileCacheSize: 100
+        // --- CRITIQUE POUR LE ZOOM ---
+        maxZoom: 24,           // Autorise le zoom très profond
+        transformRequest: (url) => { return { url }; } 
     });
 
     function resetView() {
@@ -55,31 +56,33 @@
         trackUserLocation: true, showUserHeading: true
     }), 'top-right');
 
-    map.on('load', () => {
-        // --- 1. FORCE L'EXTENSION DE LA SOURCE ---
-        // On s'assure que la source de données vectorielles ne se coupe pas
-        const sourceName = 'openmaptiles';
-        if (map.getSource(sourceName)) {
-            map.getSource(sourceName).maxzoom = 22;
+    // Cette fonction force la source à ne pas disparaître
+    function fixSource() {
+        const source = map.getSource('openmaptiles');
+        if (source && source.maxzoom !== 24) {
+            source.maxzoom = 24; // Force l'overscaling jusqu'au zoom 24
         }
+    }
 
-        // --- 2. NETTOYAGE DU STYLE ---
+    map.on('load', () => {
+        fixSource();
+
+        // Nettoyage minimaliste
         map.getStyle().layers.forEach(layer => {
             if (layer.type !== 'background' && !layer.id.includes('building')) {
                 map.setLayoutProperty(layer.id, 'visibility', 'none');
             }
         });
 
-        // --- 3. BÂTIMENTS 3D ---
+        // Bâtiments 3D
         map.addLayer({
             'id': '3d-buildings-main',
-            'source': sourceName,
+            'source': 'openmaptiles',
             'source-layer': 'building',
             'type': 'fill-extrusion',
             'minzoom': 13,
             'paint': {
                 'fill-extrusion-color': '#ffffff',
-                // On utilise une expression pour fallback si render_height est vide
                 'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 10],
                 'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0],
                 'fill-extrusion-opacity': 0.9,
@@ -87,14 +90,13 @@
             }
         });
 
-        // --- 4. ÉTIQUETTES HAUTEUR (Amélioré) ---
+        // Étiquettes
         map.addLayer({
             'id': 'labels-height-30m',
-            'source': sourceName,
+            'source': 'openmaptiles',
             'source-layer': 'building',
             'type': 'symbol',
-            'minzoom': 15,
-            // Filtre strict : hauteur >= 30m
+            'minzoom': 14,
             'filter': ['>=', ['coalesce', ['get', 'render_height'], ['get', 'height'], 0], 30],
             'layout': {
                 'text-field': ['concat', ['coalesce', ['get', 'render_height'], ['get', 'height']], 'm'],
@@ -103,7 +105,7 @@
                 'text-allow-overlap': true,
                 'text-ignore-placement': true,
                 'text-anchor': 'bottom',
-                'text-offset': [0, -1] // Décalage pour être bien "sur" le toit
+                'text-offset': [0, -1]
             },
             'paint': {
                 'text-color': '#000',
@@ -113,12 +115,10 @@
         });
     });
 
-    // Fix pour le chargement des tuiles lors des rotations rapides
-    map.on('styledata', () => {
-        if (map.getSource('openmaptiles')) {
-            map.getSource('openmaptiles').maxzoom = 22;
-        }
-    });
+    // Sécurité : Ré-appliquer le fix si le style ou les données changent
+    map.on('sourcedata', fixSource);
+    map.on('styledata', fixSource);
+
 </script>
 </body>
 </html>
