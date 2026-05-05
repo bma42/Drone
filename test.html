@@ -3,99 +3,89 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carte 3D Locale - OpenFreeMap</title>
-    
-    <!-- Appels locaux (Assurez-vous que les fichiers sont dans le dossier) -->
+    <title>Carte 3D Minimaliste</title>
     <link href="maplibre-gl.css" rel="stylesheet" />
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; }
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #f2f2f2; }
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
-        
-        /* Style du bouton de géolocalisation pour mobile */
-        .maplibregl-ctrl-group {
-            border: none !important;
-            box-shadow: 0 0 10px rgba(0,0,0,0.2) !important;
-        }
     </style>
 </head>
 <body>
 
 <div id="map"></div>
 
-<!-- Version locale du JS -->
 <script src="maplibre-gl.js"></script>
 
 <script>
-    // Initialisation de la carte
     const map = new maplibregl.Map({
         container: 'map',
-        // Utilisation du style sans clé OpenFreeMap
-        style: 'https://tiles.openfreemap.org/styles/liberty', 
-        center: [2.349, 48.856], // Paris
-        zoom: 16.5,
-        pitch: 60,
-        bearing: -10,
-        antialias: true
+        // Style de base très clair
+        style: 'https://tiles.openfreemap.org/styles/positron', 
+        center: [2.349, 48.856],
+        zoom: 16,
+        pitch: 75, // Inclinaison forte par défaut
+        bearing: 0,
+        antialias: true,
+        maxPitch: 85, // Autorise une vue presque à l'horizontale (profil)
+        dragRotate: true
     });
 
-    // Ajout du bouton de géolocalisation
-    const geolocate = new maplibregl.GeolocateControl({
-        positionOptions: {
-            enableHighAccuracy: true
-        },
-        trackUserLocation: true,
-        showUserHeading: true
-    });
-    map.addControl(geolocate, 'top-right');
+    map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
     map.on('load', () => {
-        // Ajout des bâtiments en 3D (Extrusion)
+        
+        // --- ÉTAPE 1 : Épuration du style pour le minimalisme ---
+        const layers = map.getStyle().layers;
+        layers.forEach(layer => {
+            // On cache tout sauf ce qui est lié aux bâtiments ou au fond
+            if (layer.type !== 'background' && !layer.id.includes('building')) {
+                map.setLayoutProperty(layer.id, 'visibility', 'none');
+            }
+        });
+
+        // --- ÉTAPE 2 : Ajout des bâtiments extrudés ---
         map.addLayer({
             'id': '3d-buildings',
             'source': 'openmaptiles',
             'source-layer': 'building',
             'type': 'fill-extrusion',
-            'minzoom': 15,
+            'minzoom': 13,
             'paint': {
-                'fill-extrusion-color': '#e0e0e0',
+                'fill-extrusion-color': '#ffffff',
                 'fill-extrusion-height': ['get', 'render_height'],
                 'fill-extrusion-base': ['get', 'render_min_height'],
-                'fill-extrusion-opacity': 0.8
+                'fill-extrusion-opacity': 0.9
             }
         });
 
-        // Ajout des étiquettes de hauteur (apparaissent au zoom 17+)
+        // --- ÉTAPE 3 : Étiquettes de hauteur (uniquement > 30m) ---
         map.addLayer({
-            'id': 'building-labels',
+            'id': 'building-labels-30m',
             'source': 'openmaptiles',
             'source-layer': 'building',
             'type': 'symbol',
-            'minzoom': 17,
+            'minzoom': 15,
+            // Filtre : Uniquement si la hauteur existe et est >= 30
+            'filter': ['>=', ['get', 'render_height'], 30],
             'layout': {
-                'text-field': ['concat', ['get', 'render_height'], ' m'],
-                'text-size': 11,
-                'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular']
+                'text-field': ['concat', ['get', 'render_height'], 'm'],
+                'text-size': 12,
+                'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                // Place le texte au sommet du bâtiment
+                'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
+                'text-padding': 2
             },
             'paint': {
-                'text-color': '#333',
+                'text-color': '#555',
                 'text-halo-color': '#fff',
-                'text-halo-width': 1
+                'text-halo-width': 1.5
             }
         });
     });
 
-    // Optionnel : Afficher la hauteur dans la console ou une alerte au clic
-    map.on('click', '3d-buildings', (e) => {
-        const props = e.features[0].properties;
-        if (props.render_height) {
-            console.log("Hauteur du bâtiment : " + props.render_height + "m");
-        }
-    });
-
-    // Changement du curseur sur les bâtiments
-    map.on('mouseenter', '3d-buildings', () => { map.getCanvas().style.cursor = 'pointer'; });
-    map.on('mouseleave', '3d-buildings', () => { map.getCanvas().style.cursor = ''; });
-
+    // Rotation libre avec clic droit ou Ctrl + Clic
+    map.dragRotate.enable();
+    map.touchZoomRotate.enableRotation();
 </script>
 </body>
 </html>
