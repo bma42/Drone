@@ -3,74 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carte 3D Minimaliste + Géo</title>
+    <title>Carte 3D - Retour Vue Défaut</title>
     
     <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #fdfdfd; }
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
         
-        /* Personnalisation légère des boutons pour le minimalisme */
-        .maplibregl-ctrl-group {
-            border: none !important;
-            box-shadow: 0 0 15px rgba(0,0,0,0.1) !important;
+        /* Style du bouton Reset */
+        .reset-button {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            background: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: sans-serif;
+            font-size: 13px;
+            font-weight: bold;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            color: #333;
         }
+        .reset-button:hover { background: #f0f0f0; }
+
         .maplibregl-ctrl-attrib { display: none; }
     </style>
 </head>
 <body>
 
+<button class="reset-button" onclick="resetView()">RESET VUE</button>
 <div id="map"></div>
 
 <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
 
 <script>
+    // Variables de configuration par défaut
+    const defaultSettings = {
+        center: [2.349, 48.856],
+        zoom: 16,
+        pitch: 70,
+        bearing: 0
+    };
+
     const map = new maplibregl.Map({
         container: 'map',
         style: 'https://tiles.openfreemap.org/styles/positron', 
-        center: [2.349, 48.856],
-        zoom: 16,
-        pitch: 70, 
-        bearing: 0,
+        center: defaultSettings.center,
+        zoom: defaultSettings.zoom,
+        pitch: defaultSettings.pitch,
+        bearing: defaultSettings.bearing,
         antialias: true,
-        maxPitch: 85,
-        dragRotate: true
+        maxPitch: 85
     });
 
-    // --- CONFIGURATION GÉOLOCALISATION ---
-    const geolocate = new maplibregl.GeolocateControl({
-        positionOptions: {
-            enableHighAccuracy: true // GPS précis
-        },
-        trackUserLocation: true,    // Suit le mouvement en temps réel
-        showUserHeading: true,      // Affiche la direction (boussole)
-        showAccuracyCircle: true    // Affiche le cercle de précision bleue
-    });
+    // Fonction pour réinitialiser la vue
+    function resetView() {
+        map.flyTo({
+            center: defaultSettings.center,
+            zoom: defaultSettings.zoom,
+            pitch: defaultSettings.pitch,
+            bearing: defaultSettings.bearing,
+            essential: true // animation fluide
+        });
+    }
 
-    // Ajout du contrôle de navigation classique
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
-    
-    // Ajout du bouton de géolocalisation en dessous
-    map.addControl(geolocate, 'top-right');
+    map.addControl(new maplibregl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
+        showUserHeading: true
+    }), 'top-right');
 
     map.on('load', () => {
-        
-        // Fix pour éviter la disparition des bâtiments au zoom
         if (map.getSource('openmaptiles')) {
             map.getSource('openmaptiles').maxzoom = 22;
         }
 
-        // Épuration minimaliste
         const layers = map.getStyle().layers;
         layers.forEach(layer => {
-            const isBuilding = layer.id.includes('building');
-            const isBackground = layer.type === 'background';
-            if (!isBuilding && !isBackground) {
+            if (layer.type !== 'background' && !layer.id.includes('building')) {
                 map.setLayoutProperty(layer.id, 'visibility', 'none');
             }
         });
 
-        // Bâtiments 3D
         map.addLayer({
             'id': '3d-buildings-main',
             'source': 'openmaptiles',
@@ -86,7 +104,6 @@
             }
         });
 
-        // Étiquettes hauteur > 30m
         map.addLayer({
             'id': 'labels-height-30m',
             'source': 'openmaptiles',
@@ -99,8 +116,7 @@
                 'text-size': 11,
                 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
                 'text-allow-overlap': true,
-                'text-ignore-placement': true,
-                'text-anchor': 'center'
+                'text-ignore-placement': true
             },
             'paint': {
                 'text-color': '#444',
@@ -109,10 +125,6 @@
             }
         });
     });
-
-    // Déclenchement automatique de la géolocalisation au chargement (optionnel)
-    // geolocate.on('geolocate', () => { console.log('Position trouvée'); });
-
 </script>
 </body>
 </html>
