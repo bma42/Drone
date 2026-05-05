@@ -3,32 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carte 3D - Retour Vue Défaut</title>
-    
+    <title>Carte 3D Urbaine Optimisée</title>
     <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #fdfdfd; }
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
-        
-        /* Style du bouton Reset */
         .reset-button {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            z-index: 10;
-            background: white;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-family: sans-serif;
-            font-size: 13px;
-            font-weight: bold;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            color: #333;
+            position: absolute; top: 10px; left: 10px; z-index: 10;
+            background: white; border: none; padding: 10px 15px;
+            border-radius: 4px; cursor: pointer; font-weight: bold;
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
         }
-        .reset-button:hover { background: #f0f0f0; }
-
         .maplibregl-ctrl-attrib { display: none; }
     </style>
 </head>
@@ -40,12 +25,11 @@
 <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
 
 <script>
-    // Variables de configuration par défaut
     const defaultSettings = {
         center: [2.349, 48.856],
-        zoom: 16,
-        pitch: 70,
-        bearing: 0
+        zoom: 17.5, // Zoom plus proche pour voir les bâtiments immédiatement
+        pitch: 75,
+        bearing: -10
     };
 
     const map = new maplibregl.Map({
@@ -56,74 +40,84 @@
         pitch: defaultSettings.pitch,
         bearing: defaultSettings.bearing,
         antialias: true,
-        maxPitch: 85
+        maxPitch: 85,
+        // On augmente la capacité de mise en cache pour éviter les trous
+        maxTileCacheSize: 100
     });
 
-    // Fonction pour réinitialiser la vue
     function resetView() {
-        map.flyTo({
-            center: defaultSettings.center,
-            zoom: defaultSettings.zoom,
-            pitch: defaultSettings.pitch,
-            bearing: defaultSettings.bearing,
-            essential: true // animation fluide
-        });
+        map.flyTo({ ...defaultSettings, duration: 2000, essential: true });
     }
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
     map.addControl(new maplibregl.GeolocateControl({
         positionOptions: { enableHighAccuracy: true },
-        trackUserLocation: true,
-        showUserHeading: true
+        trackUserLocation: true, showUserHeading: true
     }), 'top-right');
 
     map.on('load', () => {
-        if (map.getSource('openmaptiles')) {
-            map.getSource('openmaptiles').maxzoom = 22;
+        // --- 1. FORCE L'EXTENSION DE LA SOURCE ---
+        // On s'assure que la source de données vectorielles ne se coupe pas
+        const sourceName = 'openmaptiles';
+        if (map.getSource(sourceName)) {
+            map.getSource(sourceName).maxzoom = 22;
         }
 
-        const layers = map.getStyle().layers;
-        layers.forEach(layer => {
+        // --- 2. NETTOYAGE DU STYLE ---
+        map.getStyle().layers.forEach(layer => {
             if (layer.type !== 'background' && !layer.id.includes('building')) {
                 map.setLayoutProperty(layer.id, 'visibility', 'none');
             }
         });
 
+        // --- 3. BÂTIMENTS 3D ---
         map.addLayer({
             'id': '3d-buildings-main',
-            'source': 'openmaptiles',
+            'source': sourceName,
             'source-layer': 'building',
             'type': 'fill-extrusion',
             'minzoom': 13,
             'paint': {
                 'fill-extrusion-color': '#ffffff',
-                'fill-extrusion-height': ['get', 'render_height'],
-                'fill-extrusion-base': ['get', 'render_min_height'],
-                'fill-extrusion-opacity': 0.85,
+                // On utilise une expression pour fallback si render_height est vide
+                'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 10],
+                'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0],
+                'fill-extrusion-opacity': 0.9,
                 'fill-extrusion-vertical-gradient': true
             }
         });
 
+        // --- 4. ÉTIQUETTES HAUTEUR (Amélioré) ---
         map.addLayer({
             'id': 'labels-height-30m',
-            'source': 'openmaptiles',
+            'source': sourceName,
             'source-layer': 'building',
             'type': 'symbol',
-            'minzoom': 15.5,
-            'filter': ['>=', ['get', 'render_height'], 30],
+            'minzoom': 15,
+            // Filtre strict : hauteur >= 30m
+            'filter': ['>=', ['coalesce', ['get', 'render_height'], ['get', 'height'], 0], 30],
             'layout': {
-                'text-field': ['concat', ['get', 'render_height'], 'm'],
-                'text-size': 11,
+                'text-field': ['concat', ['coalesce', ['get', 'render_height'], ['get', 'height']], 'm'],
+                'text-size': 12,
                 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
                 'text-allow-overlap': true,
-                'text-ignore-placement': true
+                'text-ignore-placement': true,
+                'text-anchor': 'bottom',
+                'text-offset': [0, -1] // Décalage pour être bien "sur" le toit
             },
             'paint': {
-                'text-color': '#444',
-                'text-halo-color': 'rgba(255,255,255,0.8)',
-                'text-halo-width': 1.5
+                'text-color': '#000',
+                'text-halo-color': '#fff',
+                'text-halo-width': 2
             }
         });
+    });
+
+    // Fix pour le chargement des tuiles lors des rotations rapides
+    map.on('styledata', () => {
+        if (map.getSource('openmaptiles')) {
+            map.getSource('openmaptiles').maxzoom = 22;
+        }
     });
 </script>
 </body>
