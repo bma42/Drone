@@ -1,63 +1,59 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carte 3D Gratuite</title>
-    <!-- MapLibre SDK -->
-    <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
-    <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+    <meta charset="utf-8">
+    <title>Carte 3D Bâtiments</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
     <style>
         body { margin: 0; padding: 0; }
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
     </style>
 </head>
 <body>
-
 <div id="map"></div>
-
 <script>
     const map = new maplibregl.Map({
         container: 'map',
-        // Style gratuit via OpenFreeMap (pas de clé API requise)
-        style: 'https://tiles.openfreemap.org/styles/bright', 
-        center: [2.3522, 48.8566], // Paris
-        zoom: 15.5,
-        pitch: 45, // Inclinaison pour voir la 3D
-        bearing: -17
+        // Utilisation d'un style qui inclut les sources vectorielles nécessaires
+        style: 'https://tiles.openfreemap.org/styles/liberty', 
+        center: [2.3488, 48.8534], // Coordonnées de Paris (Notre-Dame)
+        zoom: 16,
+        pitch: 60,
+        bearing: -17,
+        antialias: true
     });
 
     map.on('load', () => {
-        // Ajout de la couche 3D (Extrusion des bâtiments)
+        // On récupère l'ID de la source de données du style Liberty (souvent 'openmaptiles')
+        // Si vous utilisez OpenFreeMap, la source s'appelle généralement 'openfreemap'
+        
         map.addLayer({
             'id': '3d-buildings',
-            'source': 'openfreemap', // Source de données vectorielles
+            'source': 'openfreemap', 
             'source-layer': 'building',
             'type': 'fill-extrusion',
             'minzoom': 15,
             'paint': {
-                // Couleur grise sans texture
-                'fill-extrusion-color': '#aaa',
-                // Récupère la hauteur via les données OSM
-                'fill-extrusion-height': ['get', 'height'],
+                'fill-extrusion-color': '#e0e0e0',
+                // On utilise la propriété 'render_height' ou 'height' des données OSM
+                'fill-extrusion-height': [
+                    'interpolate', ['linear'], ['zoom'],
+                    15, 0,
+                    15.05, ['get', 'height']
+                ],
                 'fill-extrusion-base': ['get', 'min_height'],
-                'fill-extrusion-opacity': 0.8
+                'fill-extrusion-opacity': 0.9
             }
         });
 
-        // Ajout du bouton de géolocalisation
-        map.addControl(
-            new maplibregl.GeolocateControl({
-                positionOptions: { enableHighAccuracy: true },
-                trackUserLocation: true,
-                showUserLocation: true
-            })
-        );
-        
-        // Ajout des contrôles de navigation (zoom/rotation)
-        map.addControl(new maplibregl.NavigationControl());
+        // Bouton de géolocalisation
+        map.addControl(new maplibregl.GeolocateControl({
+            positionOptions: { enableHighAccuracy: true },
+            trackUserLocation: true
+        }));
     });
 </script>
-
 </body>
 </html>
