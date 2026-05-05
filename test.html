@@ -3,116 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carte 3D Urbaine - Minimaliste & Stable</title>
+    <title>Carte 3D Gratuite</title>
+    <!-- MapLibre SDK -->
+    <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; background-color: #f0f0f0; }
+        body { margin: 0; padding: 0; }
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
-        .ui-nav { position: absolute; top: 10px; left: 10px; z-index: 10; }
-        button { 
-            background: white; border: none; padding: 10px 15px; border-radius: 4px; 
-            font-weight: bold; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
-        }
-        .maplibregl-ctrl-attrib { display: none; }
     </style>
 </head>
 <body>
 
-<div class="ui-nav">
-    <button onclick="resetView()">VUE DÉFAUT</button>
-</div>
 <div id="map"></div>
 
-<script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
-
 <script>
-    // 1. Initialisation avec tes paramètres préférés
     const map = new maplibregl.Map({
         container: 'map',
-        style: 'https://tiles.openfreemap.org/styles/positron', // Le style blanc minimaliste
-        center: [2.349, 48.856],
-        zoom: 17,
-        pitch: 60,
-        bearing: -10,
-        antialias: true,
-        maxZoom: 24,    // Autorise le zoom extrême
-        maxPitch: 85    // Autorise la vue de profil
+        // Style gratuit via OpenFreeMap (pas de clé API requise)
+        style: 'https://tiles.openfreemap.org/styles/bright', 
+        center: [2.3522, 48.8566], // Paris
+        zoom: 15.5,
+        pitch: 45, // Inclinaison pour voir la 3D
+        bearing: -17
     });
-
-    function resetView() {
-        map.flyTo({ center: [2.349, 48.856], zoom: 17, pitch: 60, bearing: -10 });
-    }
-
-    // 2. Ajout des contrôles
-    map.addControl(new maplibregl.NavigationControl(), 'top-right');
-    map.addControl(new maplibregl.GeolocateControl({
-        positionOptions: { enableHighAccuracy: true },
-        trackUserLocation: true,
-        showUserHeading: true
-    }), 'top-right');
 
     map.on('load', () => {
-        // --- A. NETTOYAGE RADICAL (Minimalisme) ---
-        // On cache tout ce qui n'est pas le fond pour ne garder que nos futurs bâtiments
-        map.getStyle().layers.forEach(layer => {
-            if (layer.type !== 'background') {
-                map.setLayoutProperty(layer.id, 'visibility', 'none');
-            }
-        });
-
-        // --- B. FIX SOURCE (Pour le zoom extrême) ---
-        const source = map.getSource('openmaptiles');
-        if (source) source.maxzoom = 24;
-
-        // --- C. AJOUT DES BÂTIMENTS (Comme ton script initial mais optimisé) ---
+        // Ajout de la couche 3D (Extrusion des bâtiments)
         map.addLayer({
             'id': '3d-buildings',
-            'source': 'openmaptiles',
+            'source': 'openfreemap', // Source de données vectorielles
             'source-layer': 'building',
             'type': 'fill-extrusion',
-            'minzoom': 13,
-            'maxzoom': 24, // Indispensable pour ne pas qu'ils disparaissent
-            'paint': {
-                'fill-extrusion-color': '#ffffff',
-                'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 15],
-                'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0],
-                'fill-extrusion-opacity': 0.9,
-                'fill-extrusion-vertical-gradient': true
-            }
-        });
-
-        // --- D. ÉTIQUETTES DE HAUTEUR (> 30m uniquement) ---
-        map.addLayer({
-            'id': 'building-labels',
-            'source': 'openmaptiles',
-            'source-layer': 'building',
-            'type': 'symbol',
             'minzoom': 15,
-            'maxzoom': 24,
-            // Filtre : uniquement si hauteur >= 30
-            'filter': ['>=', ['coalesce', ['get', 'render_height'], ['get', 'height'], 0], 30],
-            'layout': {
-                'text-field': ['concat', ['coalesce', ['get', 'render_height'], ['get', 'height']], ' m'],
-                'text-size': 12,
-                'text-font': ['Open Sans Bold'],
-                'text-allow-overlap': true,
-                'text-ignore-placement': true,
-                'text-anchor': 'bottom'
-            },
             'paint': {
-                'text-color': '#444',
-                'text-halo-color': '#fff',
-                'text-halo-width': 2
+                // Couleur grise sans texture
+                'fill-extrusion-color': '#aaa',
+                // Récupère la hauteur via les données OSM
+                'fill-extrusion-height': ['get', 'height'],
+                'fill-extrusion-base': ['get', 'min_height'],
+                'fill-extrusion-opacity': 0.8
             }
         });
-    });
 
-    // Sécurité anti-disparition au zoom
-    map.on('sourcedata', () => {
-        const s = map.getSource('openmaptiles');
-        if (s && s.maxzoom < 24) s.maxzoom = 24;
+        // Ajout du bouton de géolocalisation
+        map.addControl(
+            new maplibregl.GeolocateControl({
+                positionOptions: { enableHighAccuracy: true },
+                trackUserLocation: true,
+                showUserLocation: true
+            })
+        );
+        
+        // Ajout des contrôles de navigation (zoom/rotation)
+        map.addControl(new maplibregl.NavigationControl());
     });
-
 </script>
+
 </body>
 </html>
