@@ -107,11 +107,7 @@
         });
     });
 
-    // Sécurité anti-disparition au zoom
-    map.on('sourcedata', () => {
-        const s = map.getSource('openmaptiles');
-        if (s && s.maxzoom < 24) s.maxzoom = 24;
-    });
+
 
 </script>
 </body>
