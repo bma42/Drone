@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carte 3D Urbaine - Minimaliste & Stable</title>
+    <title>Carte 3D Urbaine - Lumière & Relief</title>
     <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #f0f0f0; }
@@ -26,66 +26,99 @@
 <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
 
 <script>
-    // 1. Initialisation avec tes paramètres préférés
-  const map = new maplibregl.Map({
-    container: 'map',
-    style: 'https://tiles.openfreemap.org/styles/positron',
-    center: [2.349, 48.856],
-    zoom: 17,
-    pitch: 60,
-    bearing: -10,
-    antialias: true,
-    maxZoom: 23, // Un cran en dessous de la limite théorique pour la stabilité
-    maxPitch: 85
-});
-
-map.on('load', () => {
-    // Nettoyage
-    map.getStyle().layers.forEach(layer => {
-        if (layer.type !== 'background') {
-            map.setLayoutProperty(layer.id, 'visibility', 'none');
-        }
+    // 1. Initialisation de la carte (Basée sur le correctif précédent)
+    const map = new maplibregl.Map({
+        container: 'map',
+        style: 'https://tiles.openfreemap.org/styles/positron', // Style blanc minimaliste
+        center: [2.349, 48.856],
+        zoom: 17,
+        pitch: 60,
+        bearing: -10,
+        antialias: true,
+        maxZoom: 23,     // Limite stable pour l'overzooming
+        maxPitch: 85     // Vue de profil
     });
 
-    // 3D Buildings
-    map.addLayer({
-        'id': '3d-buildings',
-        'source': 'openmaptiles',
-        'source-layer': 'building',
-        'type': 'fill-extrusion',
-        // Pas de maxzoom ici pour éviter le culling
-        'paint': {
-            'fill-extrusion-color': '#ffffff',
-            'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 15],
-            'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0],
-            'fill-extrusion-opacity': 0.9,
-            'fill-extrusion-vertical-gradient': true
-        }
+    function resetView() {
+        map.flyTo({ center: [2.349, 48.856], zoom: 17, pitch: 60, bearing: -10 });
+    }
+
+    // 2. Ajout des contrôles
+    map.addControl(new maplibregl.NavigationControl(), 'top-right');
+    map.addControl(new maplibregl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
+        showUserHeading: true
+    }), 'top-right');
+
+    map.on('load', () => {
+        // --- A. NETTOYAGE (Inchangé) ---
+        map.getStyle().layers.forEach(layer => {
+            if (layer.type !== 'background') {
+                map.setLayoutProperty(layer.id, 'visibility', 'none');
+            }
+        });
+
+        // --- B. AJOUT DES BÂTIMENTS (Style affiné) ---
+        map.addLayer({
+            'id': '3d-buildings',
+            'source': 'openmaptiles',
+            'source-layer': 'building',
+            'type': 'fill-extrusion',
+            'paint': {
+                // Couleur légèrement cassée pour mieux réagir à la lumière
+                'fill-extrusion-color': '#fbfbfb', 
+                'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 15],
+                'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0],
+                'fill-extrusion-opacity': 0.95,
+                // Le gradient vertical donne du volume
+                'fill-extrusion-vertical-gradient': true
+            }
+        });
+
+        // --- C. ÉTIQUETTES DE HAUTEUR (Inchangé) ---
+        map.addLayer({
+            'id': 'building-labels',
+            'source': 'openmaptiles',
+            'source-layer': 'building',
+            'type': 'symbol',
+            'minzoom': 16, 
+            'filter': ['>=', ['coalesce', ['get', 'render_height'], ['get', 'height'], 0], 30],
+            'layout': {
+                'text-field': ['concat', ['coalesce', ['get', 'render_height'], ['get', 'height']], ' m'],
+                'text-size': 12,
+                'text-font': ['Open Sans Bold'],
+                'text-anchor': 'bottom'
+            },
+            'paint': {
+                'text-color': '#444',
+                'text-halo-color': '#fff',
+                'text-halo-width': 2
+            }
+        });
+
+        // --- D. CONFIGURATION DE LA LUMIÈRE (AMÉLIORATION CLÉ) ---
+        // Une lumière unique pour toute la scène.
+        map.setLight({
+            'color': '#ffccaa',     // Couleur chaude (coucher de soleil)
+            'intensity': 0.35,       // Puissance de la lumière
+            'position': [1.15, 210, 30], // [radial, azimuthal, altitude]
+            'anchor': 'viewport'     // Ancrée à la caméra (les ombres suivent la vue)
+        });
+
+        // --- E. ÉVÉNEMENT DE ROTATION (Pour synchroniser la lumière) ---
+        // Optionnel : si vous voulez que la lumière soit fixe par rapport au monde,
+        // commentez cette section. Ici, elle est fixe par rapport à l'écran.
+        /*
+        map.on('rotate', () => {
+            const bearing = map.getBearing();
+            // On fait "tourner" la lumière avec la carte pour un effet fixe dans le monde
+            map.setLight({
+                'position': [1.15, bearing + 210, 30] 
+            });
+        });
+        */
     });
-
-    // Labels
-    map.addLayer({
-        'id': 'building-labels',
-        'source': 'openmaptiles',
-        'source-layer': 'building',
-        'type': 'symbol',
-        'minzoom': 16, 
-        'filter': ['>=', ['coalesce', ['get', 'render_height'], ['get', 'height'], 0], 30],
-        'layout': {
-            'text-field': ['concat', ['coalesce', ['get', 'render_height'], ['get', 'height']], ' m'],
-            'text-size': 12,
-            'text-font': ['Open Sans Bold'],
-            'text-anchor': 'bottom'
-        },
-        'paint': {
-            'text-color': '#444',
-            'text-halo-color': '#fff',
-            'text-halo-width': 2
-        }
-    });
-});
-
-
 
 </script>
 </body>
