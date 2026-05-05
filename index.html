@@ -129,8 +129,9 @@
             #fastfly-progress { top: 150px; }
         }
         /* Quand le topbar est masqué (scroll vers le bas) on remonte la barre de
-           chargement Fast Fly tout en haut pour qu'elle reste visible. */
-        body.topbar-hidden #fastfly-progress { top: 8px; }
+           chargement Fast Fly tout en haut pour qu'elle reste visible.
+           !important pour battre la media query mobile. */
+        body.topbar-hidden #fastfly-progress { top: 8px !important; }
         #fastfly-progress .label {
             display: flex; justify-content: space-between; font-size: 12px; font-weight: 600;
             color: var(--c-text); margin-bottom: 6px;
