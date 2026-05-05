@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MapLibre 3D - Sans Clé API</title>
+    
+    <!-- MapLibre SDK -->
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<script>
+    const map = new maplibregl.Map({
+        container: 'map',
+        // Style gratuit et sans clé via OpenFreeMap
+        style: 'https://tiles.openfreemap.org/styles/liberty', 
+        center: [2.349, 48.856], // Paris
+        zoom: 16,
+        pitch: 60,   // Inclinaison pour la 3D
+        bearing: -15, // Rotation de la caméra
+        antialias: true
+    });
+
+    // Bouton de géolocalisation
+    const geolocate = new maplibregl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
+        showUserHeading: true
+    });
+    map.addControl(geolocate, 'top-right');
+
+    map.on('load', () => {
+        // Ajout de la couche 3D (Extrusion)
+        // La source 'openmaptiles' est standard dans le style Liberty
+        map.addLayer({
+            'id': '3d-buildings',
+            'source': 'openmaptiles',
+            'source-layer': 'building',
+            'type': 'fill-extrusion',
+            'minzoom': 15,
+            'paint': {
+                'fill-extrusion-color': '#d1d1d1',
+                // On utilise la hauteur réelle des données OSM
+                'fill-extrusion-height': ['get', 'render_height'],
+                'fill-extrusion-base': ['get', 'render_min_height'],
+                'fill-extrusion-opacity': 0.8
+            }
+        });
+    });
+</script>
+
+</body>
+</html>
