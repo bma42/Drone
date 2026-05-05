@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Carte 3D Minimaliste</title>
+    <title>3D Buildings Only</title>
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; background-color: #f2f2f2; }
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #d1d1d1; }
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
-        .maplibregl-ctrl-attrib { display: none; } /* Épure l'interface */
+        /* Masquer les logos pour le minimalisme */
+        .maplibregl-ctrl-attrib, .maplibregl-ctrl-logo { display: none !important; }
     </style>
 </head>
 <body>
@@ -19,39 +20,51 @@
 <script>
     const map = new maplibregl.Map({
         container: 'map',
-        style: 'https://tiles.openfreemap.org/styles/positron',
-        center: [2.3488, 48.8534],
+        style: {
+            version: 8,
+            sources: {
+                // Source vectorielle OpenFreeMap (données OSM)
+                'openmaptiles': {
+                    type: 'vector',
+                    url: 'https://tiles.openfreemap.org/tiles/v3.json'
+                }
+            },
+            layers: [{
+                id: 'background',
+                type: 'background',
+                paint: { 'background-color': '#d1d1d1' }
+            }]
+        },
+        center: [2.3488, 48.8534], // Paris
         zoom: 16,
-        pitch: 55,
-        bearing: -15,
+        pitch: 60,
         antialias: true
     });
 
     map.on('load', () => {
+        // Ajout unique de la couche des bâtiments
         map.addLayer({
             'id': '3d-buildings',
-            'source': 'openfreemap',
+            'source': 'openmaptiles',
             'source-layer': 'building',
             'type': 'fill-extrusion',
-            'minzoom': 15,
+            'minzoom': 14,
             'paint': {
+                // Couleur blanche pour un look architectural pur
                 'fill-extrusion-color': '#ffffff',
-                'fill-extrusion-height': ['get', 'height'],
-                'fill-extrusion-base': ['get', 'min_height'],
-                'fill-extrusion-opacity': 0.6
+                // Extraction de la hauteur réelle
+                'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 10],
+                'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0],
+                'fill-extrusion-opacity': 1
             }
         });
 
-        const geolocate = new maplibregl.GeolocateControl({
+        // Bouton de géolocalisation
+        map.addControl(new maplibregl.GeolocateControl({
             positionOptions: { enableHighAccuracy: true },
             trackUserLocation: true,
             showUserLocation: true
-        });
-
-        map.addControl(geolocate);
-        
-        // Optionnel : déclenche la géolocalisation au chargement
-        // geolocate.trigger();
+        }));
     });
 </script>
 
