@@ -3,79 +3,70 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carte 3D Standard</title>
+    <title>3D Zoom Max</title>
     <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #ffffff; }
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
-        .ui-controls { position: absolute; top: 15px; left: 15px; z-index: 10; }
+        .ui { position: absolute; top: 15px; left: 15px; z-index: 10; }
         button { 
-            background: #fff; border: none; padding: 8px 12px; border-radius: 4px; 
-            font-weight: bold; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            background: #fff; border: 1px solid #ccc; padding: 8px 12px; border-radius: 4px; 
+            font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
     </style>
 </head>
 <body>
 
-<div class="ui-controls">
-    <button onclick="resetView()">VUE PAR DÉFAUT</button>
+<div class="ui">
+    <button onclick="reset()">VUE PAR DÉFAUT</button>
 </div>
 <div id="map"></div>
 
 <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
 
 <script>
-    const CONFIG = {
+    const start = {
         center: [2.349, 48.856],
         zoom: 16,
-        pitch: 45, // Angle 3D standard par défaut
-        bearing: 0,
-        maxZoom: 24
+        pitch: 45,
+        bearing: 0
     };
 
     const map = new maplibregl.Map({
         container: 'map',
         style: 'https://tiles.openfreemap.org/styles/positron', 
-        center: CONFIG.center,
-        zoom: CONFIG.zoom,
-        pitch: CONFIG.pitch,
-        bearing: CONFIG.bearing,
+        center: start.center,
+        zoom: start.zoom,
+        pitch: start.pitch,
+        bearing: start.bearing,
         antialias: true,
         maxPitch: 85,
-        maxZoom: CONFIG.maxZoom
+        maxZoom: 24 
     });
 
-    function resetView() {
-        map.flyTo({ ...CONFIG, duration: 1500, essential: true });
+    function reset() {
+        map.flyTo({ ...start, duration: 1500, essential: true });
     }
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
     map.addControl(new maplibregl.GeolocateControl({ trackUserLocation: true, showUserHeading: true }), 'top-right');
 
-    const forceExtremeZoom = () => {
-        const source = map.getSource('openmaptiles');
-        if (source) source.maxzoom = 24;
-        
-        map.getStyle().layers.forEach(layer => {
-            if (map.getLayer(layer.id)) {
-                map.setLayerZoomRange(layer.id, 0, 24);
-            }
-        });
+    const forceExtreme = () => {
+        const s = map.getSource('openmaptiles');
+        if (s) s.maxzoom = 24;
     };
 
     map.on('style.load', () => {
-        forceExtremeZoom();
+        forceExtreme();
 
-        const layers = map.getStyle().layers;
-        layers.forEach(layer => {
-            const isKeep = layer.id.includes('building') || layer.type === 'background';
-            if (!isKeep) {
-                map.setLayoutProperty(layer.id, 'visibility', 'none');
+        map.getStyle().layers.forEach(l => {
+            if (!l.id.includes('building') && l.type !== 'background') {
+                map.setLayoutProperty(l.id, 'visibility', 'none');
             }
         });
 
         map.addLayer({
-            'id': '3d-buildings-custom',
+            'id': '3d-extrude',
             'source': 'openmaptiles',
             'source-layer': 'building',
             'type': 'fill-extrusion',
@@ -85,35 +76,37 @@
                 'fill-extrusion-color': '#ffffff',
                 'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 15],
                 'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0],
-                'fill-extrusion-opacity': 0.85,
+                'fill-extrusion-opacity': 0.9,
                 'fill-extrusion-vertical-gradient': true
             }
         });
 
         map.addLayer({
-            'id': 'height-labels',
+            'id': 'labels-30m',
             'source': 'openmaptiles',
             'source-layer': 'building',
             'type': 'symbol',
             'minzoom': 15,
+            'maxzoom': 24,
             'filter': ['>=', ['coalesce', ['get', 'render_height'], ['get', 'height'], 0], 30],
             'layout': {
                 'text-field': ['concat', ['coalesce', ['get', 'render_height'], ['get', 'height']], 'm'],
-                'text-size': 11,
+                'text-size': 12,
                 'text-font': ['Open Sans Bold'],
                 'text-allow-overlap': true,
                 'text-ignore-placement': true,
-                'text-anchor': 'bottom'
+                'text-anchor': 'bottom',
+                'text-offset': [0, -0.5]
             },
             'paint': {
-                'text-color': '#555',
+                'text-color': '#333',
                 'text-halo-color': '#fff',
-                'text-halo-width': 1.5
+                'text-halo-width': 2
             }
         });
     });
 
-    map.on('sourcedata', forceExtremeZoom);
+    map.on('sourcedata', forceExtreme);
 </script>
 </body>
 </html>
