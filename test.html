@@ -27,85 +27,63 @@
 
 <script>
     // 1. Initialisation avec tes paramètres préférés
-    const map = new maplibregl.Map({
-        container: 'map',
-        style: 'https://tiles.openfreemap.org/styles/positron', // Le style blanc minimaliste
-        center: [2.349, 48.856],
-        zoom: 17,
-        pitch: 60,
-        bearing: -10,
-        antialias: true,
-        maxZoom: 24,    // Autorise le zoom extrême
-        maxPitch: 85    // Autorise la vue de profil
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://tiles.openfreemap.org/styles/positron',
+    center: [2.349, 48.856],
+    zoom: 17,
+    pitch: 60,
+    bearing: -10,
+    antialias: true,
+    maxZoom: 23, // Un cran en dessous de la limite théorique pour la stabilité
+    maxPitch: 85
+});
+
+map.on('load', () => {
+    // Nettoyage
+    map.getStyle().layers.forEach(layer => {
+        if (layer.type !== 'background') {
+            map.setLayoutProperty(layer.id, 'visibility', 'none');
+        }
     });
 
-    function resetView() {
-        map.flyTo({ center: [2.349, 48.856], zoom: 17, pitch: 60, bearing: -10 });
-    }
-
-    // 2. Ajout des contrôles
-    map.addControl(new maplibregl.NavigationControl(), 'top-right');
-    map.addControl(new maplibregl.GeolocateControl({
-        positionOptions: { enableHighAccuracy: true },
-        trackUserLocation: true,
-        showUserHeading: true
-    }), 'top-right');
-
-    map.on('load', () => {
-        // --- A. NETTOYAGE RADICAL (Minimalisme) ---
-        // On cache tout ce qui n'est pas le fond pour ne garder que nos futurs bâtiments
-        map.getStyle().layers.forEach(layer => {
-            if (layer.type !== 'background') {
-                map.setLayoutProperty(layer.id, 'visibility', 'none');
-            }
-        });
-
-        // --- B. FIX SOURCE (Pour le zoom extrême) ---
-        const source = map.getSource('openmaptiles');
-        if (source) source.maxzoom = 24;
-
-        // --- C. AJOUT DES BÂTIMENTS (Comme ton script initial mais optimisé) ---
-        map.addLayer({
-            'id': '3d-buildings',
-            'source': 'openmaptiles',
-            'source-layer': 'building',
-            'type': 'fill-extrusion',
-            'minzoom': 2,
-            'maxzoom': 24, // Indispensable pour ne pas qu'ils disparaissent
-            'paint': {
-                'fill-extrusion-color': '#ffffff',
-                'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 15],
-                'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0],
-                'fill-extrusion-opacity': 0.9,
-                'fill-extrusion-vertical-gradient': true
-            }
-        });
-
-        // --- D. ÉTIQUETTES DE HAUTEUR (> 30m uniquement) ---
-        map.addLayer({
-            'id': 'building-labels',
-            'source': 'openmaptiles',
-            'source-layer': 'building',
-            'type': 'symbol',
-            'minzoom': 15,
-            'maxzoom': 24,
-            // Filtre : uniquement si hauteur >= 30
-            'filter': ['>=', ['coalesce', ['get', 'render_height'], ['get', 'height'], 0], 30],
-            'layout': {
-                'text-field': ['concat', ['coalesce', ['get', 'render_height'], ['get', 'height']], ' m'],
-                'text-size': 12,
-                'text-font': ['Open Sans Bold'],
-                'text-allow-overlap': true,
-                'text-ignore-placement': true,
-                'text-anchor': 'bottom'
-            },
-            'paint': {
-                'text-color': '#444',
-                'text-halo-color': '#fff',
-                'text-halo-width': 2
-            }
-        });
+    // 3D Buildings
+    map.addLayer({
+        'id': '3d-buildings',
+        'source': 'openmaptiles',
+        'source-layer': 'building',
+        'type': 'fill-extrusion',
+        // Pas de maxzoom ici pour éviter le culling
+        'paint': {
+            'fill-extrusion-color': '#ffffff',
+            'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 15],
+            'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0],
+            'fill-extrusion-opacity': 0.9,
+            'fill-extrusion-vertical-gradient': true
+        }
     });
+
+    // Labels
+    map.addLayer({
+        'id': 'building-labels',
+        'source': 'openmaptiles',
+        'source-layer': 'building',
+        'type': 'symbol',
+        'minzoom': 16, 
+        'filter': ['>=', ['coalesce', ['get', 'render_height'], ['get', 'height'], 0], 30],
+        'layout': {
+            'text-field': ['concat', ['coalesce', ['get', 'render_height'], ['get', 'height']], ' m'],
+            'text-size': 12,
+            'text-font': ['Open Sans Bold'],
+            'text-anchor': 'bottom'
+        },
+        'paint': {
+            'text-color': '#444',
+            'text-halo-color': '#fff',
+            'text-halo-width': 2
+        }
+    });
+});
 
 
 
