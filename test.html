@@ -32,56 +32,63 @@
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
-    map.on('load', () => {
-        
-        // --- ÉTAPE 1 : Épuration du style pour le minimalisme ---
-        const layers = map.getStyle().layers;
-        layers.forEach(layer => {
-            // On cache tout sauf ce qui est lié aux bâtiments ou au fond
-            if (layer.type !== 'background' && !layer.id.includes('building')) {
-                map.setLayoutProperty(layer.id, 'visibility', 'none');
-            }
-        });
+ map.on('load', () => {
+    
+    // --- ÉTAPE 0 : Forcer le comportement de la source ---
+    // On redéfinit la source 'openmaptiles' pour autoriser le zoom infini (overscaling)
+    // Cela évite que les bâtiments disparaissent au zoom 18+
+    const source = map.getSource('openmaptiles');
+    if (source) {
+        source.maxzoom = 22; 
+    }
 
-        // --- ÉTAPE 2 : Ajout des bâtiments extrudés ---
-        map.addLayer({
-            'id': '3d-buildings',
-            'source': 'openmaptiles',
-            'source-layer': 'building',
-            'type': 'fill-extrusion',
-            'minzoom': 13,
-            'paint': {
-                'fill-extrusion-color': '#ffffff',
-                'fill-extrusion-height': ['get', 'render_height'],
-                'fill-extrusion-base': ['get', 'render_min_height'],
-                'fill-extrusion-opacity': 0.9
-            }
-        });
-
-        // --- ÉTAPE 3 : Étiquettes de hauteur (uniquement > 30m) ---
-        map.addLayer({
-            'id': 'building-labels-30m',
-            'source': 'openmaptiles',
-            'source-layer': 'building',
-            'type': 'symbol',
-            'minzoom': 15,
-            // Filtre : Uniquement si la hauteur existe et est >= 30
-            'filter': ['>=', ['get', 'render_height'], 30],
-            'layout': {
-                'text-field': ['concat', ['get', 'render_height'], 'm'],
-                'text-size': 12,
-                'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-                // Place le texte au sommet du bâtiment
-                'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
-                'text-padding': 2
-            },
-            'paint': {
-                'text-color': '#555',
-                'text-halo-color': '#fff',
-                'text-halo-width': 1.5
-            }
-        });
+    // --- ÉTAPE 1 : Épuration du style ---
+    const layers = map.getStyle().layers;
+    layers.forEach(layer => {
+        if (layer.type !== 'background' && !layer.id.includes('building')) {
+            map.setLayoutProperty(layer.id, 'visibility', 'none');
+        }
     });
+
+    // --- ÉTAPE 2 : Bâtiments (Ajout de l'option de rendu de loin) ---
+    map.addLayer({
+        'id': '3d-buildings',
+        'source': 'openmaptiles',
+        'source-layer': 'building',
+        'type': 'fill-extrusion',
+        'minzoom': 13,
+        'paint': {
+            'fill-extrusion-color': '#ffffff',
+            'fill-extrusion-height': ['get', 'render_height'],
+            'fill-extrusion-base': ['get', 'render_min_height'],
+            'fill-extrusion-opacity': 0.9,
+            // Optionnel : ajoute une légère bordure pour mieux voir les volumes en vue rasante
+            'fill-extrusion-vertical-gradient': true 
+        }
+    });
+
+    // --- ÉTAPE 3 : Étiquettes ---
+    map.addLayer({
+        'id': 'building-labels-30m',
+        'source': 'openmaptiles',
+        'source-layer': 'building',
+        'type': 'symbol',
+        'minzoom': 15,
+        'filter': ['>=', ['get', 'render_height'], 30],
+        'layout': {
+            'text-field': ['concat', ['get', 'render_height'], 'm'],
+            'text-size': 12,
+            'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+            'text-allow-overlap': true, // Évite que l'étiquette disparaisse si une autre est proche
+            'text-ignore-placement': true 
+        },
+        'paint': {
+            'text-color': '#555',
+            'text-halo-color': '#fff',
+            'text-halo-width': 1.5
+        }
+    });
+});
 
     // Rotation libre avec clic droit ou Ctrl + Clic
     map.dragRotate.enable();
