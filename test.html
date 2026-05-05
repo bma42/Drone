@@ -2,15 +2,15 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D Buildings Only</title>
-    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carte 3D - OpenFreeMap & MapLibre</title>
+    
+    <link href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; background-color: #d1d1d1; }
+        body { margin: 0; padding: 0; }
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
-        /* Masquer les logos pour le minimalisme */
-        .maplibregl-ctrl-attrib, .maplibregl-ctrl-logo { display: none !important; }
     </style>
 </head>
 <body>
@@ -18,53 +18,57 @@
 <div id="map"></div>
 
 <script>
+    // 1. Initialisation de la carte
+    // On utilise le style "Bright" d'OpenFreeMap qui est totalement gratuit et sans clé API 
     const map = new maplibregl.Map({
         container: 'map',
-        style: {
-            version: 8,
-            sources: {
-                // Source vectorielle OpenFreeMap (données OSM)
-                'openmaptiles': {
-                    type: 'vector',
-                    url: 'https://tiles.openfreemap.org/tiles/v3.json'
-                }
-            },
-            layers: [{
-                id: 'background',
-                type: 'background',
-                paint: { 'background-color': '#d1d1d1' }
-            }]
-        },
-        center: [2.3488, 48.8534], // Paris
+        style: 'https://tiles.openfreemap.org/styles/bright',
+        center: [3.8829, 45.0428], // Coordonnées par défaut (Le Puy-en-Velay) [1]
         zoom: 16,
-        pitch: 60,
+        pitch: 60, // Inclinaison pour l'effet 3D 
+        bearing: -17.6,
         antialias: true
     });
 
+    // 2. Ajout du bouton de géolocalisation
+    // Utilise l'API de géolocalisation native du navigateur 
+    const geolocate = new maplibregl.GeolocateControl({
+        positionOptions: {
+            enableHighAccuracy: true // Utilise le GPS si disponible [2]
+        },
+        trackUserLocation: true, // Suit les déplacements de l'utilisateur
+        showAccuracyCircle: true // Affiche la marge d'erreur 
+    });
+    map.addControl(geolocate, 'top-right');
+
+    // 3. Ajout de l'extrusion des bâtiments 3D
     map.on('load', () => {
-        // Ajout unique de la couche des bâtiments
+        // On récupère l'ID de la couche de labels pour insérer les bâtiments "en dessous"
+        // Cela permet aux noms de rues de rester lisibles par-dessus les bâtiments 
+        const layers = map.getStyle().layers;
+        const labelLayerId = layers.find(layer => layer.type === 'symbol' && layer.layout['text-field']).id;
+
+        // Ajout de la couche 3D (sans texture)
         map.addLayer({
             'id': '3d-buildings',
-            'source': 'openmaptiles',
-            'source-layer': 'building',
+            'source': 'openfreemap', // Source vectorielle d'OpenFreeMap 
+            'source-layer': 'building', // Nom de la couche dans le schéma OpenMapTiles 
             'type': 'fill-extrusion',
-            'minzoom': 14,
+            'minzoom': 15, // N'affiche la 3D qu'à partir d'un zoom élevé pour la performance 
             'paint': {
-                // Couleur blanche pour un look architectural pur
-                'fill-extrusion-color': '#ffffff',
-                // Extraction de la hauteur réelle
-                'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 10],
-                'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0],
-                'fill-extrusion-opacity': 1
+                // Couleur grise neutre (style clay/maquette) 
+                'fill-extrusion-color': '#e0e0e0',
+                
+                // Utilisation de render_height pour la hauteur du bâtiment 
+                // On utilise une interpolation pour que les bâtiments "poussent" lors du zoom
+                'fill-extrusion-height': [
+                    'interpolate', ['linear'], ['zoom'],
+                    15, 0,
+                    15.05, ['get', 'render_height'],
+                'fill-extrusion-base': ['get', 'render_min_height'],
+                'fill-extrusion-opacity': 0.8
             }
-        });
-
-        // Bouton de géolocalisation
-        map.addControl(new maplibregl.GeolocateControl({
-            positionOptions: { enableHighAccuracy: true },
-            trackUserLocation: true,
-            showUserLocation: true
-        }));
+        }, labelLayerId);
     });
 </script>
 
