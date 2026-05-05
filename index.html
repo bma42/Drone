@@ -123,10 +123,14 @@
             padding: 10px 14px;
             box-shadow: 0 8px 24px rgba(8,47,112,.18);
             display: none;
+            transition: top .3s ease;
         }
         @media (max-width: 720px) {
             #fastfly-progress { top: 150px; }
         }
+        /* Quand le topbar est masqué (scroll vers le bas) on remonte la barre de
+           chargement Fast Fly tout en haut pour qu'elle reste visible. */
+        body.topbar-hidden #fastfly-progress { top: 8px; }
         #fastfly-progress .label {
             display: flex; justify-content: space-between; font-size: 12px; font-weight: 600;
             color: var(--c-text); margin-bottom: 6px;
@@ -1705,8 +1709,13 @@ const STATE = {
         if (tb) {
             const goingDown = y > lastY + 4;
             const goingUp   = y < lastY - 4;
-            if (goingDown && y > 80) tb.classList.add('hidden');
-            else if (goingUp || y < 20) tb.classList.remove('hidden');
+            if (goingDown && y > 80) {
+                tb.classList.add('hidden');
+                document.body.classList.add('topbar-hidden');
+            } else if (goingUp || y < 20) {
+                tb.classList.remove('hidden');
+                document.body.classList.remove('topbar-hidden');
+            }
         }
         lastY = y;
         ticking = false;
