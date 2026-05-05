@@ -3,15 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carte 3D Urbaine Minimaliste</title>
+    <title>Carte 3D Minimaliste + Géo</title>
     
-    <!-- Fichiers MapLibre GL JS -->
     <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #fdfdfd; }
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
         
-        /* Masquer les contrôles par défaut pour le minimalisme ou les styliser */
+        /* Personnalisation légère des boutons pour le minimalisme */
+        .maplibregl-ctrl-group {
+            border: none !important;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1) !important;
+        }
         .maplibregl-ctrl-attrib { display: none; }
     </style>
 </head>
@@ -25,37 +28,49 @@
     const map = new maplibregl.Map({
         container: 'map',
         style: 'https://tiles.openfreemap.org/styles/positron', 
-        center: [2.349, 48.856], // Paris par défaut
+        center: [2.349, 48.856],
         zoom: 16,
         pitch: 70, 
         bearing: 0,
         antialias: true,
-        maxPitch: 85,           // Autorise une inclinaison presque horizontale
-        dragRotate: true,       // Rotation libre (clic droit ou Ctrl+clic)
-        touchZoomRotate: true   // Rotation libre sur mobile (deux doigts)
+        maxPitch: 85,
+        dragRotate: true
     });
+
+    // --- CONFIGURATION GÉOLOCALISATION ---
+    const geolocate = new maplibregl.GeolocateControl({
+        positionOptions: {
+            enableHighAccuracy: true // GPS précis
+        },
+        trackUserLocation: true,    // Suit le mouvement en temps réel
+        showUserHeading: true,      // Affiche la direction (boussole)
+        showAccuracyCircle: true    // Affiche le cercle de précision bleue
+    });
+
+    // Ajout du contrôle de navigation classique
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+    
+    // Ajout du bouton de géolocalisation en dessous
+    map.addControl(geolocate, 'top-right');
 
     map.on('load', () => {
         
-        // --- 1. CONFIGURATION DE LA SOURCE (Correctif disparition zoom) ---
-        // On récupère la source et on augmente le maxzoom pour permettre l'overscaling
+        // Fix pour éviter la disparition des bâtiments au zoom
         if (map.getSource('openmaptiles')) {
             map.getSource('openmaptiles').maxzoom = 22;
         }
 
-        // --- 2. ÉPURATION DU STYLE (Minimalisme) ---
+        // Épuration minimaliste
         const layers = map.getStyle().layers;
         layers.forEach(layer => {
-            // On masque tout ce qui n'est pas le fond ou les bâtiments
             const isBuilding = layer.id.includes('building');
             const isBackground = layer.type === 'background';
-            
             if (!isBuilding && !isBackground) {
                 map.setLayoutProperty(layer.id, 'visibility', 'none');
             }
         });
 
-        // --- 3. COUCHE BÂTIMENTS 3D ---
+        // Bâtiments 3D
         map.addLayer({
             'id': '3d-buildings-main',
             'source': 'openmaptiles',
@@ -67,11 +82,11 @@
                 'fill-extrusion-height': ['get', 'render_height'],
                 'fill-extrusion-base': ['get', 'render_min_height'],
                 'fill-extrusion-opacity': 0.85,
-                'fill-extrusion-vertical-gradient': true // Aide à la perception du relief
+                'fill-extrusion-vertical-gradient': true
             }
         });
 
-        // --- 4. ÉTIQUETTES DE HAUTEUR (> 30m) ---
+        // Étiquettes hauteur > 30m
         map.addLayer({
             'id': 'labels-height-30m',
             'source': 'openmaptiles',
@@ -83,8 +98,8 @@
                 'text-field': ['concat', ['get', 'render_height'], 'm'],
                 'text-size': 11,
                 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-                'text-allow-overlap': true,      // Crucial pour les vues de profil
-                'text-ignore-placement': true,    // Force l'affichage malgré la densité
+                'text-allow-overlap': true,
+                'text-ignore-placement': true,
                 'text-anchor': 'center'
             },
             'paint': {
@@ -93,21 +108,10 @@
                 'text-halo-width': 1.5
             }
         });
-
-        // --- 5. INTERACTION ---
-        // Rotation libre avec clic droit maintenu
-        map.addControl(new maplibregl.NavigationControl({
-            visualizePitch: true
-        }), 'top-right');
     });
 
-    // Correction supplémentaire pour éviter que les tuiles ne "clignotent" lors d'un zoom rapide
-    map.on('zoom', () => {
-        const currentZoom = map.getZoom();
-        if (currentZoom > 18) {
-            // Maintien des données existantes si on dépasse les limites des tuiles vectorielles
-        }
-    });
+    // Déclenchement automatique de la géolocalisation au chargement (optionnel)
+    // geolocate.on('geolocate', () => { console.log('Position trouvée'); });
 
 </script>
 </body>
