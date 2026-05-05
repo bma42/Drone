@@ -1,59 +1,59 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
-    <meta charset="utf-8">
-    <title>Carte 3D Bâtiments</title>
-    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Carte 3D Minimaliste</title>
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
-        body { margin: 0; padding: 0; }
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #f2f2f2; }
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        .maplibregl-ctrl-attrib { display: none; } /* Épure l'interface */
     </style>
 </head>
 <body>
+
 <div id="map"></div>
+
 <script>
     const map = new maplibregl.Map({
         container: 'map',
-        // Utilisation d'un style qui inclut les sources vectorielles nécessaires
-        style: 'https://tiles.openfreemap.org/styles/liberty', 
-        center: [2.3488, 48.8534], // Coordonnées de Paris (Notre-Dame)
+        style: 'https://tiles.openfreemap.org/styles/positron',
+        center: [2.3488, 48.8534],
         zoom: 16,
-        pitch: 60,
-        bearing: -17,
+        pitch: 55,
+        bearing: -15,
         antialias: true
     });
 
     map.on('load', () => {
-        // On récupère l'ID de la source de données du style Liberty (souvent 'openmaptiles')
-        // Si vous utilisez OpenFreeMap, la source s'appelle généralement 'openfreemap'
-        
         map.addLayer({
             'id': '3d-buildings',
-            'source': 'openfreemap', 
+            'source': 'openfreemap',
             'source-layer': 'building',
             'type': 'fill-extrusion',
             'minzoom': 15,
             'paint': {
-                'fill-extrusion-color': '#e0e0e0',
-                // On utilise la propriété 'render_height' ou 'height' des données OSM
-                'fill-extrusion-height': [
-                    'interpolate', ['linear'], ['zoom'],
-                    15, 0,
-                    15.05, ['get', 'height']
-                ],
+                'fill-extrusion-color': '#ffffff',
+                'fill-extrusion-height': ['get', 'height'],
                 'fill-extrusion-base': ['get', 'min_height'],
-                'fill-extrusion-opacity': 0.9
+                'fill-extrusion-opacity': 0.6
             }
         });
 
-        // Bouton de géolocalisation
-        map.addControl(new maplibregl.GeolocateControl({
+        const geolocate = new maplibregl.GeolocateControl({
             positionOptions: { enableHighAccuracy: true },
-            trackUserLocation: true
-        }));
+            trackUserLocation: true,
+            showUserLocation: true
+        });
+
+        map.addControl(geolocate);
+        
+        // Optionnel : déclenche la géolocalisation au chargement
+        // geolocate.trigger();
     });
 </script>
+
 </body>
 </html>
