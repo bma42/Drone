@@ -5204,6 +5204,35 @@ function renderElevPreview(series, radius) {
 
 // Trace l'axe altimétrique choisi (celui de l'aperçu §1) sur la carte principale,
 // avec un dégradé de couleur selon l'altitude + marqueurs ▲ max et ▼ min.
+// Étiquette cardinale (Nord / Sud / Est / Ouest) en bout de coupe altimétrique.
+// Le texte commence à l'extrémité de la coupe et reste centré perpendiculairement
+// à l'axe : E/O → centré verticalement à hauteur de l'extrémité ; N/S → centré
+// horizontalement, étendu vers le haut/bas.
+function makeCardinalMarker(latPt, lonPt, refLat, refLon, color) {
+    const dLatPt = latPt - refLat;
+    const dLonPt = lonPt - refLon;
+    let card, anchorX, anchorY;
+    if (Math.abs(dLatPt) >= Math.abs(dLonPt)) {
+        card = dLatPt > 0 ? 'Nord' : 'Sud';
+    } else {
+        card = dLonPt > 0 ? 'Est' : 'Ouest';
+    }
+    const w = card.length * 7 + 14; // largeur approximative en px
+    const h = 20;
+    if      (card === 'Est')   { anchorX = 0;     anchorY = h / 2; }
+    else if (card === 'Ouest') { anchorX = w;     anchorY = h / 2; }
+    else if (card === 'Nord')  { anchorX = w / 2; anchorY = h; }
+    else                       { anchorX = w / 2; anchorY = 0; }
+    return L.marker([latPt, lonPt], {
+        icon: L.divIcon({
+            className: '',
+            iconSize: [w, h],
+            iconAnchor: [anchorX, anchorY],
+            html: `<div style="background:${color}; color:#fff; font-size:11px; font-weight:700; padding:0 8px; border-radius:10px; border:1.5px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.5); white-space:nowrap; width:${w}px; height:${h}px; box-sizing:border-box; display:flex; align-items:center; justify-content:center;">${card}</div>`
+        })
+    });
+}
+
 function drawElevAxisOnMainMap(s, radius, heightMax, flightCeiling) {
     if (!STATE.lat || !STATE.layers || !STATE.layers.elevAxis) return;
     const lat = STATE.lat, lon = STATE.lon;
@@ -5251,19 +5280,9 @@ function drawElevAxisOnMainMap(s, radius, heightMax, flightCeiling) {
     }).bindPopup(`<b>Point bas de la coupe ${s.name}</b><br>Altitude ${s.vMin.toFixed(0)} m · ${dirOf(s.iMin)}`)
       .addTo(STATE.layers.elevAxis);
 
-    // Étiquettes cardinales aux extrémités
-    L.marker(p1, {
-        icon: L.divIcon({
-            className: '', iconSize: null, iconAnchor: [0, 0],
-            html: `<div style="background:#fff; color:${s.color}; font-size:10px; font-weight:700; padding:1px 5px; border-radius:8px; border:1.5px solid ${s.color}; box-shadow:0 1px 2px rgba(0,0,0,.3);">${labels[0]}</div>`
-        })
-    }).addTo(STATE.layers.elevAxis);
-    L.marker(p2, {
-        icon: L.divIcon({
-            className: '', iconSize: null, iconAnchor: [0, 0],
-            html: `<div style="background:#fff; color:${s.color}; font-size:10px; font-weight:700; padding:1px 5px; border-radius:8px; border:1.5px solid ${s.color}; box-shadow:0 1px 2px rgba(0,0,0,.3);">${labels[1]}</div>`
-        })
-    }).addTo(STATE.layers.elevAxis);
+    // Étiquettes cardinales aux extrémités (texte plein : Nord/Sud/Est/Ouest)
+    makeCardinalMarker(p1[0], p1[1], lat, lon, s.color).addTo(STATE.layers.elevAxis);
+    makeCardinalMarker(p2[0], p2[1], lat, lon, s.color).addTo(STATE.layers.elevAxis);
 }
 
 let _elevSatMap = null;
@@ -5284,14 +5303,9 @@ function initElevSatMap(lat, lon, radius, series) {
         const p1 = [lat - dLat, lon - dLon];
         const p2 = [lat + dLat, lon + dLon];
         L.polyline([p1, p2], { color: s.color, weight: 4, opacity: 0.9 }).addTo(_elevSatMap).bindPopup(`<b>Axe ${s.name}</b><br>Δ ${(s.vMax - s.vMin).toFixed(0)} m`);
-        // Étiquette aux extrémités (+ et -)
-        const labels = s.name.split('–');
-        L.marker(p2, { icon: L.divIcon({ className: '', iconSize: null, iconAnchor: [0, 0],
-            html: `<div style="background:${s.color}; color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px; border:1.5px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.5);">${labels[1]}</div>`
-        })}).addTo(_elevSatMap);
-        L.marker(p1, { icon: L.divIcon({ className: '', iconSize: null, iconAnchor: [0, 0],
-            html: `<div style="background:${s.color}; color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px; border:1.5px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.5);">${labels[0]}</div>`
-        })}).addTo(_elevSatMap);
+        // Étiquettes cardinales en bout d'axe (Nord / Sud / Est / Ouest, alignées à l'extrémité)
+        makeCardinalMarker(p1[0], p1[1], lat, lon, s.color).addTo(_elevSatMap);
+        makeCardinalMarker(p2[0], p2[1], lat, lon, s.color).addTo(_elevSatMap);
     });
 
     L.circleMarker([lat, lon], { radius: 7, color: '#dc2626', fillColor: '#dc2626', fillOpacity: 1, weight: 2 }).addTo(_elevSatMap).bindPopup('<b>Point de mission</b>');
