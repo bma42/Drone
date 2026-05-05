@@ -89,16 +89,19 @@
             max-width: 700px; overflow: hidden;
         }
         @media (max-width: 720px) {
-            /* Mobile : titre + sous-titre sur la 1re ligne, boutons groupés sur la 2e */
-            .topbar { flex-wrap: wrap; padding: 6px 10px; gap: 6px; }
-            .topbar-brand { flex-basis: 100%; }
-            .topbar-brand-text { font-size: 13px; }
-            .topbar-brand-sub { font-size: 10.5px; }
+            /* Mobile : topbar minimal — titre sur la 1re ligne, boutons sur la 2e,
+               pas d'espace mort. Sous-titre masqué pour ne pas ajouter une 3e ligne. */
+            .topbar { flex-wrap: wrap; padding: 4px 10px; gap: 4px; }
+            .topbar-brand { flex-basis: 100%; gap: 7px; }
+            .topbar-brand svg { width: 18px; height: 18px; }
+            .topbar-brand-text { font-size: 13px; line-height: 1; }
+            .topbar-brand-sub { display: none; }
             .topbar-spacer { display: none; }
-            .topbar .btn { padding: 6px 9px; font-size: 11px; }
+            .topbar .btn { padding: 5px 9px; font-size: 11px; }
             .topbar .btn svg { width: 12px; height: 12px; }
-            .topbar .verdict-pill { font-size: 10.5px; padding: 4px 9px; letter-spacing: .3px; }
-            .topbar .verdict-pill svg { width: 13px; height: 13px; }
+            .topbar .verdict-pill { font-size: 10.5px; padding: 3px 9px; letter-spacing: .3px; }
+            .topbar .verdict-pill svg { width: 12px; height: 12px; }
+            .topbar.collapsed { padding: 3px 10px; gap: 3px; }
             .topbar.collapsed .topbar-brand { flex-basis: auto; }
         }
         .topbar-spacer { flex: 1; }
