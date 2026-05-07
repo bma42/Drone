@@ -1,141 +1,86 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html>
 <head>
-    <meta charset="UTF-8">
+    <title>Radar Pluie Animé - RainViewer</title>
+    <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carte 3D Urbaine - Recherche & Géo</title>
-    <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+    <!-- CSS de Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; background-color: #f0f0f0; font-family: sans-serif; }
-        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
-        
-        .ui-nav { position: absolute; top: 10px; left: 10px; z-index: 10; display: flex; flex-direction: column; gap: 10px; width: 250px; }
-        
-        .search-box { position: relative; width: 100%; }
-        input#address-search { 
-            width: 100%; padding: 12px; border: none; border-radius: 8px; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.15); font-size: 14px; outline: none;
-            box-sizing: border-box;
-        }
-
-        #results { 
-            position: absolute; top: 45px; left: 0; right: 0; 
-            background: white; border-radius: 8px; overflow: hidden; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.15); display: none; 
-        }
-        .result-item { padding: 10px; cursor: pointer; border-bottom: 1px solid #eee; font-size: 13px; }
-        .result-item:hover { background: #f0f0f0; }
-
-        button.main-btn { 
-            background: white; border: none; padding: 10px; border-radius: 8px; 
-            font-weight: bold; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
-            text-transform: uppercase; font-size: 11px;
-        }
-
-        .maplibregl-ctrl-attrib { display: none; }
+        #map { height: 600px; width: 100%; }
+        .controls { padding: 10px; background: #fff; position: absolute; top: 10px; left: 50px; z-index: 1000; border-radius: 5px; }
     </style>
 </head>
 <body>
 
-<div class="ui-nav">
-    <div class="search-box">
-        <input type="text" id="address-search" placeholder="Rechercher une adresse..." autocomplete="off">
-        <div id="results"></div>
-    </div>
-    <button class="main-btn" onclick="resetView()">VUE DÉFAUT</button>
+<div class="controls">
+    <button onclick="stopAnimation()">Stop</button>
+    <button onclick="playAnimation()">Play</button>
+    <span id="timestamp">Chargement...</span>
 </div>
-
 <div id="map"></div>
 
-<script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+<!-- JS de Leaflet -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-const map = new maplibregl.Map({
-    container: 'map',
-    style: 'https://tiles.openfreemap.org/styles/positron',
-    center: [2.349, 48.856],
-    zoom: 17,
-    pitch: 60,
-    bearing: -10,
-    antialias: true,
-    maxZoom: 23,
-    maxPitch: 85
-});
+    var map = L.map('map').setView([46.6033, 1.8883], 6); // Centré sur la France
+    var timestamps = [];
+    var radarLayers = {};
+    var currentIndex = 0;
+    var animationTimer;
 
-// Géolocalisation Native
-const geolocate = new maplibregl.GeolocateControl({
-    positionOptions: { enableHighAccuracy: true },
-    trackUserLocation: true,
-    showUserHeading: true
-});
-map.addControl(geolocate, 'top-right');
+    // 1. Ajouter le fond de carte (OpenStreetMap)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
 
-map.on('load', () => {
-    map.getStyle().layers.forEach(layer => {
-        if (layer.type !== 'background') {
-            map.setLayoutProperty(layer.id, 'visibility', 'none');
-        }
-    });
+    // 2. Récupérer les données de RainViewer
+    fetch('https://api.rainviewer.com/public/weather-maps.json')
+        .then(res => res.json())
+        .then(data => {
+            timestamps = data.radar.past; // On récupère les relevés passés
+            initializeRadarLayers();
+            playAnimation();
+        });
 
-    map.addLayer({
-        'id': '3d-buildings',
-        'source': 'openmaptiles',
-        'source-layer': 'building',
-        'type': 'fill-extrusion',
-        'paint': {
-            'fill-extrusion-color': '#ffffff',
-            'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 15],
-            'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0],
-            'fill-extrusion-opacity': 0.9,
-            'fill-extrusion-vertical-gradient': true
-        }
-    });
-});
-
-// --- Logique Autocomplete ---
-const searchInput = document.getElementById('address-search');
-const resultsDiv = document.getElementById('results');
-let debounceTimer;
-
-searchInput.addEventListener('input', (e) => {
-    clearTimeout(debounceTimer);
-    const query = e.target.value;
-    if (query.length < 3) { resultsDiv.style.display = 'none'; return; }
-
-    debounceTimer = setTimeout(() => {
-        fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5`)
-            .then(res => res.json())
-            .then(data => {
-                resultsDiv.innerHTML = '';
-                resultsDiv.style.display = 'block';
-                data.features.forEach(f => {
-                    const item = document.createElement('div');
-                    item.className = 'result-item';
-                    const name = f.properties.name || '';
-                    const city = f.properties.city || '';
-                    item.innerText = `${name} ${city}`.trim();
-                    item.onclick = () => {
-                        const [lng, lat] = f.geometry.coordinates;
-                        map.flyTo({ center: [lng, lat], zoom: 18, pitch: 60, essential: true });
-                        resultsDiv.style.display = 'none';
-                        searchInput.value = item.innerText;
-                    };
-                    resultsDiv.appendChild(item);
-                });
-            });
-    }, 300);
-});
-
-function resetView() {
-    map.flyTo({ center: [2.349, 48.856], zoom: 17, pitch: 60, bearing: -10 });
-}
-
-// Fermer les résultats au clic extérieur
-document.addEventListener('click', (e) => {
-    if (!document.querySelector('.search-box').contains(e.target)) {
-        resultsDiv.style.display = 'none';
+    function initializeRadarLayers() {
+        timestamps.forEach(ts => {
+            // Création d'une couche pour chaque timestamp (cachée par défaut)
+            radarLayers[ts] = L.tileLayer(`https://tilecache.rainviewer.com/v2/radar/${ts}/256/{z}/{x}/{y}/2/1_1.png`, {
+                opacity: 0,
+                zIndex: 100
+            }).addTo(map);
+        });
     }
-});
+
+    function showFrame(index) {
+        // Cacher l'ancienne couche
+        var oldTs = timestamps[currentIndex];
+        if (radarLayers[oldTs]) radarLayers[oldTs].setOpacity(0);
+
+        // Afficher la nouvelle couche
+        currentIndex = index;
+        var newTs = timestamps[currentIndex];
+        if (radarLayers[newTs]) radarLayers[newTs].setOpacity(0.7);
+
+        // Mise à jour de l'affichage de l'heure
+        var date = new Date(newTs * 1000);
+        document.getElementById('timestamp').innerText = date.toLocaleTimeString();
+    }
+
+    function playAnimation() {
+        stopAnimation();
+        animationTimer = setInterval(() => {
+            var nextIndex = (currentIndex + 1) % timestamps.length;
+            showFrame(nextIndex);
+        }, 500); // Vitesse de l'animation (500ms)
+    }
+
+    function stopAnimation() {
+        clearInterval(animationTimer);
+    }
 </script>
+
 </body>
 </html>
