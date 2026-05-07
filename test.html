@@ -1,85 +1,174 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
-    <title>Radar Pluie Animé - RainViewer</title>
-    <meta charset="utf-8" />
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- CSS de Leaflet -->
+    <title>Radar Pluie Live - RainViewer</title>
+    
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
     <style>
-        #map { height: 600px; width: 100%; }
-        .controls { padding: 10px; background: #fff; position: absolute; top: 10px; left: 50px; z-index: 1000; border-radius: 5px; }
+        body { margin: 0; padding: 0; font-family: sans-serif; }
+        #map { height: 100vh; width: 100vw; background: #262626; }
+
+        /* Interface de contrôle */
+        .ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            min-width: 250px;
+        }
+
+        .controls { display: flex; gap: 10px; }
+        
+        button {
+            padding: 8px 15px;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            background: #007bff;
+            color: white;
+            font-weight: bold;
+        }
+
+        button:hover { background: #0056b3; }
+
+        #timestamp {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex; justify-content: center; align-items: center;
+            color: white; z-index: 2000;
+            display: none;
+        }
     </style>
 </head>
 <body>
 
-<div class="controls">
-    <button onclick="stopAnimation()">Stop</button>
-    <button onclick="playAnimation()">Play</button>
-    <span id="timestamp">Chargement...</span>
+<div id="loading" class="loading-overlay">Chargement du radar...</div>
+
+<div class="ui-panel">
+    <div id="timestamp">Initialisation...</div>
+    <div class="controls">
+        <button onclick="stop()">⏸ Stop</button>
+        <button onclick="play()">▶ Play</button>
+    </div>
+    <div style="font-size: 0.8em; color: #666;">Mise à jour toutes les 10 min</div>
 </div>
+
 <div id="map"></div>
 
-<!-- JS de Leaflet -->
+<!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-    var map = L.map('map').setView([46.6033, 1.8883], 6); // Centré sur la France
-    var timestamps = [];
-    var radarLayers = {};
-    var currentIndex = 0;
-    var animationTimer;
+    // Configuration
+    const map = L.map('map').setView([46.6033, 1.8883], 6); // Centré sur la France
+    let radarLayers = [];
+    let timestamps = [];
+    let currentIndex = 0;
+    let animationInterval = null;
 
-    // 1. Ajouter le fond de carte (OpenStreetMap)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
+    // 1. Fond de carte (Sombre pour mieux voir la pluie)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap'
     }).addTo(map);
 
-    // 2. Récupérer les données de RainViewer
-    fetch('https://api.rainviewer.com/public/weather-maps.json')
-        .then(res => res.json())
-        .then(data => {
-            timestamps = data.radar.past; // On récupère les relevés passés
-            initializeRadarLayers();
-            playAnimation();
-        });
+    // 2. Fonction pour charger les données de l'API
+    async function loadRadarData() {
+        document.getElementById('loading').style.display = 'flex';
+        
+        try {
+            const response = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+            const data = await response.json();
+            
+            // On récupère les timestamps "past" (passés)
+            timestamps = data.radar.past;
 
-    function initializeRadarLayers() {
-        timestamps.forEach(ts => {
-            // Création d'une couche pour chaque timestamp (cachée par défaut)
-            radarLayers[ts] = L.tileLayer(`https://tilecache.rainviewer.com/v2/radar/${ts}/256/{z}/{x}/{y}/2/1_1.png`, {
-                opacity: 0,
-                zIndex: 100
-            }).addTo(map);
-        });
+            // Nettoyage des anciennes couches si nécessaire
+            radarLayers.forEach(layer => map.removeLayer(layer));
+            radarLayers = [];
+
+            // Création des couches pour chaque timestamp
+            timestamps.forEach((ts) => {
+                const layer = L.tileLayer(`https://tilecache.rainviewer.com/v2/radar/${ts}/256/{z}/{x}/{y}/2/1_1.png`, {
+                    opacity: 0, // Caché par défaut
+                    zIndex: 100
+                });
+                layer.addTo(map);
+                radarLayers.push(layer);
+            });
+
+            currentIndex = timestamps.length - 1;
+            showFrame(currentIndex);
+            play();
+            
+        } catch (error) {
+            console.error("Erreur API:", error);
+            document.getElementById('timestamp').innerText = "Erreur de chargement";
+        } finally {
+            document.getElementById('loading').style.display = 'none';
+        }
     }
 
+    // 3. Gestion de l'affichage d'une frame
     function showFrame(index) {
-        // Cacher l'ancienne couche
-        var oldTs = timestamps[currentIndex];
-        if (radarLayers[oldTs]) radarLayers[oldTs].setOpacity(0);
+        // Cacher toutes les couches
+        radarLayers.forEach(layer => layer.setOpacity(0));
+        
+        // Afficher la couche actuelle
+        if (radarLayers[index]) {
+            radarLayers[index].setOpacity(0.8);
+        }
 
-        // Afficher la nouvelle couche
-        currentIndex = index;
-        var newTs = timestamps[currentIndex];
-        if (radarLayers[newTs]) radarLayers[newTs].setOpacity(0.7);
-
-        // Mise à jour de l'affichage de l'heure
-        var date = new Date(newTs * 1000);
-        document.getElementById('timestamp').innerText = date.toLocaleTimeString();
+        // MISE À JOUR DE LA DATE (Correction du bug Invalid Date)
+        const ts = timestamps[index];
+        if (ts) {
+            const dateObj = new Date(ts * 1000); // Multiplication par 1000 obligatoire
+            const options = { hour: '2-digit', minute: '2-digit' };
+            document.getElementById('timestamp').innerText = dateObj.toLocaleTimeString('fr-FR', options);
+        }
     }
 
-    function playAnimation() {
-        stopAnimation();
-        animationTimer = setInterval(() => {
-            var nextIndex = (currentIndex + 1) % timestamps.length;
-            showFrame(nextIndex);
-        }, 500); // Vitesse de l'animation (500ms)
+    // 4. Contrôles de l'animation
+    function play() {
+        if (animationInterval) return;
+        animationInterval = setInterval(() => {
+            currentIndex++;
+            if (currentIndex >= timestamps.length) {
+                currentIndex = 0;
+            }
+            showFrame(currentIndex);
+        }, 600); // Vitesse : 600ms par image
     }
 
-    function stopAnimation() {
-        clearInterval(animationTimer);
+    function stop() {
+        clearInterval(animationInterval);
+        animationInterval = null;
     }
+
+    // Lancement
+    loadRadarData();
+
+    // Actualiser les données toutes les 10 minutes
+    setInterval(loadRadarData, 600000);
 </script>
 
 </body>
