@@ -1698,7 +1698,7 @@
         <section class="card">
             <div class="card-head">
                 <div class="card-num">20</div>
-                <div class="card-title">Conditions GNSS<span class="sub">Indice Kp planétaire (perturbations électromagnétiques)</span></div>
+                <div class="card-title">Conditions KP<span class="sub">Indice Kp planétaire (perturbations magnétiques solaires) · impact GNSS &amp; boussole drone</span></div>
                 <button type="button" class="no-print" onclick="refreshKp()" title="Rafraîchir l'indice Kp" style="background:transparent; border:1px solid var(--c-border-strong); border-radius:4px; padding:3px 9px; cursor:pointer; font-size:11px; color:var(--c-text-soft); margin-right:8px;">↻ Rafraîchir</button>
                 <span class="card-status" id="status-kp">en attente</span>
             </div>
@@ -6163,9 +6163,29 @@ async function fetchKp() {
         } catch (e) { lastErr = e; }
     }
     setStatus('kp', 'err', 'indisponible');
-    document.getElementById('kp-body').innerHTML = `<div class="empty-state">Indice Kp indisponible — saisir manuellement la condition GNSS du jour.</div>`;
+    document.getElementById('kp-body').innerHTML = `<div class="empty-state">Indice Kp indisponible — saisir manuellement la condition GNSS du jour.</div>${KP_INFO_BLOCK}`;
     throw lastErr || new Error('Kp KO');
 }
+
+// Bloc d'information réutilisable expliquant l'indice Kp et son impact opérationnel.
+const KP_INFO_BLOCK = `
+<details style="margin-top:14px; background:#f4f6fa; border:1px solid var(--c-border); border-radius:8px; padding:8px 12px;">
+    <summary style="cursor:pointer; font-weight:600; font-size:12px; color:var(--c-text); user-select:none;">ℹ Qu'est-ce que l'indice Kp&nbsp;?</summary>
+    <div style="margin-top:8px; font-size:12px; color:var(--c-text-soft); line-height:1.55;">
+        Le <strong>Kp</strong> (de l'allemand <em>Kennziffer-planetarisch</em>) est un indice global mesurant les perturbations
+        du champ magnétique terrestre causées par l'activité solaire (vent solaire, éruptions, éjections de masse coronale).
+        Mesuré toutes les 3 h par un réseau mondial de magnétomètres, il s'échelonne de <strong>0 à 9</strong>.
+        <div style="margin-top:8px; display:grid; grid-template-columns:auto 1fr; gap:4px 10px;">
+            <span style="background:#16a34a; color:#fff; padding:1px 7px; border-radius:6px; font-weight:700; font-size:10.5px; align-self:start;">Kp 0–3</span>
+            <span><strong>Nominal</strong> · GNSS et boussole drone fonctionnent normalement.</span>
+            <span style="background:#d97706; color:#fff; padding:1px 7px; border-radius:6px; font-weight:700; font-size:10.5px; align-self:start;">Kp 4</span>
+            <span><strong>Vigilance</strong> · légères perturbations ionosphériques, dégradation possible de la précision GPS.</span>
+            <span style="background:#dc2626; color:#fff; padding:1px 7px; border-radius:6px; font-weight:700; font-size:10.5px; align-self:start;">Kp ≥ 5</span>
+            <span><strong>Tempête géomagnétique</strong> · risque de dérive GNSS, boussole magnétique faussée, RTH (return-to-home) imprécis, hold position bruité. Reporter la mission ou prévoir un vol en mode manuel.</span>
+        </div>
+        <div style="margin-top:8px; font-size:11px; color:var(--c-muted);">Source : NOAA Space Weather Prediction Center (mise à jour /3 h).</div>
+    </div>
+</details>`;
 
 function renderKp(kp, ts) {
     let level, color, msg;
@@ -6185,6 +6205,7 @@ function renderKp(kp, ts) {
         </div>
         <div style="font-size:12px; color:var(--c-text-soft); margin-top:10px;">${msg}</div>
         <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Dernière mise à jour&nbsp;: ${ts} UTC.</div>
+        ${KP_INFO_BLOCK}
     `;
     setStatus('kp', kp <= 3 ? 'ok' : kp <= 4 ? 'warn' : 'err', 'Kp ' + kp.toFixed(1));
     STATE.kp = kp;
