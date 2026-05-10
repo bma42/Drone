@@ -3408,12 +3408,60 @@ function _ighCirclePolygon(lat, lon, radiusM, points) {
     return { type: 'Polygon', coordinates: [ring] };
 }
 
+// Fallback 2D Leaflet si MapLibre/WebGL est indisponible (vieux mobiles, mode économie d'énergie iOS, etc.)
+function initIghMap2DFallback(items, lat, lon, reason) {
+    const el = document.getElementById('igh-map');
+    if (!el) return;
+    el.innerHTML = '';
+    if (ighMap) { try { ighMap.remove(); } catch (e) {} ighMap = null; }
+    ighMap3DUpdateElongation = null;
+    ighMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 14);
+    fitMapToRadius(ighMap, lat, lon, 2000);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', crossOrigin: true }).addTo(ighMap);
+    L.circleMarker([lat, lon], { radius: 7, color: '#0b3d91', fillColor: '#0b3d91', fillOpacity: 1, weight: 2 }).addTo(ighMap).bindPopup('<b>Point de mission</b>');
+    L.circle([lat, lon], { radius: 2000, color: '#0b3d91', fillOpacity: .03, weight: 1, dashArray: '4,4' }).addTo(ighMap);
+    ighElongationCircle = STATE.radius
+        ? L.circle([lat, lon], { radius: STATE.radius, color: '#d97706', fillColor: '#fbbf24', fillOpacity: .15, weight: 2 }).addTo(ighMap).bindPopup('<b>Élongation de vol</b><br>' + STATE.radius + ' m')
+        : null;
+    items.slice(0, 80).forEach(i => {
+        try {
+            L.geoJSON(i.geom, { style: { color: i.cls.color, fillColor: i.cls.color, fillOpacity: .55, weight: 1.5 } })
+              .bindPopup('<b>' + i.cls.kind + '</b> · ' + i.hauteur.toFixed(0) + ' m' + (i.etages ? ' · ' + i.etages + ' étages' : '') + '<br>' + (i.usage || '') + '<br>' + fmtDist(i.dist))
+              .addTo(ighMap);
+            L.marker([i.center.lat, i.center.lon], {
+                icon: L.divIcon({
+                    className: '', iconSize: null, iconAnchor: [0, 0],
+                    html: '<div style="background:' + i.cls.color + '; color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px; border:1.5px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.4); white-space:nowrap;">🏢 ' + i.hauteur.toFixed(0) + 'm ' + i.cls.kind + '</div>'
+                })
+            }).addTo(ighMap);
+        } catch (e) {}
+    });
+    setTimeout(() => ighMap.invalidateSize(), 100);
+    // Badge "fallback 2D" pour que le diagnostic soit visible
+    el.style.position = 'relative';
+    const badge = document.createElement('div');
+    badge.style.cssText = 'position:absolute; top:8px; left:8px; z-index:500; background:#fef3c7; color:#92400e; border:1px solid #d97706; padding:3px 8px; border-radius:10px; font-size:10.5px; font-weight:700; box-shadow:0 1px 3px rgba(0,0,0,.2); pointer-events:none;';
+    badge.textContent = '⚠ Vue 2D (fallback) — ' + (reason || 'WebGL indisponible');
+    el.appendChild(badge);
+    console.warn('[IGH] Fallback 2D Leaflet :', reason);
+}
+
+// Détection WebGL pour décider 3D vs fallback 2D
+function _hasWebGL() {
+    try {
+        const c = document.createElement('canvas');
+        return !!(c.getContext('webgl') || c.getContext('experimental-webgl') || c.getContext('webgl2'));
+    } catch (e) { return false; }
+}
+
 function initIghMap(items, allFeatures, lat, lon) {
     const el = document.getElementById('igh-map');
     if (!el) return;
     if (typeof maplibregl === 'undefined') {
-        el.innerHTML = '<div class="empty-state" style="padding:20px;">MapLibre GL non chargé.</div>';
-        return;
+        return initIghMap2DFallback(items, lat, lon, 'MapLibre GL non chargé');
+    }
+    if (!_hasWebGL()) {
+        return initIghMap2DFallback(items, lat, lon, 'WebGL non disponible');
     }
     if (ighMap) { try { ighMap.remove(); } catch (e) {} ighMap = null; }
     ighMap3DUpdateElongation = null;
@@ -3441,17 +3489,22 @@ function initIghMap(items, allFeatures, lat, lon) {
         layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }]
     };
 
-    ighMap = new maplibregl.Map({
-        container: el,
-        style: style,
-        center: [lon, lat],
-        zoom: 15.2,
-        pitch: 62,
-        bearing: -22,
-        maxPitch: 80,
-        antialias: true,
-        attributionControl: false
-    });
+    try {
+        ighMap = new maplibregl.Map({
+            container: el,
+            style: style,
+            center: [lon, lat],
+            zoom: 15.2,
+            pitch: 62,
+            bearing: -22,
+            maxPitch: 80,
+            antialias: true,
+            attributionControl: false
+        });
+    } catch (e) {
+        console.warn('[IGH] MapLibre init failed:', e);
+        return initIghMap2DFallback(items, lat, lon, 'MapLibre erreur init');
+    }
     // Force le pitch après le 1er render (sécurité au cas où une option l'aurait écrasé)
     ighMap.once('load', () => { try { ighMap.setPitch(62); ighMap.setBearing(-22); } catch (e) {} });
     ighMap.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showCompass: true }), 'top-right');
@@ -3604,14 +3657,25 @@ function initIghMap(items, allFeatures, lat, lon) {
         ighMap.on('mouseenter', 'buildings-3d', () => { ighMap.getCanvas().style.cursor = 'pointer'; });
         ighMap.on('mouseleave', 'buildings-3d', () => { ighMap.getCanvas().style.cursor = ''; });
 
-        // Aide brève sur l'interaction
+        // Badge permanent "Vue 3D" pour confirmer que la nouvelle version est bien chargée
+        el.style.position = 'relative';
+        const badge3d = document.createElement('div');
+        badge3d.style.cssText = 'position:absolute; top:8px; left:8px; z-index:5; background:linear-gradient(135deg,#0b3d91,#0066cc); color:#fff; padding:3px 9px; border-radius:10px; font-size:10.5px; font-weight:700; box-shadow:0 1px 4px rgba(0,0,0,.3); pointer-events:none; letter-spacing:.3px;';
+        badge3d.textContent = '🏙 Vue 3D · MapLibre';
+        el.appendChild(badge3d);
+
+        // Aide brève sur l'interaction (mobile : 2 doigts pour pivoter)
         const hint = document.createElement('div');
         hint.style.cssText = 'position:absolute; bottom:8px; left:50%; transform:translateX(-50%); background:rgba(11,61,145,0.85); color:#fff; padding:3px 10px; border-radius:12px; font-size:10.5px; font-weight:600; pointer-events:none; box-shadow:0 1px 4px rgba(0,0,0,.3); white-space:nowrap;';
-        hint.textContent = 'Clic-droit / 2 doigts pour pivoter · molette pour zoomer';
-        el.style.position = 'relative';
+        hint.textContent = '2 doigts pour pivoter · pincer pour zoomer';
         el.appendChild(hint);
         setTimeout(() => { hint.style.transition = 'opacity .8s'; hint.style.opacity = '0'; }, 4500);
         setTimeout(() => { try { hint.remove(); } catch (e) {} }, 5500);
+    });
+
+    // Si la création MapLibre lève une erreur (par ex. WebGL refuse le contexte), on bascule en 2D
+    ighMap.on('error', (e) => {
+        console.warn('[IGH MapLibre]', e && e.error ? e.error.message : e);
     });
 
     setTimeout(() => { try { ighMap && ighMap.resize(); } catch (e) {} }, 200);
