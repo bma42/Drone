@@ -6197,8 +6197,11 @@ let aircraftElongationCircle = null;
 let aircraftRefreshTimer = null;
 let aircraftSearchRadiusKm = 50;       // rayon de recherche par défaut (km)
 let aircraftAutoRefresh = true;        // rafraîchissement auto activé par défaut
-let aircraftAlertSound = true;         // alerte sonore hélico < 5 km activée par défaut
-const ALERT_RADIUS_M = 5000;           // rayon de déclenchement de l'alerte (5 km)
+let aircraftAlertSound = true;         // alerte sonore activée par défaut
+let aircraftAlertRadiusKm = 5;         // rayon de détection alerte (configurable, 1–50 km)
+function _alertRadiusM() { return aircraftAlertRadiusKm * 1000; }
+// Restaure la préférence rayon
+try { const v = localStorage.getItem('drone_aircraft_alert_radius'); if (v) aircraftAlertRadiusKm = Math.max(1, Math.min(50, parseInt(v, 10) || 5)); } catch (e) {}
 const ALERT_REMINDER_MS = 20000;       // re-bipe toutes les 20 s tant qu'un hélico est dans la zone
 const _alertedHexes = new Set();       // hex déjà alertés (immédiat à la 1ʳᵉ détection)
 let _alertAudioCtx = null;
@@ -6215,29 +6218,59 @@ document.addEventListener('pointerdown', () => {
 }, { once: true, capture: true });
 
 // Beep d'alerte synthétisé : 3 tons (radar ping urgent), pas de fichier externe.
-function playHeliAlertBeep() {
-    if (!aircraftAlertSound) return;
+// Force = true pour ignorer le toggle aircraftAlertSound (utilisé par le bouton Test).
+function playHeliAlertBeep(force) {
+    if (!force && !aircraftAlertSound) return;
     try {
         if (!_alertAudioCtx) _alertAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const ctx = _alertAudioCtx;
-        if (!ctx) return;
-        if (ctx.state === 'suspended') ctx.resume();
-        const t0 = ctx.currentTime;
-        function tone(freq, start, dur, peakGain) {
-            const osc = ctx.createOscillator();
-            const g = ctx.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(freq, start);
-            g.gain.setValueAtTime(0, start);
-            g.gain.linearRampToValueAtTime(peakGain, start + 0.015);
-            g.gain.exponentialRampToValueAtTime(0.0008, start + dur);
-            osc.connect(g).connect(ctx.destination);
-            osc.start(start); osc.stop(start + dur + 0.05);
+        if (!ctx) { console.warn('[heli-alert] no AudioContext'); return; }
+        // iOS Safari suspend agressivement entre les gestes utilisateur → tente de reprendre à chaque beep
+        if (ctx.state === 'suspended') {
+            ctx.resume().catch(e => console.warn('[heli-alert] resume failed:', e));
         }
-        tone(1100, t0,        0.18, 0.45);
-        tone( 880, t0 + 0.22, 0.18, 0.45);
-        tone(1320, t0 + 0.44, 0.32, 0.55);
+        const play = () => {
+            const t0 = ctx.currentTime;
+            function tone(freq, start, dur, peakGain) {
+                const osc = ctx.createOscillator();
+                const g = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, start);
+                g.gain.setValueAtTime(0, start);
+                g.gain.linearRampToValueAtTime(peakGain, start + 0.015);
+                g.gain.exponentialRampToValueAtTime(0.0008, start + dur);
+                osc.connect(g).connect(ctx.destination);
+                osc.start(start); osc.stop(start + dur + 0.05);
+            }
+            tone(1100, t0,        0.18, 0.5);
+            tone( 880, t0 + 0.22, 0.18, 0.5);
+            tone(1320, t0 + 0.44, 0.32, 0.6);
+        };
+        // Si encore suspendu, attendre 50 ms puis tenter (iOS Safari async resume)
+        if (ctx.state === 'running') play();
+        else setTimeout(play, 60);
     } catch (e) { console.warn('[heli-alert]', e); }
+}
+
+// Bouton 🔊 Test : force le beep, ignore le toggle (sert à valider que l'audio passe)
+function testAircraftAlert() {
+    // Auto-active la préférence si l'utilisateur teste manuellement
+    if (!aircraftAlertSound) {
+        aircraftAlertSound = true;
+        try { localStorage.setItem('drone_aircraft_alert', '1'); } catch (e) {}
+        const cb = document.getElementById('aircraft-alert-cb');
+        if (cb) cb.checked = true;
+        _startAlertReminderLoop();
+    }
+    playHeliAlertBeep(true);
+}
+
+// Slider rayon d'alerte
+function setAlertRadius(km) {
+    aircraftAlertRadiusKm = Math.max(1, Math.min(50, parseInt(km, 10) || 5));
+    try { localStorage.setItem('drone_aircraft_alert_radius', String(aircraftAlertRadiusKm)); } catch (e) {}
+    const lbl = document.getElementById('aircraft-alert-radius-num');
+    if (lbl) lbl.innerText = aircraftAlertRadiusKm;
 }
 
 function toggleAircraftAlert(enabled) {
@@ -6271,7 +6304,7 @@ function _startAlertReminderLoop() {
     _alertReminderTimer = setInterval(() => {
         if (!aircraftAlertSound) return;
         if (!Array.isArray(STATE.aircraft) || STATE.aircraft.length === 0) return;
-        const threatInZone = STATE.aircraft.some(a => a.dist <= ALERT_RADIUS_M
+        const threatInZone = STATE.aircraft.some(a => a.dist <= _alertRadiusM()
             && (a.isHelicopter || (a.altM != null && a.altM < 500)));
         if (threatInZone) {
             playHeliAlertBeep();
@@ -6295,7 +6328,7 @@ if (aircraftAlertSound) _startAlertReminderLoop();
 //   - Tout aéronef à moins de 500 m d'altitude (basse altitude → conflit drone réel)
 // Bipe uniquement pour les nouveaux (hex non encore alertés) → pas de spam à chaque refresh.
 function _checkHeliAlerts(aircraft) {
-    const close = aircraft.filter(a => a.dist <= ALERT_RADIUS_M && a.hex
+    const close = aircraft.filter(a => a.dist <= _alertRadiusM() && a.hex
         && (a.isHelicopter || (a.altM != null && a.altM < 500)));
     const fresh = close.filter(a => !_alertedHexes.has(a.hex));
     if (fresh.length > 0) {
@@ -6396,9 +6429,20 @@ async function fetchAircraft(lat, lon) {
     for (const p of providers) {
         try {
             const raw = await p.fn();
+            // Tri opérationnel : prioritaires (SAMU/Dragon/urgence) → hélicos → basse alt → autres
+            // Au sein de chaque groupe, tri par distance croissante.
+            const _criticality = (a) => {
+                if (a.isPriority || a.emergency) return 0;
+                if (a.isHelicopter) return 1;
+                if (a.altM != null && a.altM < 500) return 2;
+                return 3;
+            };
             const aircraft = raw.map(a => enrichAircraft(a, lat, lon))
                                 .filter(a => a.lat != null && a.lon != null)
-                                .sort((a, b) => a.dist - b.dist);
+                                .sort((a, b) => {
+                                    const da = _criticality(a), db = _criticality(b);
+                                    return da !== db ? da - db : a.dist - b.dist;
+                                });
             STATE.aircraft = aircraft;
             STATE.aircraftSource = p.name;
             renderAircraft(aircraft, lat, lon);
@@ -6499,19 +6543,34 @@ function renderAircraft(aircraft, lat, lon) {
             <label style="display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap;">
                 <input type="checkbox" id="aircraft-auto-cb" ${aircraftAutoRefresh ? 'checked' : ''} onchange="toggleAircraftAuto(this.checked)" style="accent-color:var(--c-primary);"> Auto 15 s
             </label>
-            <label style="display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap;" title="Beep d'alerte si un hélicoptère OU tout aéronef à moins de 500 m d'altitude est détecté dans les 5 km">
-                <input type="checkbox" id="aircraft-alert-cb" ${aircraftAlertSound ? 'checked' : ''} onchange="toggleAircraftAlert(this.checked)" style="accent-color:#dc2626;"> 🔔 Alerte hélico ou trafic &lt; 500 m (5 km)
+        </div>
+        <div class="no-print" style="display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:10px; padding:8px 10px; background:#fef3c7; border:1px solid #fcd34d; border-radius:6px; font-size:12px;">
+            <label style="display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap; font-weight:600;" title="Beep d'alerte si un hélicoptère OU tout aéronef à moins de 500 m d'altitude est détecté dans le rayon">
+                <input type="checkbox" id="aircraft-alert-cb" ${aircraftAlertSound ? 'checked' : ''} onchange="toggleAircraftAlert(this.checked)" style="accent-color:#dc2626;"> 🔔 Alerte
             </label>
+            <span style="white-space:nowrap;">rayon : <strong><span id="aircraft-alert-radius-num">${aircraftAlertRadiusKm}</span> km</strong></span>
+            <input type="range" min="1" max="50" step="1" value="${aircraftAlertRadiusKm}"
+                   oninput="setAlertRadius(this.value)"
+                   style="flex:1; min-width:120px;">
+            <button type="button" onclick="testAircraftAlert()" title="Tester le son d'alerte (active la préférence si désactivée)"
+                    style="background:#dc2626; color:#fff; border:0; border-radius:6px; padding:4px 11px; font-size:12px; font-weight:700; cursor:pointer;">
+                🔊 Test
+            </button>
         </div>`;
 
     const rows = aircraft.length === 0
         ? `<tr><td colspan="5" class="empty-state">Aucun aéronef détecté dans un rayon de ${aircraftSearchRadiusKm} km.</td></tr>`
         : aircraft.slice(0, 15).map(a => {
+            const isLowAlt = a.altM != null && a.altM < 500;
             const badge = a.isPriority ? '<span style="background:#dc2626; color:#fff; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:700;">🚨 SAMU/DRAGON</span>'
                         : a.emergency ? '<span style="background:#dc2626; color:#fff; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:700;">🆘 URG.</span>'
                         : a.isHelicopter ? '<span style="background:#d97706; color:#fff; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:700;">🚁 HELI</span>'
+                        : isLowAlt ? '<span style="background:#fde047; color:#713f12; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:700;">✈ &lt; 500 m</span>'
                         : '<span style="background:#0066cc; color:#fff; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:700;">✈ AVION</span>';
-            return `<tr ${a.isPriority ? 'style="background:#fef2f2;"' : ''}>
+            const trBg = a.isPriority ? 'background:#fef2f2;'
+                       : isLowAlt ? 'background:#fefce8;'  // jaune très pâle pour basse alt
+                       : '';
+            return `<tr ${trBg ? `style="${trBg}"` : ''}>
                 <td>${badge}</td>
                 <td><strong>${a.callsign || a.reg || a.hex || '—'}</strong>${a.type ? '<br><span style="color:var(--c-muted); font-size:11px;">' + a.type + '</span>' : ''}</td>
                 <td>${a.altM != null ? '<strong>' + Math.round(a.altM) + ' m</strong><br><span style="color:var(--c-muted); font-size:11px;">' + Math.round(a.altFt) + ' ft</span>' : '—'}</td>
