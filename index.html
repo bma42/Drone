@@ -6202,52 +6202,101 @@ function _alertRadiusM() { return aircraftAlertRadiusKm * 1000; }
 try { const v = localStorage.getItem('drone_aircraft_alert_radius'); if (v) aircraftAlertRadiusKm = Math.max(1, Math.min(50, parseInt(v, 10) || 5)); } catch (e) {}
 const ALERT_REMINDER_MS = 20000;       // re-bipe toutes les 20 s tant qu'un hélico est dans la zone
 const _alertedHexes = new Set();       // hex déjà alertés (immédiat à la 1ʳᵉ détection)
-let _alertAudioCtx = null;
 let _alertReminderTimer = null;
+let _alertAudioEl = null;
 // Restaure la préférence sonore depuis localStorage
 try { const v = localStorage.getItem('drone_aircraft_alert'); if (v !== null) aircraftAlertSound = (v === '1'); } catch (e) {}
-// Débloque l'AudioContext iOS dès la 1ʳᵉ interaction utilisateur (Safari le suspend tant qu'aucun geste)
-document.addEventListener('pointerdown', () => {
-    if (!aircraftAlertSound) return;
-    try {
-        if (!_alertAudioCtx) _alertAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (_alertAudioCtx && _alertAudioCtx.state === 'suspended') _alertAudioCtx.resume();
-    } catch (e) {}
-}, { once: true, capture: true });
 
-// Beep d'alerte synthétisé : 3 tons (radar ping urgent), pas de fichier externe.
-// Force = true pour ignorer le toggle aircraftAlertSound (utilisé par le bouton Test).
+// Génère un WAV PCM 16-bit mono ~22 kHz contenant 3 tons d'alerte radar.
+// HTMLAudioElement est plus fiable que Web Audio API sur iOS Safari (qui exige
+// un user-gesture STRICT pour Web Audio mais joue l'audio HTML5 plus librement).
+function _generateAlertBeepWavDataUri() {
+    const sampleRate = 22050;
+    const duration = 0.78;
+    const N = Math.floor(sampleRate * duration);
+    const buf = new ArrayBuffer(44 + N * 2);
+    const v = new DataView(buf);
+    function ws(off, s) { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); }
+    ws(0, 'RIFF'); v.setUint32(4, 36 + N * 2, true);
+    ws(8, 'WAVE'); ws(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true);
+    v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    ws(36, 'data'); v.setUint32(40, N * 2, true);
+    // 3 tons : 1100 Hz / 880 Hz / 1320 Hz, séparés par 40 ms de silence
+    const seq = [
+        { f: 1100, start: 0.00, dur: 0.18 },
+        { f:  880, start: 0.22, dur: 0.18 },
+        { f: 1320, start: 0.44, dur: 0.32 }
+    ];
+    for (let i = 0; i < N; i++) {
+        const t = i / sampleRate;
+        let s = 0;
+        for (const tone of seq) {
+            const dt = t - tone.start;
+            if (dt >= 0 && dt < tone.dur) {
+                // Enveloppe ADR : attaque rapide, decay exponentiel
+                const env = (dt < 0.015 ? dt / 0.015 : Math.exp(-3.5 * (dt - 0.015)));
+                s += Math.sin(2 * Math.PI * tone.f * t) * env * 0.55;
+            }
+        }
+        v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, s)) * 32767, true);
+    }
+    let bin = ''; const bytes = new Uint8Array(buf);
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return 'data:audio/wav;base64,' + btoa(bin);
+}
+
+function _getAlertAudioEl() {
+    if (_alertAudioEl) return _alertAudioEl;
+    try {
+        const wav = _generateAlertBeepWavDataUri();
+        _alertAudioEl = new Audio(wav);
+        _alertAudioEl.preload = 'auto';
+        _alertAudioEl.playsInline = true;
+        _alertAudioEl.setAttribute('playsinline', '');
+        _alertAudioEl.volume = 1.0;
+        return _alertAudioEl;
+    } catch (e) { console.warn('[heli-alert] audio creation failed:', e); return null; }
+}
+
+// Toast UI (réutilisable) — bottom centered, 3 s
+function _showToast(msg, kind) {
+    const colors = kind === 'warn'
+        ? { bg: '#fef3c7', border: '#fbbf24', fg: '#92400e' }
+        : kind === 'err' ? { bg: '#fee2e2', border: '#fca5a5', fg: '#991b1b' }
+        : { bg: '#dcfce7', border: '#16a34a', fg: '#15803d' };
+    const t = document.createElement('div');
+    t.style.cssText = `position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:${colors.bg}; color:${colors.fg}; border:1px solid ${colors.border}; padding:10px 18px; border-radius:8px; font-size:13px; font-weight:600; z-index:99998; box-shadow:0 4px 16px rgba(0,0,0,.25); max-width:90vw; text-align:center; pointer-events:none; transition:opacity .35s;`;
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; }, 3200);
+    setTimeout(() => { try { t.remove(); } catch (e) {} }, 3700);
+}
+
+// Joue le beep d'alerte. Force = true → ignore le toggle (bouton Test) et affiche un toast diagnostic.
 function playHeliAlertBeep(force) {
     if (!force && !aircraftAlertSound) return;
+    const a = _getAlertAudioEl();
+    if (!a) {
+        if (force) _showToast('Audio non supporté sur ce navigateur.', 'err');
+        return;
+    }
     try {
-        if (!_alertAudioCtx) _alertAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const ctx = _alertAudioCtx;
-        if (!ctx) { console.warn('[heli-alert] no AudioContext'); return; }
-        // iOS Safari suspend agressivement entre les gestes utilisateur → tente de reprendre à chaque beep
-        if (ctx.state === 'suspended') {
-            ctx.resume().catch(e => console.warn('[heli-alert] resume failed:', e));
+        a.currentTime = 0;
+        const p = a.play();
+        if (p && typeof p.then === 'function') {
+            p.then(() => {
+                if (force) _showToast('🔊 Son joué — si tu n\'entends rien, vérifie le silencieux iPhone (interrupteur latéral) et le volume média.', 'ok');
+            }).catch(e => {
+                console.warn('[heli-alert] audio.play() rejected:', e);
+                if (force) _showToast('⚠ Audio bloqué par le navigateur — touche d\'abord la page puis réessaye, ou vérifie le silencieux iPhone.', 'warn');
+            });
         }
-        const play = () => {
-            const t0 = ctx.currentTime;
-            function tone(freq, start, dur, peakGain) {
-                const osc = ctx.createOscillator();
-                const g = ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(freq, start);
-                g.gain.setValueAtTime(0, start);
-                g.gain.linearRampToValueAtTime(peakGain, start + 0.015);
-                g.gain.exponentialRampToValueAtTime(0.0008, start + dur);
-                osc.connect(g).connect(ctx.destination);
-                osc.start(start); osc.stop(start + dur + 0.05);
-            }
-            tone(1100, t0,        0.18, 0.5);
-            tone( 880, t0 + 0.22, 0.18, 0.5);
-            tone(1320, t0 + 0.44, 0.32, 0.6);
-        };
-        // Si encore suspendu, attendre 50 ms puis tenter (iOS Safari async resume)
-        if (ctx.state === 'running') play();
-        else setTimeout(play, 60);
-    } catch (e) { console.warn('[heli-alert]', e); }
+    } catch (e) {
+        console.warn('[heli-alert]', e);
+        if (force) _showToast('⚠ Erreur audio : ' + (e.message || e), 'err');
+    }
 }
 
 // Bouton 🔊 Test : force le beep, ignore le toggle (sert à valider que l'audio passe)
