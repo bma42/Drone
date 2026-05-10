@@ -2371,7 +2371,7 @@ function updateGlobalVerdict() {
         const dd = new Date(d); dd.setHours(0, 0, 0, 0);
         const diffDays = Math.round((dd.getTime() - today.getTime()) / 86400000);
         const dayPart = diffDays === 0 ? '' : diffDays === 1 ? ' demain' : ' ' + d.toLocaleDateString('fr-FR', { weekday: 'short' });
-        chip = ` <span style="background:#16a34a; color:#fff; padding:2px 8px; border-radius:999px; font-weight:700; font-size:10.5px; margin-left:4px; box-shadow:0 0 0 1.5px #fff;">› Go${dayPart} à : ${hh}h${mm}</span>`;
+        chip = ` <span style="background:#16a34a; color:#fff; padding:2px 8px; border-radius:999px; font-weight:700; font-size:10.5px; margin-left:4px; box-shadow:0 0 0 1.5px #fff;">Go${dayPart} à : ${hh}h${mm}</span>`;
     }
     pill.innerHTML = ICONS[state] + stateLabel + chip;
 }
@@ -2664,6 +2664,12 @@ function selectAddr(label, lat, lon, dept) {
     STATE.lat = lat; STATE.lon = lon; STATE.address = label; STATE.dept = dept;
     autoToggleHorsCircuit(dept);
     renderGPS(lat, lon);
+    // Frame de chargement sur la carte §1 à chaque nouvelle adresse / position GPS
+    const _mapEl = document.getElementById('map');
+    if (_mapEl && typeof showMapLoader === 'function') {
+        showMapLoader(_mapEl, 'Chargement de la zone');
+        setTimeout(() => hideMapLoader(_mapEl), 900);
+    }
     map.setView([lat, lon], 14);
     marker.setLatLng([lat, lon]);
     rangeCircle.setLatLng([lat, lon]);
