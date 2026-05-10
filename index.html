@@ -755,6 +755,15 @@
                 applyConnectedPilot(mat);
             }
         }
+        // Cosmétique : flashe le loader sur la carte §1 (chargée derrière le lock screen,
+        // donc l'utilisateur n'aurait sinon jamais vu son loader)
+        setTimeout(() => {
+            const mapEl = document.getElementById('map');
+            if (mapEl && typeof showMapLoader === 'function') {
+                showMapLoader(mapEl, 'Initialisation');
+                setTimeout(() => hideMapLoader(mapEl), 800);
+            }
+        }, 80);
     }
 
     // Applique le matricule connecté : coche le télépilote dans §3, le sélectionne
@@ -1866,21 +1875,28 @@ function hideMapLoader(elOrId) {
 (function () {
     if (typeof L === 'undefined' || !L.map) return;
     const orig = L.map;
+    const MIN_SHOW_MS = 600;       // affichage minimum garanti (sinon trop fugace si tuiles en cache)
+    const MAX_SHOW_MS = 2500;      // safety net si jamais aucune tuile n'arrive
     L.map = function (idOrEl, opts) {
         const el = typeof idOrEl === 'string' ? document.getElementById(idOrEl) : idOrEl;
+        const t0 = Date.now();
         if (el) showMapLoader(el);
         const m = orig.apply(this, arguments);
         if (el) {
-            // Cache le loader quand la 1ʳᵉ tuile est prête (ou au plus tard 1.5 s)
             let hidden = false;
-            const hide = () => { if (hidden) return; hidden = true; setTimeout(() => hideMapLoader(el), 80); };
+            const hide = () => {
+                if (hidden) return; hidden = true;
+                const elapsed = Date.now() - t0;
+                const wait = Math.max(0, MIN_SHOW_MS - elapsed);
+                setTimeout(() => hideMapLoader(el), wait);
+            };
             m.whenReady(() => {
                 m.eachLayer(layer => {
                     if (layer && typeof layer.on === 'function' && layer.options && layer.options.tileSize) {
                         layer.once('load', hide);
                     }
                 });
-                setTimeout(hide, 1500);
+                setTimeout(hide, MAX_SHOW_MS);
             });
         }
         return m;
@@ -2931,7 +2947,7 @@ function renderWeather(j, dateISO) {
             <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
                 <div style="font-weight:600; font-size:13px;">🌧 Radar pluie temps réel</div>
                 <div class="no-print" style="display:flex; align-items:center; gap:8px; margin-left:auto;">
-                    <button type="button" id="rain-play-btn" onclick="toggleRainAnimation()" title="Lecture / Pause" style="background:var(--c-primary); color:#fff; border:0; border-radius:6px; padding:4px 10px; font-size:13px; font-weight:700; cursor:pointer; min-width:34px;">⏸</button>
+                    <button type="button" id="rain-play-btn" onclick="toggleRainAnimation()" title="Lecture / Pause" style="background:var(--c-primary); color:#fff; border:0; border-radius:6px; padding:4px 10px; font-size:13px; font-weight:700; cursor:pointer; min-width:34px;">▶</button>
                     <span id="rain-time" style="font-family:'Inter',monospace; font-weight:700; font-size:12px; color:var(--c-text); background:#fef3c7; padding:3px 8px; border-radius:6px; border:1px solid #fcd34d; min-width:72px; text-align:center;">--:--</span>
                 </div>
             </div>
@@ -2964,7 +2980,7 @@ let rainFrames = [];           // [{time, path, isNowcast}]
 let rainCurrentIdx = 0;
 let rainHost = 'https://tilecache.rainviewer.com';
 let rainAnimTimer = null;
-let rainPlaying = true;
+let rainPlaying = false;        // démarre en pause — l'utilisateur clique ▶ s'il veut animer
 let rainRefetchTimer = null;
 let rainPastCount = 0;
 
@@ -3026,7 +3042,9 @@ async function loadRainFrames() {
         // Démarre sur la frame "now" (dernière frame past)
         rainCurrentIdx = Math.max(0, rainPastCount - 1);
         showRainFrame(rainCurrentIdx);
-        startRainAnimation();
+        // Animation auto uniquement si l'utilisateur l'avait activée (toggle ▶/⏸)
+        if (rainPlaying) startRainAnimation();
+        else { const btn = document.getElementById('rain-play-btn'); if (btn) btn.innerText = '▶'; }
     } catch (e) {
         console.warn('[RainViewer]', e);
         const lbl = document.getElementById('rain-time');
