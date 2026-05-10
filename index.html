@@ -1416,6 +1416,7 @@
             <div class="card-head">
                 <div class="card-num">5</div>
                 <div class="card-title">Plateformes aéronautiques &amp; NOTAMs<span class="sub">Aérodromes, héliports, hélistations dans un rayon de 20 km · base embarquée + OSM · liens NOTAM</span></div>
+                <button type="button" class="no-print" onclick="if(STATE.lat) fetchEnvironment(STATE.lat, STATE.lon, 20000)" title="Rafraîchir" style="background:transparent; border:1px solid var(--c-border-strong); border-radius:4px; padding:3px 9px; cursor:pointer; font-size:11px; color:var(--c-text-soft); margin-right:8px;">↻ Rafraîchir</button>
                 <span class="card-status" id="status-env">en attente</span>
             </div>
             <div class="card-body" id="env-body">
@@ -3138,7 +3139,7 @@ function renderEnvironment(platforms, lat0, lon0) {
             </tr>`).join('');
 
     document.getElementById('env-body').innerHTML = `
-        <div style="font-size:12px; color:var(--c-muted); margin-bottom:8px;">Plateformes aéronautiques (aérodromes, héliports, hélistations) recensées par OpenStreetMap dans un rayon de <strong>20 km</strong> autour du point de mission. <button class="no-print" onclick="if(STATE.lat) fetchEnvironment(STATE.lat, STATE.lon, 20000)" style="background:transparent; border:0; color:var(--c-accent); cursor:pointer; font-size:11px; padding:0;">↻ Rafraîchir</button></div>
+        <div style="font-size:12px; color:var(--c-muted); margin-bottom:8px;">Plateformes aéronautiques (aérodromes, héliports, hélistations) recensées par OpenStreetMap dans un rayon de <strong>20 km</strong> autour du point de mission.</div>
         <table class="tbl">
             <thead><tr><th style="width:38%">Nom</th><th style="width:18%">Type</th><th style="width:14%">ICAO</th><th style="text-align:right;">Distance</th></tr></thead>
             <tbody>${tableRows}</tbody>
