@@ -6146,24 +6146,31 @@ function initAircraftMap(aircraft, lat, lon) {
         if (a.lat == null || a.lon == null) return;
         const isPrio = a.isPriority || a.emergency;
         const isHeli = a.isHelicopter;
-        const color = isPrio ? '#dc2626' : isHeli ? '#f97316' : a.isLowAlt ? '#ea580c' : '#3b82f6';
+        // Couleurs vives lisibles sur fond carto sombre
+        const color = isPrio ? '#ef4444'    // rouge vif (SAMU/Dragon/urg.)
+                    : isHeli ? '#fb923c'    // orange vif (hélicoptère)
+                    : a.isLowAlt ? '#fbbf24' // ambre (basse altitude)
+                    : '#22d3ee';            // cyan vif (avion classique)
         const icon = isHeli ? '🚁' : '✈';
-        const size = isPrio ? 32 : isHeli ? 28 : 22;
+        const size = isPrio ? 34 : isHeli ? 30 : 26;
         const labelHtml = isPrio
-            ? `<div style="position:absolute; top:-16px; left:50%; transform:translateX(-50%); background:#dc2626; color:#fff; padding:1px 5px; border-radius:6px; font-size:9px; font-weight:700; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,.6); pointer-events:none;">${(a.callsign || a.reg || 'PRIO').slice(0, 12)}</div>`
+            ? `<div style="position:absolute; top:-16px; left:50%; transform:translateX(-50%); background:#ef4444; color:#fff; padding:1px 5px; border-radius:6px; font-size:9px; font-weight:700; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,.6); pointer-events:none;">${(a.callsign || a.reg || 'PRIO').slice(0, 12)}</div>`
             : '';
+        // Disque coloré derrière l'emoji → marqueur visible quel que soit le rendu emoji système
         const html = `<div style="position:relative; width:${size}px; height:${size}px;">
             ${labelHtml}
-            <div class="${isPrio ? 'ac-priority' : ''}" style="width:${size}px; height:${size}px; transform:rotate(${a.track}deg); transform-origin:center; display:flex; align-items:center; justify-content:center; font-size:${size - 4}px; line-height:1;">
-                <span style="filter:drop-shadow(0 0 2px ${color}) drop-shadow(0 0 1px #000);">${icon}</span>
+            <div class="${isPrio ? 'ac-priority' : ''}" style="width:${size}px; height:${size}px; transform:rotate(${a.track}deg); transform-origin:center; background:${color}; border:2px solid #fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:${size - 12}px; line-height:1; box-shadow:0 0 10px rgba(0,0,0,0.7), 0 0 4px ${color};">
+                <span style="filter:drop-shadow(0 1px 1px rgba(0,0,0,0.8)); color:#fff;">${icon}</span>
             </div>
         </div>`;
         const marker = L.marker([a.lat, a.lon], {
             icon: L.divIcon({ className: 'ac-marker', iconSize: [size, size], iconAnchor: [size / 2, size / 2], html })
         });
+        // Couleur foncée pour le texte du popup (fond blanc)
+        const textColor = isPrio ? '#b91c1c' : isHeli ? '#c2410c' : a.isLowAlt ? '#a16207' : '#0e7490';
         const popup = `
             <div style="min-width:210px; font-size:12px;">
-                <div style="font-weight:700; font-size:13px; margin-bottom:4px; color:${color};">${isPrio ? '🚨 ' : isHeli ? '🚁 ' : '✈ '}${a.callsign || a.reg || a.hex}</div>
+                <div style="font-weight:700; font-size:13px; margin-bottom:4px; color:${textColor};">${isPrio ? '🚨 ' : isHeli ? '🚁 ' : '✈ '}${a.callsign || a.reg || a.hex}</div>
                 ${a.reg && a.callsign && a.callsign !== a.reg ? `<div style="color:var(--c-muted);">Imm. ${a.reg}</div>` : ''}
                 ${a.type ? `<div>Type : <strong>${a.type}</strong>${a.desc ? ' · ' + a.desc : ''}</div>` : ''}
                 ${a.altM != null ? `<div>Alt. : <strong>${Math.round(a.altM)} m</strong> (${Math.round(a.altFt)} ft)</div>` : ''}
