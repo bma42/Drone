@@ -307,6 +307,14 @@
             font-weight: 700; font-size: 13px;
         }
         .card-title { font-weight: 600; font-size: 14px; color: var(--c-text); flex: 1; }
+        /* Collapse system */
+        .card-collapse-btn { background: transparent; border: 0; padding: 5px 8px; cursor: pointer; color: var(--c-text-soft); margin-left: 4px; border-radius: 4px; }
+        .card-collapse-btn:hover { background: rgba(0,0,0,0.05); color: var(--c-text); }
+        .card-collapse-btn .chevron { width: 14px; height: 14px; transition: transform .2s ease-out; display: block; }
+        .card.collapsed .card-collapse-btn .chevron { transform: rotate(-90deg); }
+        .card.collapsed .card-body { display: none; }
+        .card.collapsed .card-head { border-bottom: none; }
+        @media print { .card.collapsed .card-body { display: block !important; } .card-collapse-btn { display: none !important; } }
         .card-title .sub { display: block; font-weight: 400; font-size: 11px; color: var(--c-muted); margin-top: 1px; }
         .card-status { font-size: 11px; padding: 3px 9px; border-radius: 999px; background: #eef3fb; color: var(--c-accent); font-weight: 500; }
         .card-status.ok   { background: #e7f6ec; color: var(--c-success); }
@@ -1058,6 +1066,9 @@
                 <button class="action-opt" onclick="doAction('mailto')"><span>✉️</span><div><strong>Préparer un email</strong> <span style="font-size:10px; background:#dbeafe; color:#1d4ed8; padding:1px 6px; border-radius:999px;">B</span><div style="font-size:11px; color:var(--c-muted);">Ouvre Mail.app/Outlook + télécharge le PDF à joindre.</div></div></button>
             </div>
         </div>
+        <button id="global-collapse-btn" class="btn btn-ghost" onclick="toggleAllCardsCollapsed()" title="Replier / déplier tous les modules" style="padding:6px 9px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px; height:14px;"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+        </button>
         <button class="btn btn-ghost" onclick="lockApp()" title="Verrouiller (déconnexion)" style="padding:6px 9px;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px; height:14px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         </button>
@@ -1927,6 +1938,66 @@ function hideMapLoader(elOrId) {
         return m;
     };
 })();
+
+/* -------- Système de collapse des modules (chevron par card + toggle global) -------- */
+function _saveCollapseState() {
+    const collapsed = Array.from(document.querySelectorAll('section.card.collapsed'))
+        .map(c => { const n = c.querySelector('.card-num'); return n ? n.textContent.trim() : null; })
+        .filter(Boolean);
+    try { localStorage.setItem('drone_cards_collapsed', JSON.stringify(collapsed)); } catch (e) {}
+}
+function _restoreCollapseState() {
+    try {
+        const raw = localStorage.getItem('drone_cards_collapsed');
+        if (!raw) return;
+        const set = new Set(JSON.parse(raw));
+        document.querySelectorAll('section.card').forEach(c => {
+            const num = c.querySelector('.card-num');
+            if (num && set.has(num.textContent.trim())) c.classList.add('collapsed');
+        });
+    } catch (e) {}
+}
+function toggleAllCardsCollapsed() {
+    const cards = document.querySelectorAll('section.card');
+    // Si au moins une est dépliée, on replie tout. Sinon on déplie tout.
+    const anyOpen = Array.from(cards).some(c => !c.classList.contains('collapsed'));
+    cards.forEach(c => {
+        if (anyOpen) c.classList.add('collapsed');
+        else c.classList.remove('collapsed');
+    });
+    _saveCollapseState();
+}
+function _initCardsCollapse() {
+    document.querySelectorAll('section.card').forEach(card => {
+        const head = card.querySelector('.card-head');
+        if (!head || head.querySelector('.card-collapse-btn')) return;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'card-collapse-btn no-print';
+        btn.title = 'Replier / déplier ce module';
+        btn.setAttribute('aria-label', 'Replier ou déplier');
+        btn.innerHTML = '<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            card.classList.toggle('collapsed');
+            _saveCollapseState();
+        });
+        head.appendChild(btn);
+        // Le titre est aussi cliquable pour toggler (sauf clic sur boutons internes au titre)
+        const title = head.querySelector('.card-title');
+        if (title) {
+            title.style.cursor = 'pointer';
+            title.addEventListener('click', (e) => {
+                if (e.target.closest('button, input, a')) return;
+                card.classList.toggle('collapsed');
+                _saveCollapseState();
+            });
+        }
+    });
+    _restoreCollapseState();
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _initCardsCollapse);
+else _initCardsCollapse();
 
 /* -------- Auto-hide des contrôles cartes : visibles 4 s après chaque interaction -------- */
 (function () {
@@ -5815,11 +5886,12 @@ function updateHeightMax(value) {
     const numEl = document.getElementById('height-num');
     if (numEl) numEl.innerText = value;
     if (!STATE.elev || !STATE.elev.series) return;
-    // 1) léger : aperçu §1 (petit SVG) — instantané, suit le doigt sur le slider
-    try { renderElevPreview(STATE.elev.series, STATE.elev.radius); } catch (e) {}
-    // 2) lourd : reconstruction complète des coupes §16 + carte satellite — debouncé 250 ms après l'arrêt du drag
+    // Frame de chargement sur l'aperçu §1 pendant la manipulation
+    showElevLoader('elev-preview', { w: 360, h: 60, title: 'Maj plafond…', small: true });
+    // Debounce : aperçu §1 + coupes §19 sont rendues 250 ms après l'arrêt du drag
     clearTimeout(_elevHeightDebounce);
     _elevHeightDebounce = setTimeout(() => {
+        try { renderElevPreview(STATE.elev.series, STATE.elev.radius); } catch (e) {}
         if (STATE.elev && STATE.elev.elevs) {
             try { renderElevation(STATE.elev.elevs, STATE.elev.radius); } catch (e) {}
         }
