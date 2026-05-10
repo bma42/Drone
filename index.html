@@ -727,6 +727,16 @@
         "235519": "6ddb05ec0f61510e86f84491497c5db2cf267f5273399cf92514792d4e842be5", // KAOULALA
         "7069535": "9242c39b07ee1397cbab1680d7ddcc00c1c2fbd1dc2794524fb660d7f6d6f437"  // LADET (autorisé sans figurer dans la liste des télépilotes)
     };
+    // Annuaire matricule → nom complet + id de la case télépilote dans §3 (null si hors liste)
+    const PILOT_DIR = {
+        "471946": { name: "Major AMATO Jean Baptiste", pilotId: "p1" },
+        "455254": { name: "Major ROUCAIROL Daniel",    pilotId: "p2" },
+        "472323": { name: "Major DUDECK Philippe",     pilotId: "p3" },
+        "496397": { name: "B/C MOTTER Sylvain",        pilotId: "p4" },
+        "477206": { name: "B/C FOURNIE Hervé",         pilotId: "p5" },
+        "235519": { name: "GPX KAOULALA Nordine",      pilotId: "p6" },
+        "7069535": { name: "LADET",                    pilotId: null }
+    };
     async function sha256(s) {
         const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
         return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -737,6 +747,64 @@
         else sessionStorage.setItem('drone_unlock', session);
         const ls = document.getElementById('lock-screen');
         if (ls) ls.remove();
+        // Identifie automatiquement la personne connectée comme télépilote + rédacteur
+        if (mat) {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', () => applyConnectedPilot(mat));
+            } else {
+                applyConnectedPilot(mat);
+            }
+        }
+    }
+
+    // Applique le matricule connecté : coche le télépilote dans §3, le sélectionne
+    // comme rédacteur, met à jour le header et la signature §23, et affiche un badge.
+    function applyConnectedPilot(mat) {
+        const info = PILOT_DIR[mat];
+        if (!info) return;
+        // 1) Liste des télépilotes §3 + radio Rédacteur (si dans la liste)
+        if (info.pilotId) {
+            const cb = document.getElementById(info.pilotId);
+            if (cb && !cb.checked) cb.checked = true;
+            const radio = document.querySelector('input[name="redac"][data-matricule="' + mat + '"]');
+            if (radio) {
+                radio.checked = true;
+                if (typeof updateRedacteur === 'function') updateRedacteur();
+            }
+        }
+        // 2) Champs signature §23 (si pas déjà remplis)
+        const sigName = document.getElementById('sig-redac');
+        if (sigName && !sigName.value) sigName.value = info.name;
+        const sigMat = document.getElementById('sig-redac-mat');
+        if (sigMat && !sigMat.value) sigMat.value = mat;
+        if (typeof onSigMatChange === 'function') { try { onSigMatChange('redac'); } catch (e) {} }
+        // 3) Header (si updateRedacteur n'a pas eu lieu — cas LADET hors liste)
+        if (!info.pilotId) {
+            const headerName = document.getElementById('doc-redac-name');
+            if (headerName) {
+                headerName.textContent = info.name;
+                headerName.style.color = 'var(--c-text)';
+                headerName.style.fontWeight = '700';
+            }
+        }
+        // 4) Badge "Connecté en tant que..." sous le header
+        showConnectedBadge(info.name, mat);
+    }
+
+    function showConnectedBadge(name, mat) {
+        let badge = document.getElementById('connected-badge');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.id = 'connected-badge';
+            badge.className = 'no-print';
+            badge.style.cssText = 'background:linear-gradient(135deg,#dcfce7,#bbf7d0); border:1px solid #16a34a; color:#15803d; padding:8px 14px; border-radius:8px; font-size:12px; font-weight:600; margin:0 0 12px; display:flex; align-items:center; gap:10px; box-shadow:0 1px 3px rgba(22,163,74,0.15);';
+            const header = document.querySelector('.doc-header');
+            if (header && header.parentNode) header.parentNode.insertBefore(badge, header);
+            else document.body.insertBefore(badge, document.body.firstChild);
+        }
+        badge.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:16px; height:16px; flex-shrink:0;"><path d="M20 6L9 17l-5-5"/></svg>'
+            + 'Connecté en tant que <strong>' + name + '</strong> · matricule ' + mat
+            + ' <button type="button" onclick="lockApp()" style="margin-left:auto; background:transparent; border:1px solid #16a34a; color:#15803d; padding:3px 10px; border-radius:5px; cursor:pointer; font-size:11px; font-weight:600;">Déconnexion</button>';
     }
 
     async function tryUnlock(e) {
@@ -766,6 +834,16 @@
     // Bypass si déverrouillage déjà obtenu
     if (localStorage.getItem('drone_unlock_persist') || sessionStorage.getItem('drone_unlock')) {
         document.getElementById('lock-screen').remove();
+        // Re-applique l'identification du télépilote au chargement complet du DOM
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                const saved = localStorage.getItem('drone_unlock_persist') || sessionStorage.getItem('drone_unlock');
+                if (saved && saved !== '1') {
+                    const mat = (JSON.parse(saved) || {}).mat;
+                    if (mat) applyConnectedPilot(mat);
+                }
+            } catch (e) {}
+        });
     }
     function lockApp() {
         localStorage.removeItem('drone_unlock_persist');
