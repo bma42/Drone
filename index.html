@@ -156,6 +156,11 @@
             animation: draw-elev-curve 2.4s cubic-bezier(.25,.7,.35,1) forwards;
         }
         @keyframes draw-elev-curve { to { stroke-dashoffset: 0; } }
+        /* Animation de tracé de la courbe altimétrique réelle (§1 + §19) */
+        .elev-real-path {
+            stroke-dasharray: 1; stroke-dashoffset: 1;
+            animation: draw-elev-curve 1.4s cubic-bezier(.3,.7,.4,1) forwards;
+        }
         /* Mode fluide du radar pluie : cross-fade entre frames pré-chargées */
         .rain-smooth-tile { transition: opacity 380ms linear; }
         @keyframes map-loader-in  { from { opacity: 0; } to { opacity: 1; } }
@@ -3049,8 +3054,8 @@ function renderWeather(j, dateISO) {
             <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
                 <div style="font-weight:600; font-size:13px;">🌧 Radar pluie temps réel</div>
                 <div class="no-print" style="display:flex; align-items:center; gap:8px; margin-left:auto;">
-                    <button type="button" id="rain-play-btn" onclick="toggleRainAnimation()" title="Lecture / Pause" style="background:var(--c-primary); color:#fff; border:0; border-radius:6px; padding:4px 10px; font-size:13px; font-weight:700; cursor:pointer; min-width:34px;">▶</button>
-                    <button type="button" id="rain-smooth-btn" onclick="toggleRainSmooth()" title="Activer la lecture fluide (cross-fade entre les frames)" style="background:transparent; color:var(--c-primary); border:1.5px solid var(--c-primary); border-radius:6px; padding:3px 9px; font-size:12px; font-weight:700; cursor:pointer;">🌊 Fluide</button>
+                    <button type="button" id="rain-play-btn" onclick="toggleRainAnimation()" title="Lecture / Pause" style="background:var(--c-primary); color:#fff; border:0; border-radius:6px; padding:4px 10px; font-size:13px; font-weight:700; cursor:pointer; min-width:34px;">⏸</button>
+                    <button type="button" id="rain-smooth-btn" onclick="toggleRainSmooth()" title="Mode fluide ACTIF — cliquer pour repasser en mode discret" style="background:#16a34a; color:#fff; border:1.5px solid #16a34a; border-radius:6px; padding:3px 9px; font-size:12px; font-weight:700; cursor:pointer;">🌊 Fluide</button>
                     <span id="rain-time" style="font-family:'Inter',monospace; font-weight:700; font-size:12px; color:var(--c-text); background:#fef3c7; padding:3px 8px; border-radius:6px; border:1px solid #fcd34d; min-width:72px; text-align:center;">--:--</span>
                 </div>
             </div>
@@ -3083,7 +3088,7 @@ let rainFrames = [];           // [{time, path, isNowcast}]
 let rainCurrentIdx = 0;
 let rainHost = 'https://tilecache.rainviewer.com';
 let rainAnimTimer = null;
-let rainPlaying = false;        // démarre en pause — l'utilisateur clique ▶ s'il veut animer
+let rainPlaying = true;         // lecture auto activée par défaut
 let rainRefetchTimer = null;
 let rainPastCount = 0;
 
@@ -3192,7 +3197,7 @@ function showRainFrame(idx) {
 // Mode "fluide" : pré-charge toutes les frames comme couches Leaflet séparées
 // avec opacity 0, puis cross-fade entre elles via CSS transition. Évite le flash
 // du remove/addLayer du mode discret.
-let rainSmoothMode = false;
+let rainSmoothMode = true;      // mode fluide (cross-fade) activé par défaut
 let rainSmoothLayers = [];      // tile layer Leaflet par frame
 const RAIN_DISCRETE_MS = 700;
 const RAIN_SMOOTH_MS   = 380;   // doit matcher la transition CSS .rain-smooth-tile
@@ -6109,63 +6114,86 @@ function renderElevation(elevs, radius) {
 
     // Génère le SVG d'un axe (échelle Y locale, élargie pour englober le plafond de vol)
     const axisSvg = (s) => {
-        const W = 460, H = 150, P = 14;
+        const W = 460, H = 170, P = 18;
         const N = s.values.length;
         const xs = Array.from({ length: N }, (_, i) => P + (i / (N - 1)) * (W - 2 * P));
         const yMaxAxis = Math.max(s.vMax, flightCeiling);
-        const yMinAxis = s.vMin;
+        const yMinAxis = Math.min(s.vMin, center - 2);
         const localRange = (yMaxAxis - yMinAxis) || 1;
         const yScale = v => H - P - ((v - yMinAxis) / localRange) * (H - 2 * P);
 
-        const path = s.values.map((v, i) => (i === 0 ? 'M' : 'L') + xs[i].toFixed(1) + ',' + yScale(v).toFixed(1)).join(' ');
-        const fill = s.values.map((v, i) => xs[i].toFixed(1) + ',' + yScale(v).toFixed(1)).join(' L ');
-        const polyline = `<path d="M ${fill} L ${(W - P).toFixed(1)},${(H - P).toFixed(1)} L ${P},${(H - P).toFixed(1)} Z" fill="${s.color}" fill-opacity="0.08"/>`
-                       + `<path d="${path}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round"/>`;
+        const pathD = s.values.map((v, i) => (i === 0 ? 'M' : 'L') + xs[i].toFixed(1) + ',' + yScale(v).toFixed(1)).join(' ');
+        const fillD = pathD + ` L ${(W - P).toFixed(1)},${(H - P).toFixed(1)} L ${P},${(H - P).toFixed(1)} Z`;
+        const polyline = `<path d="${fillD}" fill="rgba(255,255,255,0.16)" stroke="none"/>`
+                       + `<path d="${pathD}" fill="none" stroke="#fff" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round" pathLength="1" class="elev-real-path" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.45));"/>`;
 
-        // Plafond de vol : ligne horizontale verte tirets + cartouche
+        // Plafond de vol : ligne verte clair + pastille verte avec hauteur AGL bien lisible
         const yCeil = Math.max(P + 6, Math.min(H - P, yScale(flightCeiling)));
-        const ceilLine = `<line x1="${P}" y1="${yCeil.toFixed(1)}" x2="${W-P}" y2="${yCeil.toFixed(1)}" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="6,3" opacity="0.95"/>` +
-                         labelTag(W - P - 60, yCeil - 6, 'Plafond ' + flightCeiling.toFixed(0) + ' m (+' + heightMax + ')', '#16a34a', 'end');
+        const cwidth = 158;
+        const ceilLine = `<line x1="${P}" y1="${yCeil.toFixed(1)}" x2="${W-P}" y2="${yCeil.toFixed(1)}" stroke="#86efac" stroke-width="1.6" stroke-dasharray="7,4" opacity="0.95"/>`
+                       + `<rect x="${P + 4}" y="${(yCeil - 11).toFixed(1)}" width="${cwidth}" height="20" rx="5" fill="rgba(22,163,74,0.95)" stroke="rgba(255,255,255,0.6)" stroke-width="0.8"/>`
+                       + `<text x="${P + 4 + cwidth/2}" y="${(yCeil + 3).toFixed(1)}" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff">⌐ Plafond ${flightCeiling.toFixed(0)} m NGF (+${heightMax} sol)</text>`;
 
         const xMax = xs[s.iMax], yMax = yScale(s.vMax);
         const xMin = xs[s.iMin], yMin = yScale(s.vMin);
+        // Cartouche 2 lignes : altitude NGF + hauteur relative au sol (vs décollage)
+        const tagAltNgf = (x, y, alt, hauteur, gradId, placement) => {
+            const w = 122, h = 34;
+            let xRect = Math.max(P + 4, Math.min(W - P - 4 - w, x - w / 2));
+            const yRect = placement === 'top' ? Math.max(P + 2, y - h - 10) : Math.min(H - P - h - 2, y + 12);
+            const cx = xRect + w / 2;
+            const cy = placement === 'top' ? yRect + h : yRect;
+            const sign = hauteur >= 0 ? '+' : '−';
+            const habs = Math.abs(hauteur);
+            return `<line x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${cx.toFixed(1)}" y2="${cy.toFixed(1)}" stroke="rgba(255,255,255,0.7)" stroke-width="1" stroke-dasharray="2,2"/>`
+                 + `<rect x="${xRect.toFixed(1)}" y="${yRect.toFixed(1)}" width="${w}" height="${h}" rx="6" fill="url(#${gradId})" stroke="rgba(255,255,255,0.6)" stroke-width="1"/>`
+                 + `<text x="${cx.toFixed(1)}" y="${(yRect + 13).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="600" fill="rgba(255,255,255,0.92)" letter-spacing="0.4">ALT ${alt} m NGF</text>`
+                 + `<text x="${cx.toFixed(1)}" y="${(yRect + 27).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="800" fill="#fff" style="paint-order:stroke; stroke:rgba(0,0,0,0.4); stroke-width:1.6; stroke-linejoin:round;">Hauteur ${sign}${habs} m</text>`;
+        };
+        const dotStyle = 'filter:drop-shadow(0 0 6px rgba(0,0,0,0.7));';
         const annot =
-            `<circle cx="${xMax.toFixed(1)}" cy="${yMax.toFixed(1)}" r="3.5" fill="${s.color}" stroke="#fff" stroke-width="1.5"/>` +
-            labelTagFancy(xMax, yMax - 8, '▲ ' + s.vMax.toFixed(0) + ' m', 'elev-tag-blue') +
-            `<circle cx="${xMin.toFixed(1)}" cy="${yMin.toFixed(1)}" r="3.5" fill="${s.color}" stroke="#fff" stroke-width="1.5"/>` +
-            labelTagFancy(xMin, yMin + 16, '▼ ' + s.vMin.toFixed(0) + ' m', 'elev-tag-red');
+            `<circle cx="${xMax.toFixed(1)}" cy="${yMax.toFixed(1)}" r="4.6" fill="#fff" stroke="#0066cc" stroke-width="2.4" style="${dotStyle}"/>` +
+            tagAltNgf(xMax, yMax, s.vMax.toFixed(0), Math.round(s.vMax - center), 'elev-tag-blue', 'top') +
+            `<circle cx="${xMin.toFixed(1)}" cy="${yMin.toFixed(1)}" r="4.6" fill="#fff" stroke="#dc2626" stroke-width="2.4" style="${dotStyle}"/>` +
+            tagAltNgf(xMin, yMin, s.vMin.toFixed(0), Math.round(s.vMin - center), 'elev-tag-red', 'bottom');
 
-        // Trait rouge centre + zone décollage
-        const takeoff = `<line x1="${W/2}" y1="${P}" x2="${W/2}" y2="${H-P}" stroke="#dc2626" stroke-width="1.2" stroke-dasharray="3,2"/>`;
-        const takeoffLabel = labelTag(W/2, H - P + 16, '▼ Décollage · ' + center.toFixed(0) + ' m', '#dc2626');
+        // Trait rouge centre + marqueur décollage avec altitude NGF
+        const xCenter = W / 2;
+        const yTakeoff = yScale(center);
+        const takeoff = `<line x1="${xCenter}" y1="${P}" x2="${xCenter}" y2="${H-P}" stroke="#fca5a5" stroke-width="1.4" stroke-dasharray="3,3"/>`
+                      + `<circle cx="${xCenter}" cy="${yTakeoff.toFixed(1)}" r="4.8" fill="#fff" stroke="#dc2626" stroke-width="2.4" style="filter:drop-shadow(0 0 5px rgba(220,38,38,0.85));"/>`;
+        const tkw = 178;
+        const takeoffLabel = `<rect x="${(xCenter - tkw/2).toFixed(1)}" y="${(H - 22).toFixed(1)}" width="${tkw}" height="20" rx="5" fill="#dc2626" stroke="rgba(255,255,255,0.65)" stroke-width="0.9"/>`
+                           + `<text x="${xCenter}" y="${(H - 8).toFixed(1)}" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff">⊙ Décollage · ${center.toFixed(0)} m NGF (réf. 0)</text>`;
 
-        // Observateur à ±1000 m si élongation > 1 km — label avec cartouche crème
+        // Observateurs ±1 km — pastilles ambre
         let observerMarkers = '';
         if (radius > 1000) {
             const xObsL = P + ((-1000 + radius) / (2 * radius)) * (W - 2 * P);
             const xObsR = P + ((1000 + radius) / (2 * radius)) * (W - 2 * P);
-            const obsColor = '#d97706';
-            observerMarkers =
-                `<line x1="${xObsL.toFixed(1)}" y1="${P}" x2="${xObsL.toFixed(1)}" y2="${H-P}" stroke="${obsColor}" stroke-width="1" stroke-dasharray="4,3" opacity=".85"/>` +
-                `<line x1="${xObsR.toFixed(1)}" y1="${P}" x2="${xObsR.toFixed(1)}" y2="${H-P}" stroke="${obsColor}" stroke-width="1" stroke-dasharray="4,3" opacity=".85"/>` +
-                labelTag(xObsL, P + 8, 'Observateur −1 km', obsColor) +
-                labelTag(xObsR, P + 8, 'Observateur +1 km', obsColor);
+            const obsTag = (x, lbl) => {
+                const w = 90;
+                const xR = Math.max(P + 4, Math.min(W - P - 4 - w, x - w / 2));
+                return `<line x1="${x.toFixed(1)}" y1="${P}" x2="${x.toFixed(1)}" y2="${H-P}" stroke="#fcd34d" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>`
+                     + `<rect x="${xR.toFixed(1)}" y="${(P+4).toFixed(1)}" width="${w}" height="15" rx="3.5" fill="rgba(217,119,6,0.95)" stroke="rgba(255,255,255,0.55)"/>`
+                     + `<text x="${(xR + w/2).toFixed(1)}" y="${(P+15).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">${lbl}</text>`;
+            };
+            observerMarkers = obsTag(xObsL, '👁 obs −1 km') + obsTag(xObsR, '👁 obs +1 km');
         }
 
-        // Étiquettes d'altitude aux deux extrémités de la courbe (cartouches crème)
-        // — sauf si l'extrémité correspond au min ou max de l'axe (déjà affiché via ▲/▼).
+        // Étiquettes altitude aux extrémités (texte blanc avec halo, sauf si déjà ▲/▼)
         const vL = s.values[0], vR = s.values[s.values.length - 1];
         const yL = yScale(vL), yR = yScale(vR);
         const isExtreme = (i) => i === s.iMin || i === s.iMax;
         const offY = (yPos) => (yPos < H / 2 ? 16 : -8);
+        const edgeText = (x, y, lbl, anchor) =>
+            `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" font-size="10" font-weight="700" fill="rgba(255,255,255,0.92)" style="paint-order:stroke; stroke:rgba(0,0,0,0.5); stroke-width:2.4; stroke-linejoin:round;">${lbl}</text>`;
         let edgeLabels = '';
-        if (!isExtreme(0))
-            edgeLabels += labelTag(P + 18, yL + offY(yL), vL.toFixed(0) + ' m', s.color, 'middle');
-        if (!isExtreme(s.values.length - 1))
-            edgeLabels += labelTag(W - P - 18, yR + offY(yR), vR.toFixed(0) + ' m', s.color, 'middle');
+        if (!isExtreme(0))                          edgeLabels += edgeText(P + 4,    yL + offY(yL), vL.toFixed(0) + ' m', 'start');
+        if (!isExtreme(s.values.length - 1))        edgeLabels += edgeText(W - P - 4, yR + offY(yR), vR.toFixed(0) + ' m', 'end');
 
-        // Règle d'élongation
-        const rulerY = H + 16, rulerLabY = H + 30, rulerColor = '#475569';
+        // Règle d'élongation — couleurs adaptées au fond gradient sombre
+        const rulerY = H + 16, rulerLabY = H + 30, rulerColor = 'rgba(255,255,255,0.85)';
         const step = niceStep(radius);
         const ticks = [];
         for (let d = -radius + step; d <= radius - step + 0.5; d += step) {
@@ -6183,20 +6211,20 @@ function renderElevation(elevs, radius) {
             const tickH = (t.isCenter || t.isExtreme) ? 6 : 3;
             const lbl = (t.isCenter || t.isExtreme) ? '' : (t.d < 0 ? '−' + Math.abs(t.d) : '+' + t.d) + ' m';
             return `<line x1="${t.x.toFixed(1)}" y1="${rulerY - tickH/2}" x2="${t.x.toFixed(1)}" y2="${rulerY + tickH/2}" stroke="${rulerColor}" stroke-width="${(t.isCenter || t.isExtreme) ? 1.4 : 0.8}"/>` +
-                   (lbl ? `<text x="${t.x.toFixed(1)}" y="${rulerLabY}" text-anchor="middle" font-size="9" fill="${rulerColor}">${lbl}</text>` : '');
+                   (lbl ? `<text x="${t.x.toFixed(1)}" y="${rulerLabY}" text-anchor="middle" font-size="9" fill="rgba(255,255,255,0.78)">${lbl}</text>` : '');
         }).join('');
         const dispRadius = radius >= 1000 ? (radius / 1000).toFixed(radius % 1000 ? 1 : 0) + ' km' : radius + ' m';
         const labels = [s.name.split('–')[0], s.name.split('–')[1]];
         const rulerExtremes =
-            `<text x="${P-1}" y="${rulerY - 5}" text-anchor="start" font-size="9" font-weight="700" fill="${rulerColor}">${labels[0]} −${dispRadius}</text>` +
-            `<text x="${W-P+1}" y="${rulerY - 5}" text-anchor="end" font-size="9" font-weight="700" fill="${rulerColor}">${labels[1]} +${dispRadius}</text>`;
+            `<text x="${P-1}" y="${rulerY - 5}" text-anchor="start" font-size="9" font-weight="700" fill="#fff">${labels[0]} −${dispRadius}</text>` +
+            `<text x="${W-P+1}" y="${rulerY - 5}" text-anchor="end" font-size="9" font-weight="700" fill="#fff">${labels[1]} +${dispRadius}</text>`;
         const ruler = rulerLine + rulerArrowL + rulerArrowR + rulerTicks + rulerExtremes;
 
         return `
-            <div class="elev-svg-card" style="background:#f7f9fc; border:1px solid var(--c-border); border-radius:8px; padding:10px;">
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13px; font-weight:700; color:${s.color};">
-                    <span style="width:14px; height:3px; background:${s.color}; border-radius:2px;"></span>Axe ${s.name}
-                    <span style="margin-left:auto; font-size:11px; font-weight:500; color:var(--c-muted);">Δ ${(s.vMax - s.vMin).toFixed(0)} m</span>
+            <div class="elev-svg-card" style="background:linear-gradient(135deg,#0b3d91 0%,#082f70 45%,#1a8754 100%); border-radius:10px; padding:10px 10px 6px; box-shadow:0 2px 10px rgba(0,0,0,0.18); overflow:hidden;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:13px; font-weight:700; color:#fff;">
+                    <span style="width:14px; height:3px; background:${s.color}; border-radius:2px; box-shadow:0 0 6px ${s.color};"></span>Axe ${s.name}
+                    <span style="margin-left:auto; font-size:11px; font-weight:600; color:rgba(255,255,255,0.9); background:rgba(0,0,0,0.28); padding:2px 9px; border-radius:6px;">Δ ${(s.vMax - s.vMin).toFixed(0)} m</span>
                 </div>
                 <svg viewBox="0 0 ${W} ${H + 38}" style="display:block; width:100%; height:auto; overflow:visible;">
                     ${ELEV_GRADIENT_DEFS}
@@ -6283,23 +6311,35 @@ function renderElevPreview(series, radius) {
     // Trace l'axe choisi sur la carte principale (calque dédié) + marqueurs ▲ ▼
     drawElevAxisOnMainMap(s, radius, heightMax, flightCeiling);
 
+    // Pastilles compactes 1 ligne pour l'aperçu §1 (place limitée)
+    const hMax = Math.round(s.vMax - center), hMin = Math.round(s.vMin - center);
+    const previewTag = (x, y, alt, hauteur, gradId, placement) => {
+        const w = 86, h = 17;
+        let xRect = Math.max(P + 2, Math.min(W - P - 2 - w, x - w / 2));
+        const yRect = placement === 'top' ? Math.max(2, y - h - 4) : Math.min(H - h - 2, y + 6);
+        const sign = hauteur >= 0 ? '+' : '−';
+        return `<rect x="${xRect.toFixed(1)}" y="${yRect.toFixed(1)}" width="${w}" height="${h}" rx="4" fill="url(#${gradId})" stroke="rgba(255,255,255,0.55)" stroke-width="0.8"/>`
+             + `<text x="${(xRect + w/2).toFixed(1)}" y="${(yRect + 12).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="#fff" style="paint-order:stroke; stroke:rgba(0,0,0,0.4); stroke-width:1.2;">${alt} m · ${sign}${Math.abs(hauteur)}m sol</text>`;
+    };
+
     el.innerHTML = `
-        <div style="background:#f7f9fc; border:1px solid var(--c-border); border-radius:6px; padding:6px 8px;">
-            <div style="display:flex; gap:6px; align-items:center; font-size:11px; color:${s.color}; font-weight:700; margin-bottom:2px;">
-                <span style="width:12px; height:2px; background:${s.color}; border-radius:2px;"></span>
+        <div style="background:linear-gradient(135deg,#0b3d91 0%,#082f70 50%,#1a8754 100%); border-radius:8px; padding:8px 10px 6px; box-shadow:0 1px 6px rgba(0,0,0,0.18);">
+            <div style="display:flex; gap:6px; align-items:center; font-size:11px; color:#fff; font-weight:700; margin-bottom:4px;">
+                <span style="width:12px; height:2px; background:${s.color}; border-radius:2px; box-shadow:0 0 5px ${s.color};"></span>
                 Coupe ${s.name}
-                <span style="margin-left:auto; color:var(--c-muted); font-weight:500;">Δ ${(s.vMax - s.vMin).toFixed(0)} m · ${fmtDist(radius)}</span>
+                <span style="margin-left:auto; color:rgba(255,255,255,0.9); font-weight:600; background:rgba(0,0,0,0.28); padding:1px 7px; border-radius:5px;">Δ ${(s.vMax - s.vMin).toFixed(0)} m · ${fmtDist(radius)}</span>
             </div>
             <svg viewBox="0 0 ${W} ${H}" style="display:block; width:100%; height:auto; overflow:visible;">
-                <path d="${fillPath}" fill="${s.color}" fill-opacity="0.10"/>
-                <path d="${path}" fill="none" stroke="${s.color}" stroke-width="1.6" stroke-linejoin="round"/>
-                <line x1="${W/2}" y1="${PT}" x2="${W/2}" y2="${H-PB}" stroke="#dc2626" stroke-width="1" stroke-dasharray="2,2"/>
-                <line x1="${P}" y1="${yCeil.toFixed(1)}" x2="${W-P}" y2="${yCeil.toFixed(1)}" stroke="#16a34a" stroke-width="1.4" stroke-dasharray="5,3" opacity="0.95"/>
-                <text x="${(W-P).toFixed(1)}" y="${(yCeil - 3).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" fill="#16a34a">Plafond +${heightMax} m</text>
-                <circle cx="${xMax.toFixed(1)}" cy="${yMax.toFixed(1)}" r="2.6" fill="${s.color}" stroke="#fff" stroke-width="1.2"/>
-                <circle cx="${xMin.toFixed(1)}" cy="${yMin.toFixed(1)}" r="2.6" fill="${s.color}" stroke="#fff" stroke-width="1.2"/>
-                <text x="${xMax.toFixed(1)}" y="${(yMax - 4).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="${s.color}">▲ ${s.vMax.toFixed(0)} m</text>
-                <text x="${xMin.toFixed(1)}" y="${(yMin + 10).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="${s.color}">▼ ${s.vMin.toFixed(0)} m</text>
+                ${ELEV_GRADIENT_DEFS}
+                <path d="${fillPath}" fill="rgba(255,255,255,0.18)" stroke="none"/>
+                <path d="${path}" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" pathLength="1" class="elev-real-path" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5));"/>
+                <line x1="${W/2}" y1="${PT}" x2="${W/2}" y2="${H-PB}" stroke="#fca5a5" stroke-width="1" stroke-dasharray="3,2" opacity="0.85"/>
+                <line x1="${P}" y1="${yCeil.toFixed(1)}" x2="${W-P}" y2="${yCeil.toFixed(1)}" stroke="#86efac" stroke-width="1.4" stroke-dasharray="5,3" opacity="0.95"/>
+                <text x="${(W-P).toFixed(1)}" y="${(yCeil - 3).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" fill="#86efac" style="paint-order:stroke; stroke:rgba(0,0,0,0.5); stroke-width:2;">Plafond +${heightMax} m sol</text>
+                <circle cx="${xMax.toFixed(1)}" cy="${yMax.toFixed(1)}" r="3" fill="#fff" stroke="#0066cc" stroke-width="1.6"/>
+                <circle cx="${xMin.toFixed(1)}" cy="${yMin.toFixed(1)}" r="3" fill="#fff" stroke="#dc2626" stroke-width="1.6"/>
+                ${previewTag(xMax, yMax, s.vMax.toFixed(0), hMax, 'elev-tag-blue', 'top')}
+                ${previewTag(xMin, yMin, s.vMin.toFixed(0), hMin, 'elev-tag-red', 'bottom')}
             </svg>
         </div>
     `;
