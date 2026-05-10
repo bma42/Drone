@@ -6145,8 +6145,10 @@ let aircraftSearchRadiusKm = 50;       // rayon de recherche par défaut (km)
 let aircraftAutoRefresh = true;        // rafraîchissement auto activé par défaut
 let aircraftAlertSound = true;         // alerte sonore hélico < 5 km activée par défaut
 const ALERT_RADIUS_M = 5000;           // rayon de déclenchement de l'alerte (5 km)
-const _alertedHexes = new Set();       // hex déjà alertés (évite de re-biper à chaque refresh)
+const ALERT_REMINDER_MS = 20000;       // re-bipe toutes les 20 s tant qu'un hélico est dans la zone
+const _alertedHexes = new Set();       // hex déjà alertés (immédiat à la 1ʳᵉ détection)
 let _alertAudioCtx = null;
+let _alertReminderTimer = null;
 // Restaure la préférence sonore depuis localStorage
 try { const v = localStorage.getItem('drone_aircraft_alert'); if (v !== null) aircraftAlertSound = (v === '1'); } catch (e) {}
 // Débloque l'AudioContext iOS dès la 1ʳᵉ interaction utilisateur (Safari le suspend tant qu'aucun geste)
@@ -6200,8 +6202,38 @@ function toggleAircraftAlert(enabled) {
             g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.25, t0 + 0.01); g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.15);
             o.connect(g).connect(_alertAudioCtx.destination); o.start(t0); o.stop(t0 + 0.2);
         }
+        _startAlertReminderLoop();
+    } else {
+        _stopAlertReminderLoop();
     }
 }
+
+// Boucle de rappel indépendante du refresh data : bipe toutes les 20 s tant qu'un
+// hélicoptère est encore présent dans les 5 km. L'alerte initiale (à la 1ʳᵉ détection)
+// reste immédiate via _checkHeliAlerts ; cette boucle sert uniquement à maintenir la
+// vigilance opérationnelle tant que la menace persiste.
+function _startAlertReminderLoop() {
+    if (_alertReminderTimer) return;
+    _alertReminderTimer = setInterval(() => {
+        if (!aircraftAlertSound) return;
+        if (!Array.isArray(STATE.aircraft) || STATE.aircraft.length === 0) return;
+        const heliInZone = STATE.aircraft.some(a => a.isHelicopter && a.dist <= ALERT_RADIUS_M);
+        if (heliInZone) {
+            playHeliAlertBeep();
+            const pill = document.getElementById('status-aircraft');
+            if (pill) {
+                pill.style.transition = 'box-shadow .2s';
+                pill.style.boxShadow = '0 0 0 4px rgba(220,38,38,0.4)';
+                setTimeout(() => { if (pill) pill.style.boxShadow = ''; }, 1800);
+            }
+        }
+    }, ALERT_REMINDER_MS);
+}
+function _stopAlertReminderLoop() {
+    if (_alertReminderTimer) { clearInterval(_alertReminderTimer); _alertReminderTimer = null; }
+}
+// Démarre la boucle de rappel au chargement si l'alerte est activée par préférence
+if (aircraftAlertSound) _startAlertReminderLoop();
 
 // Vérifie les hélicos détectés < 5 km par rapport au point de mission.
 // Bipe uniquement pour les nouveaux (hex non encore alertés) → pas de spam à chaque refresh.
