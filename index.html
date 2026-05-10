@@ -3808,6 +3808,13 @@ function renderIgh(features, lat, lon) {
             <div class="metric ${igh.length ? 'alert' : ''}"><div class="v">${igh.length}</div><div class="k">IGH autres ≥ 28 m</div></div>
             <div class="metric"><div class="v">${items[0] ? fmtDist(items[0].dist) : '—'}</div><div class="k">Distance min</div></div>
         </div>
+        <div class="no-print" style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+            <button type="button" onclick="recenterIghMap()" title="Recentrer la carte sur le point de mission"
+                    style="background:var(--c-primary); color:#fff; border:0; border-radius:6px; padding:5px 11px; font-size:12px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><circle cx="12" cy="12" r="9"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><circle cx="12" cy="12" r="2.5"/></svg>
+                Recentrer
+            </button>
+        </div>
         <div id="igh-map" style="height:300px; width:100%; border-radius:6px; border:1px solid var(--c-border); margin-bottom:12px;"></div>
         <table class="tbl">
             <thead><tr><th>Type</th><th>Hauteur</th><th>Usage</th><th>Alt. toit</th><th style="text-align:right;">Distance</th></tr></thead>
@@ -3881,6 +3888,19 @@ function _hasWebGL() {
         const c = document.createElement('canvas');
         return !!(c.getContext('webgl') || c.getContext('experimental-webgl') || c.getContext('webgl2'));
     } catch (e) { return false; }
+}
+
+// Recentre la carte §8 sur le point de mission. Compatible MapLibre 3D et Leaflet 2D fallback.
+function recenterIghMap() {
+    if (!ighMap || STATE.lat == null) return;
+    const lon = STATE.lon, lat = STATE.lat;
+    if (typeof ighMap.flyTo === 'function' && typeof ighMap.getPitch === 'function') {
+        // MapLibre 3D : restaure aussi le pitch et le bearing initiaux
+        ighMap.flyTo({ center: [lon, lat], zoom: 15.2, pitch: 62, bearing: -22, duration: 800, essential: true });
+    } else if (typeof ighMap.setView === 'function') {
+        // Fallback Leaflet 2D
+        ighMap.setView([lat, lon], 14, { animate: true });
+    }
 }
 
 function initIghMap(items, allFeatures, lat, lon) {
