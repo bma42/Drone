@@ -977,7 +977,7 @@
                 <div class="field-group row-2">
                     <div class="slider-box">
                         <label class="lbl">Hauteur max&nbsp;: <span class="num" id="height-num">120</span> m</label>
-                        <input type="range" min="0" max="120" value="120" oninput="document.getElementById('height-num').innerText=this.value; if(window.STATE && STATE.elev && STATE.elev.elevs) renderElevation(STATE.elev.elevs, STATE.elev.radius);" class="no-print">
+                        <input type="range" min="0" max="120" value="120" oninput="updateHeightMax(this.value)" class="no-print">
                         <div id="elev-preview" style="margin-top:8px;"></div>
                     </div>
                     <div class="slider-box">
@@ -5211,6 +5211,27 @@ const ELEV_AXES = [
 ];
 const ELEV_HALF = 24; // 2 axes × 48 + 1 centre = 97 ≤ 100 (limite Open-Meteo)
 
+// Axe choisi (aléatoirement) pour l'aperçu §1 — stable durant un drag de slider, retiré au prochain fetch
+let _elevPreviewAxisName = null;
+// Debounce du refresh complet de §16 quand on bouge le slider Hauteur max
+let _elevHeightDebounce = null;
+
+// Slider §1 « Hauteur max » → met à jour le plafond de vol sur l'aperçu §1 ET sur les coupes §16
+function updateHeightMax(value) {
+    const numEl = document.getElementById('height-num');
+    if (numEl) numEl.innerText = value;
+    if (!STATE.elev || !STATE.elev.series) return;
+    // 1) léger : aperçu §1 (petit SVG) — instantané, suit le doigt sur le slider
+    try { renderElevPreview(STATE.elev.series, STATE.elev.radius); } catch (e) {}
+    // 2) lourd : reconstruction complète des coupes §16 + carte satellite — debouncé 250 ms après l'arrêt du drag
+    clearTimeout(_elevHeightDebounce);
+    _elevHeightDebounce = setTimeout(() => {
+        if (STATE.elev && STATE.elev.elevs) {
+            try { renderElevation(STATE.elev.elevs, STATE.elev.radius); } catch (e) {}
+        }
+    }, 250);
+}
+
 async function fetchElevation(lat, lon, radius) {
     setStatus('elev', 'load');
     const lats = [lat], lons = [lon]; // index 0 = centre
@@ -5228,6 +5249,7 @@ async function fetchElevation(lat, lon, radius) {
         const cacheKey = `elev_${lat.toFixed(3)}_${lon.toFixed(3)}_${radius}`;
         const url = `https://api.open-meteo.com/v1/elevation?latitude=${lats.join(',')}&longitude=${lons.join(',')}`;
         const j = await cachedFetch(cacheKey, url, 24 * 60 * 60 * 1000); // cache 24 h (terrain ne change pas)
+        _elevPreviewAxisName = null;  // nouveau jeu de données → l'aperçu §1 re-tirera un axe
         renderElevation(j.elevation, radius);
         return j;
     } catch (e) {
@@ -5433,7 +5455,13 @@ function renderElevPreview(series, radius) {
     if (!el || !series || series.length === 0) return;
     const maxDelta = Math.max(...series.map(s => s.vMax - s.vMin));
     const candidates = series.filter(s => Math.abs((s.vMax - s.vMin) - maxDelta) < 0.5);
-    const s = candidates[Math.floor(Math.random() * candidates.length)];
+    // Sélection stable : on garde le même axe entre deux drags du slider Hauteur max
+    // (tirage aléatoire uniquement au premier rendu / après un nouveau fetch)
+    let s = _elevPreviewAxisName ? candidates.find(c => c.name === _elevPreviewAxisName) : null;
+    if (!s) {
+        s = candidates[Math.floor(Math.random() * candidates.length)];
+        _elevPreviewAxisName = s.name;
+    }
 
     const W = 360, H = 76, P = 8;
     // Marge interne supplémentaire pour les étiquettes ▲/▼ au-dessus/en-dessous
