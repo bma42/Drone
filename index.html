@@ -2899,9 +2899,17 @@ async function initRainRadar(lat, lon) {
     rainTileLayer = null;
 
     // Carte Leaflet centrée sur la mission, vue régionale
-    rainMap = L.map(el, { scrollWheelZoom: false, attributionControl: true }).setView([lat, lon], 8);
+    // RainViewer ne sert que jusqu'à z12 → on cap la carte à z11 pour éviter "zoom level not supported"
+    rainMap = L.map(el, {
+        scrollWheelZoom: false,
+        attributionControl: true,
+        minZoom: 4,
+        maxZoom: 11
+    }).setView([lat, lon], 8);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '© OSM · © CartoDB · Radar © RainViewer'
+        attribution: '© OSM · © CartoDB · Radar © RainViewer',
+        maxZoom: 11,
+        maxNativeZoom: 11
     }).addTo(rainMap);
     L.circleMarker([lat, lon], { radius: 7, color: '#0b3d91', fillColor: '#fff', fillOpacity: 1, weight: 3 }).addTo(rainMap).bindPopup('<b>Point de mission</b>');
     L.circle([lat, lon], { radius: 50000, color: '#0b3d91', fillOpacity: 0, weight: 1, dashArray: '4,4' }).addTo(rainMap);
@@ -2945,8 +2953,15 @@ function showRainFrame(idx) {
     const f = rainFrames[idx];
     if (rainTileLayer) { try { rainMap.removeLayer(rainTileLayer); } catch (e) {} }
     // Schéma couleur 2 (Universal Blue), 1_1 = lissage + neige
+    // RainViewer publie ses tuiles jusqu'à z12 maximum
     const url = `${rainHost}${f.path}/256/{z}/{x}/{y}/2/1_1.png`;
-    rainTileLayer = L.tileLayer(url, { opacity: 0.72, zIndex: 100 }).addTo(rainMap);
+    rainTileLayer = L.tileLayer(url, {
+        opacity: 0.72,
+        zIndex: 100,
+        maxZoom: 11,
+        maxNativeZoom: 11,
+        errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+    }).addTo(rainMap);
     rainCurrentIdx = idx;
 
     const ts = new Date(f.time * 1000);
