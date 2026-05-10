@@ -5588,6 +5588,37 @@ function flightCatColor(c) {
     return c === 'VFR' ? '#16a34a' : c === 'MVFR' ? '#0891b2' : c === 'IFR' ? '#d97706' : c === 'LIFR' ? '#dc2626' : '#6b7280';
 }
 
+// Helpers défensifs : CheckWX expose le cap dans `degrees` mais parfois
+// `direction` (numérique ou lettre cardinale "N/E/S/W/VRB"). On gère les
+// deux et on évite d'écrire "undefined°".
+function _fmtWindAng(w) {
+    if (!w) return '';
+    if (typeof w.degrees === 'number') return Math.round(w.degrees) + '°';
+    if (typeof w.direction === 'number') return Math.round(w.direction) + '°';
+    if (typeof w.direction === 'string' && w.direction) return w.direction;  // VRB, E, N…
+    return 'VRB';
+}
+function _fmtWindFull(w) {
+    if (!w) return '—';
+    const ang = _fmtWindAng(w);
+    const kts = (typeof w.speed_kts === 'number') ? w.speed_kts : null;
+    const kph = (typeof w.speed_kph === 'number') ? w.speed_kph : (kts != null ? Math.round(kts * 1.852) : null);
+    const gust = (typeof w.gust_kts === 'number') ? ` raf. ${w.gust_kts} kt` : '';
+    if (kts == null) return ang || '—';
+    return `${ang} / ${kts} kt (${kph != null ? kph + ' km/h' : '?'})${gust}`;
+}
+// Format TAF timestamp : objet { from, to } ISO ou strings dans variantes ;
+// renvoie "HH:MMZ → HH:MMZ" ou chaîne vide si inexploitable.
+function _fmtTafTime(ts) {
+    if (!ts) return '';
+    const a = (ts.from || ts.start || '');
+    const b = (ts.to   || ts.end   || '');
+    if (typeof a === 'string' && typeof b === 'string' && a.length >= 16 && b.length >= 16) {
+        return a.slice(11, 16) + 'Z → ' + b.slice(11, 16) + 'Z';
+    }
+    return '';
+}
+
 function renderMetarTaf(stations, metars, tafs, lat, lon) {
     const metarById = new Map(metars.map(m => [m.icao, m]));
     const tafById   = new Map(tafs.map(t => [t.icao, t]));
@@ -5601,23 +5632,24 @@ function renderMetarTaf(stations, metars, tafs, lat, lon) {
         const cat = m && m.flight_category;
         const catColor = flightCatColor(cat);
         const distKm = s.position && s.position.distance ? (s.position.distance.meters / 1000).toFixed(1) : '?';
-        const wind = m && m.wind ? `${m.wind.direction}° / ${m.wind.speed_kts} kt (${m.wind.speed_kph} km/h)` : '—';
+        const wind = m && m.wind ? _fmtWindFull(m.wind) : '—';
         const vis  = m && m.visibility ? `${(m.visibility.meters/1000).toFixed(1)} km` : '—';
         const temp = m && m.temperature != null ? `${m.temperature.celsius}°C` : '—';
         const dewp = m && m.dewpoint    != null ? `${m.dewpoint.celsius}°C` : '—';
         const baro = m && m.barometer ? `${m.barometer.hpa.toFixed(0)} hPa` : '—';
         const cond = m && m.conditions && m.conditions.length ? m.conditions.map(c => c.text || c.code).join(', ') : '';
         const tafLines = t && t.forecast ? t.forecast.slice(0, 4).map(f => {
-            const t1 = f.timestamp ? f.timestamp.from.slice(11, 16) + 'Z' : '?';
-            const t2 = f.timestamp ? f.timestamp.to.slice(11, 16) + 'Z' : '?';
             const fc = f.flight_category;
-            const wd = f.wind ? `${f.wind.direction}° ${f.wind.speed_kts}kt` : '';
-            const vs = f.visibility ? `vis ${(f.visibility.meters/1000).toFixed(1)}km` : '';
-            return `<div style="font-size:11px; padding:3px 0; border-top:1px dashed #e5e7eb;">
-                <span style="color:${flightCatColor(fc)}; font-weight:700;">${fc}</span>
-                <span style="color:var(--c-muted);">&nbsp;${t1} → ${t2}</span>
-                ${wd ? '· ' + wd : ''} ${vs ? '· ' + vs : ''}
-            </div>`;
+            const fcSpan = fc ? `<span style="color:${flightCatColor(fc)}; font-weight:700;">${fc}</span>` : '<span style="color:var(--c-muted); font-weight:600;">—</span>';
+            const time = _fmtTafTime(f.timestamp);
+            const change = f.change && (f.change.indicator || f.change.indicator_code) ? `<span style="color:#7c3aed; font-weight:600;">${f.change.indicator || f.change.indicator_code}${f.change.probability ? ' ' + f.change.probability + '%' : ''}</span>` : '';
+            const ang = f.wind ? _fmtWindAng(f.wind) : '';
+            const kts = f.wind && typeof f.wind.speed_kts === 'number' ? f.wind.speed_kts : null;
+            const wd  = f.wind ? `${ang}${kts != null ? ' ' + kts + 'kt' : ''}`.trim() : '';
+            const vs  = f.visibility && typeof f.visibility.meters === 'number'
+                        ? `vis ${(f.visibility.meters/1000).toFixed(1)} km` : '';
+            const parts = [fcSpan, change, time ? `<span style="color:var(--c-muted);">${time}</span>` : '', wd, vs].filter(Boolean);
+            return `<div style="font-size:11px; padding:3px 0; border-top:1px dashed #e5e7eb;">${parts.join(' · ')}</div>`;
         }).join('') : '';
 
         return `<div style="border:1px solid var(--c-border); border-radius:8px; padding:12px; margin-bottom:10px;">
