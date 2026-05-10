@@ -2370,9 +2370,8 @@ function updateGlobalVerdict() {
         const today = new Date(); today.setHours(0, 0, 0, 0);
         const dd = new Date(d); dd.setHours(0, 0, 0, 0);
         const diffDays = Math.round((dd.getTime() - today.getTime()) / 86400000);
-        const day = diffDays === 0 ? '' : diffDays === 1 ? 'demain ' : d.toLocaleDateString('fr-FR', { weekday: 'short' }) + ' ';
-        const lbl = state === 'no' ? 'Next' : 'Sortie';
-        chip = ` <span style="background:#16a34a; color:#fff; padding:2px 8px; border-radius:999px; font-weight:700; font-size:10.5px; margin-left:4px; box-shadow:0 0 0 1.5px #fff;">› ${lbl} ${day}${hh}h${mm}</span>`;
+        const dayPart = diffDays === 0 ? '' : diffDays === 1 ? ' demain' : ' ' + d.toLocaleDateString('fr-FR', { weekday: 'short' });
+        chip = ` <span style="background:#16a34a; color:#fff; padding:2px 8px; border-radius:999px; font-weight:700; font-size:10.5px; margin-left:4px; box-shadow:0 0 0 1.5px #fff;">› Go${dayPart} à : ${hh}h${mm}</span>`;
     }
     pill.innerHTML = ICONS[state] + stateLabel + chip;
 }
@@ -2838,11 +2837,10 @@ function renderWeather(j, dateISO) {
 
     const verdictLabel = verdict === 'go' ? 'GO' : verdict === 'warn' ? 'VIGILANCE' : 'NO-GO';
     let detailTxt;
-    const nextLabel = verdict === 'no' ? 'Next' : 'Sortie vigilance';
     if (verdict === 'no' || verdict === 'warn') {
         const baseTxt = reasons.length ? 'Points de vigilance : ' + reasons.join(' · ') : (verdict === 'no' ? 'Conditions défavorables.' : 'Conditions dégradées.');
         detailTxt = baseTxt + (nextGoTime
-            ? ' · <span style="background:#16a34a; color:#fff; padding:2px 9px; border-radius:999px; font-weight:700; font-size:11px;">› ' + nextLabel + ' ' + fmtNextGo(nextGoTime) + '</span>'
+            ? ' · <span style="background:#16a34a; color:#fff; padding:2px 9px; border-radius:999px; font-weight:700; font-size:11px;">Prochaine heure de décollage favorable : ' + fmtNextGo(nextGoTime) + '</span>'
             : ' · <span style="color:var(--c-muted); font-style:italic;">aucune plage strictement favorable identifiée dans les prévisions disponibles.</span>');
     } else {
         detailTxt = reasons.length ? 'Points de vigilance : ' + reasons.join(' · ') : 'Conditions météo favorables sur toute la fenêtre de mission.';
