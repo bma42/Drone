@@ -5882,19 +5882,31 @@ let _elevLoaderStart = 0;
 const ELEV_LOADER_MIN_MS = 2000;
 
 // Slider §1 « Hauteur max » → met à jour le plafond de vol sur l'aperçu §1 ET sur les coupes §16
+// Timestamp d'affichage du loader §1 — null si aucune session active.
+let _elevSliderLoaderShownAt = 0;
+const ELEV_SLIDER_MIN_MS = 2000;
+
 function updateHeightMax(value) {
     const numEl = document.getElementById('height-num');
     if (numEl) numEl.innerText = value;
     if (!STATE.elev || !STATE.elev.series) return;
-    // Frame de chargement sur l'aperçu §1 pendant la manipulation
-    showElevLoader('elev-preview', { w: 360, h: 60, title: 'Maj plafond…', small: true });
-    // Debounce : aperçu §1 + coupes §19 sont rendues 250 ms après l'arrêt du drag
+    // Affiche le loader UNE FOIS par session de drag (pas à chaque tick → sinon il se relance en boucle)
+    if (!_elevSliderLoaderShownAt) {
+        showElevLoader('elev-preview', { w: 360, h: 60, title: 'Maj plafond…', small: true });
+        _elevSliderLoaderShownAt = Date.now();
+    }
+    // Debounce le rendu après la fin du drag, avec minimum 2 s d'affichage du loader
     clearTimeout(_elevHeightDebounce);
     _elevHeightDebounce = setTimeout(() => {
-        try { renderElevPreview(STATE.elev.series, STATE.elev.radius); } catch (e) {}
-        if (STATE.elev && STATE.elev.elevs) {
-            try { renderElevation(STATE.elev.elevs, STATE.elev.radius); } catch (e) {}
-        }
+        const elapsed = Date.now() - _elevSliderLoaderShownAt;
+        const wait = Math.max(0, ELEV_SLIDER_MIN_MS - elapsed);
+        setTimeout(() => {
+            try { renderElevPreview(STATE.elev.series, STATE.elev.radius); } catch (e) {}
+            if (STATE.elev && STATE.elev.elevs) {
+                try { renderElevation(STATE.elev.elevs, STATE.elev.radius); } catch (e) {}
+            }
+            _elevSliderLoaderShownAt = 0;  // session terminée, prochain drag relancera un loader
+        }, wait);
     }, 250);
 }
 
