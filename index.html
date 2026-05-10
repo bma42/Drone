@@ -1707,6 +1707,7 @@
             <div class="card-head">
                 <div class="card-num">19</div>
                 <div class="card-title">Profil altimétrique<span class="sub">Open-Meteo Elevation · transect autour du point</span></div>
+                <button type="button" class="no-print" onclick="if(STATE.lat) fetchElevation(STATE.lat, STATE.lon, STATE.radius).catch(()=>{})" title="Rafraîchir le profil altimétrique" style="background:transparent; border:1px solid var(--c-border-strong); border-radius:4px; padding:3px 9px; cursor:pointer; font-size:11px; color:var(--c-text-soft); margin-right:8px;">↻ Rafraîchir</button>
                 <span class="card-status" id="status-elev">en attente</span>
             </div>
             <div class="card-body" id="elev-body">
@@ -1732,6 +1733,7 @@
             <div class="card-head">
                 <div class="card-num">21</div>
                 <div class="card-title">Analyse de risques<span class="sub">Risques identifiés · niveau (probabilité × gravité) · mesures de mitigation</span></div>
+                <button type="button" class="no-print" onclick="if(typeof populateRiskTable==='function') populateRiskTable()" title="Recalculer les risques automatiques (les risques manuellement édités sont préservés)" style="background:transparent; border:1px solid var(--c-border-strong); border-radius:4px; padding:3px 9px; cursor:pointer; font-size:11px; color:var(--c-text-soft); margin-right:8px;">↻ Rafraîchir</button>
             </div>
             <div class="card-body">
                 <div id="risk-grid"></div>
