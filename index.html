@@ -9,6 +9,8 @@
     <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="maplibre-gl.css" />
+    <script src="maplibre-gl.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
     <style>
@@ -2010,6 +2012,7 @@ function updateElongation(val) {
     if (sevesoElongationCircle) sevesoElongationCircle.setRadius(STATE.radius);
     if (uasElongationCircle) uasElongationCircle.setRadius(STATE.radius);
     if (ighElongationCircle) ighElongationCircle.setRadius(STATE.radius);
+    if (typeof ighMap3DUpdateElongation === 'function') { try { ighMap3DUpdateElongation(); } catch (e) {} }
     if (airspaceElongationCircle) airspaceElongationCircle.setRadius(STATE.radius);
     if (railElongationCircle) railElongationCircle.setRadius(STATE.radius);
     if (naturalElongationCircle) naturalElongationCircle.setRadius(STATE.radius);
@@ -2045,7 +2048,7 @@ function refitAllMaps() {
     const lat = STATE.lat, lon = STATE.lon;
     if (linesMap)    fitMapToRadius(linesMap, lat, lon, 5000);
     if (antennasMap) fitMapToRadius(antennasMap, lat, lon, 3000);
-    if (ighMap)      fitMapToRadius(ighMap, lat, lon, 2000);
+    // ighMap est désormais une carte MapLibre 3D : on saute fitMapToRadius (API Leaflet uniquement).
     if (railMap)     fitMapToRadius(railMap, lat, lon, 3000);
     if (naturalMap)  fitMapToRadius(naturalMap, lat, lon, 5000);
 }
@@ -3279,8 +3282,9 @@ function initAntennasMap(items, lat, lon) {
 /* ===================================================================
    §8 — BÂTIMENTS HAUTS (IGH) — IGN BDTOPO V3
    =================================================================== */
-let ighMap = null;
-let ighElongationCircle = null;
+let ighMap = null;            // maplibregl.Map (3D)
+let ighElongationCircle = null;  // (legacy, conservé pour compat ; non utilisé en 3D)
+let ighMap3DUpdateElongation = null;  // callback pour rafraîchir le cercle d'élongation 3D
 
 async function fetchIgh(lat, lon) {
     setStatus('igh', 'load');
@@ -3382,39 +3386,299 @@ function renderIgh(features, lat, lon) {
         </table>
         <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source IGN BDTOPO V3 · GHA = Grand Habitation (≥ 50 m), IGH = Immeuble Grande Hauteur autres usages (≥ 28 m) · top 15 affichés.</div>
     `;
-    setTimeout(() => initIghMap(items, lat, lon), 50);
+    setTimeout(() => initIghMap(items, features, lat, lon), 50);
     let st = 'ok';
     if (gha.length || igh.length) st = 'warn';
     setStatus('igh', st, gha.length || igh.length ? `${gha.length + igh.length} IGH` : 'aucun');
 }
 
-function initIghMap(items, lat, lon) {
+// Génère un polygone GeoJSON approximant un disque géodésique.
+function _ighCirclePolygon(lat, lon, radiusM, points) {
+    points = points || 96;
+    const earthR = 6378137;
+    const ring = [];
+    for (let i = 0; i <= points; i++) {
+        const a = (i / points) * 2 * Math.PI;
+        const dx = radiusM * Math.cos(a);
+        const dy = radiusM * Math.sin(a);
+        const dLat = (dy / earthR) * (180 / Math.PI);
+        const dLon = (dx / (earthR * Math.cos(lat * Math.PI / 180))) * (180 / Math.PI);
+        ring.push([lon + dLon, lat + dLat]);
+    }
+    return { type: 'Polygon', coordinates: [ring] };
+}
+
+// Fallback 2D Leaflet si MapLibre/WebGL est indisponible (vieux mobiles, mode économie d'énergie iOS, etc.)
+function initIghMap2DFallback(items, lat, lon, reason) {
     const el = document.getElementById('igh-map');
     if (!el) return;
-    if (ighMap) { ighMap.remove(); ighMap = null; }
+    el.innerHTML = '';
+    if (ighMap) { try { ighMap.remove(); } catch (e) {} ighMap = null; }
+    ighMap3DUpdateElongation = null;
     ighMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 14);
     fitMapToRadius(ighMap, lat, lon, 2000);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', crossOrigin: true }).addTo(ighMap);
     L.circleMarker([lat, lon], { radius: 7, color: '#0b3d91', fillColor: '#0b3d91', fillOpacity: 1, weight: 2 }).addTo(ighMap).bindPopup('<b>Point de mission</b>');
     L.circle([lat, lon], { radius: 2000, color: '#0b3d91', fillOpacity: .03, weight: 1, dashArray: '4,4' }).addTo(ighMap);
     ighElongationCircle = STATE.radius
-        ? L.circle([lat, lon], { radius: STATE.radius, color: '#d97706', fillColor: '#fbbf24', fillOpacity: .15, weight: 2 }).addTo(ighMap).bindPopup(`<b>Élongation de vol</b><br>${STATE.radius} m`)
+        ? L.circle([lat, lon], { radius: STATE.radius, color: '#d97706', fillColor: '#fbbf24', fillOpacity: .15, weight: 2 }).addTo(ighMap).bindPopup('<b>Élongation de vol</b><br>' + STATE.radius + ' m')
         : null;
     items.slice(0, 80).forEach(i => {
         try {
             L.geoJSON(i.geom, { style: { color: i.cls.color, fillColor: i.cls.color, fillOpacity: .55, weight: 1.5 } })
-              .bindPopup(`<b>${i.cls.kind}</b> · ${i.hauteur.toFixed(0)} m${i.etages ? ' · ' + i.etages + ' étages' : ''}<br>${i.usage || ''}<br>${fmtDist(i.dist)}`)
+              .bindPopup('<b>' + i.cls.kind + '</b> · ' + i.hauteur.toFixed(0) + ' m' + (i.etages ? ' · ' + i.etages + ' étages' : '') + '<br>' + (i.usage || '') + '<br>' + fmtDist(i.dist))
               .addTo(ighMap);
-            // Étiquette permanente avec hauteur
             L.marker([i.center.lat, i.center.lon], {
                 icon: L.divIcon({
                     className: '', iconSize: null, iconAnchor: [0, 0],
-                    html: `<div style="background:${i.cls.color}; color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px; border:1.5px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.4); white-space:nowrap;">🏢 ${i.hauteur.toFixed(0)}m ${i.cls.kind}</div>`
+                    html: '<div style="background:' + i.cls.color + '; color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px; border:1.5px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.4); white-space:nowrap;">🏢 ' + i.hauteur.toFixed(0) + 'm ' + i.cls.kind + '</div>'
                 })
             }).addTo(ighMap);
-        } catch (e) { /* skip */ }
+        } catch (e) {}
     });
     setTimeout(() => ighMap.invalidateSize(), 100);
+    // Badge "fallback 2D" pour que le diagnostic soit visible
+    el.style.position = 'relative';
+    const badge = document.createElement('div');
+    badge.style.cssText = 'position:absolute; top:8px; left:8px; z-index:500; background:#fef3c7; color:#92400e; border:1px solid #d97706; padding:3px 8px; border-radius:10px; font-size:10.5px; font-weight:700; box-shadow:0 1px 3px rgba(0,0,0,.2); pointer-events:none;';
+    badge.textContent = '⚠ Vue 2D (fallback) — ' + (reason || 'WebGL indisponible');
+    el.appendChild(badge);
+    console.warn('[IGH] Fallback 2D Leaflet :', reason);
+}
+
+// Détection WebGL pour décider 3D vs fallback 2D
+function _hasWebGL() {
+    try {
+        const c = document.createElement('canvas');
+        return !!(c.getContext('webgl') || c.getContext('experimental-webgl') || c.getContext('webgl2'));
+    } catch (e) { return false; }
+}
+
+function initIghMap(items, allFeatures, lat, lon) {
+    const el = document.getElementById('igh-map');
+    if (!el) return;
+    if (typeof maplibregl === 'undefined') {
+        return initIghMap2DFallback(items, lat, lon, 'MapLibre GL non chargé');
+    }
+    if (!_hasWebGL()) {
+        return initIghMap2DFallback(items, lat, lon, 'WebGL non disponible');
+    }
+    if (ighMap) { try { ighMap.remove(); } catch (e) {} ighMap = null; }
+    ighMap3DUpdateElongation = null;
+
+    // Bbox initiale ≈ 2 km autour du point (pour les overlays cercles, pas pour le cadrage)
+    const dLat = 2000 / 111000;
+    const dLon = 2000 / (111000 * Math.cos(lat * Math.PI / 180));
+
+    // Style raster CartoDB Voyager (sans labels, pour ne pas masquer les bâtiments en 3D)
+    const style = {
+        version: 8,
+        sources: {
+            basemap: {
+                type: 'raster',
+                tiles: [
+                    'https://a.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}.png',
+                    'https://b.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}.png',
+                    'https://c.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}.png',
+                    'https://d.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}.png'
+                ],
+                tileSize: 256,
+                attribution: '© OpenStreetMap contributors © CARTO · IGN BDTOPO V3'
+            }
+        },
+        layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }]
+    };
+
+    try {
+        ighMap = new maplibregl.Map({
+            container: el,
+            style: style,
+            center: [lon, lat],
+            zoom: 15.2,
+            pitch: 62,
+            bearing: -22,
+            maxPitch: 80,
+            antialias: true,
+            attributionControl: false
+        });
+    } catch (e) {
+        console.warn('[IGH] MapLibre init failed:', e);
+        return initIghMap2DFallback(items, lat, lon, 'MapLibre erreur init');
+    }
+    // Force le pitch après le 1er render (sécurité au cas où une option l'aurait écrasé)
+    ighMap.once('load', () => { try { ighMap.setPitch(62); ighMap.setBearing(-22); } catch (e) {} });
+    ighMap.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showCompass: true }), 'top-right');
+    ighMap.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+    ighMap.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 100 }), 'bottom-left');
+    try { ighMap.addControl(new maplibregl.FullscreenControl(), 'top-right'); } catch (e) {}
+
+    ighMap.on('load', () => {
+        if (!ighMap) return;
+
+        // Enrichit chaque bâtiment avec hauteur + classification (GHA / IGH / OTHER)
+        // Fallback hauteur : étages × 3 m, sinon 6 m (BDTOPO renvoie souvent null en zone rurale)
+        const enriched = (allFeatures || []).map(f => {
+            if (!f.geometry) return null;
+            const p = f.properties || {};
+            let h = parseFloat(p.hauteur);
+            if (!h || h <= 0) {
+                const et = parseFloat(p.nombre_d_etages);
+                h = (et && et > 0) ? et * 3 + 3 : 6;
+            }
+            const cls = classifyIgh(p.usage_1, p.hauteur);
+            return {
+                type: 'Feature',
+                geometry: f.geometry,
+                properties: {
+                    hauteur: h,
+                    estimated: !p.hauteur || parseFloat(p.hauteur) <= 0 ? 1 : 0,
+                    kind: cls ? cls.kind : 'OTHER',
+                    usage: p.usage_1 || '',
+                    etages: p.nombre_d_etages != null ? String(p.nombre_d_etages) : ''
+                }
+            };
+        }).filter(Boolean);
+
+        ighMap.addSource('buildings', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: enriched }
+        });
+
+        // Cercle 2 km (zone de recherche IGH)
+        ighMap.addSource('ring-2km', {
+            type: 'geojson',
+            data: { type: 'Feature', properties: {}, geometry: _ighCirclePolygon(lat, lon, 2000) }
+        });
+        ighMap.addLayer({
+            id: 'ring-2km-fill', type: 'fill', source: 'ring-2km',
+            paint: { 'fill-color': '#0b3d91', 'fill-opacity': 0.04 }
+        });
+        ighMap.addLayer({
+            id: 'ring-2km-line', type: 'line', source: 'ring-2km',
+            paint: { 'line-color': '#0b3d91', 'line-width': 1.2, 'line-dasharray': [3, 3], 'line-opacity': 0.7 }
+        });
+
+        // Cercle d'élongation de vol (mis à jour quand STATE.radius change)
+        const refreshElongation = () => {
+            if (!ighMap) return;
+            if (!STATE.radius) {
+                if (ighMap.getLayer('ring-elong-fill')) ighMap.removeLayer('ring-elong-fill');
+                if (ighMap.getLayer('ring-elong-line')) ighMap.removeLayer('ring-elong-line');
+                if (ighMap.getSource('ring-elong')) ighMap.removeSource('ring-elong');
+                return;
+            }
+            const data = { type: 'Feature', properties: {}, geometry: _ighCirclePolygon(lat, lon, STATE.radius) };
+            if (ighMap.getSource('ring-elong')) {
+                ighMap.getSource('ring-elong').setData(data);
+            } else {
+                ighMap.addSource('ring-elong', { type: 'geojson', data: data });
+                ighMap.addLayer({
+                    id: 'ring-elong-fill', type: 'fill', source: 'ring-elong',
+                    paint: { 'fill-color': '#fbbf24', 'fill-opacity': 0.18 }
+                });
+                ighMap.addLayer({
+                    id: 'ring-elong-line', type: 'line', source: 'ring-elong',
+                    paint: { 'line-color': '#d97706', 'line-width': 2 }
+                });
+            }
+        };
+        refreshElongation();
+        ighMap3DUpdateElongation = refreshElongation;
+
+        // Extrusion 3D des bâtiments — hauteur = attribut `hauteur` (m) de l'IGN BDTOPO
+        ighMap.addLayer({
+            id: 'buildings-3d',
+            type: 'fill-extrusion',
+            source: 'buildings',
+            paint: {
+                'fill-extrusion-height': ['get', 'hauteur'],
+                'fill-extrusion-base': 0,
+                'fill-extrusion-color': [
+                    'match', ['get', 'kind'],
+                    'GHA', '#dc2626',
+                    'IGH', '#f59e0b',
+                    ['case', ['==', ['get', 'estimated'], 1], '#cbd5e1', '#94a3b8']
+                ],
+                'fill-extrusion-opacity': 0.92,
+                'fill-extrusion-vertical-gradient': true
+            }
+        });
+        // Liseré au sommet pour un rendu plus net
+        ighMap.addLayer({
+            id: 'buildings-outline',
+            type: 'line',
+            source: 'buildings',
+            paint: { 'line-color': 'rgba(255,255,255,0.85)', 'line-width': 0.5 }
+        });
+        // Couche ciel (gradient au-dessus de l'horizon en vue inclinée)
+        try {
+            ighMap.addLayer({
+                id: 'sky',
+                type: 'background',
+                paint: { 'background-color': '#cfe2f3', 'background-opacity': 0 }
+            });
+        } catch (e) {}
+
+        // Marqueur point de mission
+        const dot = document.createElement('div');
+        dot.style.cssText = 'width:14px;height:14px;border-radius:50%;background:#0b3d91;border:3px solid #fff;box-shadow:0 0 0 1px #0b3d91, 0 1px 5px rgba(0,0,0,.55);';
+        new maplibregl.Marker({ element: dot, anchor: 'center' })
+            .setLngLat([lon, lat])
+            .setPopup(new maplibregl.Popup({ offset: 14 }).setHTML('<b>Point de mission</b>'))
+            .addTo(ighMap);
+
+        // Étiquettes "🏢 30m IGH" sur les IGH/GHA les plus proches
+        (items || []).slice(0, 30).forEach(i => {
+            const lab = document.createElement('div');
+            lab.style.cssText = 'background:' + i.cls.color + '; color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px; border:1.5px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.4); white-space:nowrap; pointer-events:none; transform:translateY(-2px);';
+            lab.textContent = '🏢 ' + i.hauteur.toFixed(0) + 'm ' + i.cls.kind;
+            new maplibregl.Marker({ element: lab, anchor: 'bottom' })
+                .setLngLat([i.center.lon, i.center.lat])
+                .addTo(ighMap);
+        });
+
+        // Popup au clic sur un bâtiment
+        ighMap.on('click', 'buildings-3d', (e) => {
+            const f = e.features && e.features[0];
+            if (!f) return;
+            const p = f.properties || {};
+            const kindLabel = p.kind === 'GHA'
+                ? '<span style="background:#dc2626;color:#fff;padding:1px 6px;border-radius:8px;font-size:11px;font-weight:700;">GHA</span> habitation ≥ 50 m'
+                : p.kind === 'IGH'
+                    ? '<span style="background:#d97706;color:#fff;padding:1px 6px;border-radius:8px;font-size:11px;font-weight:700;">IGH</span> ≥ 28 m'
+                    : 'Bâtiment';
+            new maplibregl.Popup({ offset: 8 })
+                .setLngLat(e.lngLat)
+                .setHTML(kindLabel + '<br><b>' + parseFloat(p.hauteur).toFixed(1) + ' m</b>'
+                    + (p.etages ? ' · ' + p.etages + ' étages' : '')
+                    + (p.usage ? '<br><span style="font-size:11px;color:#555;">' + p.usage + '</span>' : ''))
+                .addTo(ighMap);
+        });
+        ighMap.on('mouseenter', 'buildings-3d', () => { ighMap.getCanvas().style.cursor = 'pointer'; });
+        ighMap.on('mouseleave', 'buildings-3d', () => { ighMap.getCanvas().style.cursor = ''; });
+
+        // Badge permanent "Vue 3D" pour confirmer que la nouvelle version est bien chargée
+        el.style.position = 'relative';
+        const badge3d = document.createElement('div');
+        badge3d.style.cssText = 'position:absolute; top:8px; left:8px; z-index:5; background:linear-gradient(135deg,#0b3d91,#0066cc); color:#fff; padding:3px 9px; border-radius:10px; font-size:10.5px; font-weight:700; box-shadow:0 1px 4px rgba(0,0,0,.3); pointer-events:none; letter-spacing:.3px;';
+        badge3d.textContent = '🏙 Vue 3D · MapLibre';
+        el.appendChild(badge3d);
+
+        // Aide brève sur l'interaction (mobile : 2 doigts pour pivoter)
+        const hint = document.createElement('div');
+        hint.style.cssText = 'position:absolute; bottom:8px; left:50%; transform:translateX(-50%); background:rgba(11,61,145,0.85); color:#fff; padding:3px 10px; border-radius:12px; font-size:10.5px; font-weight:600; pointer-events:none; box-shadow:0 1px 4px rgba(0,0,0,.3); white-space:nowrap;';
+        hint.textContent = '2 doigts pour pivoter · pincer pour zoomer';
+        el.appendChild(hint);
+        setTimeout(() => { hint.style.transition = 'opacity .8s'; hint.style.opacity = '0'; }, 4500);
+        setTimeout(() => { try { hint.remove(); } catch (e) {} }, 5500);
+    });
+
+    // Si la création MapLibre lève une erreur (par ex. WebGL refuse le contexte), on bascule en 2D
+    ighMap.on('error', (e) => {
+        console.warn('[IGH MapLibre]', e && e.error ? e.error.message : e);
+    });
+
+    setTimeout(() => { try { ighMap && ighMap.resize(); } catch (e) {} }, 200);
 }
 
 /* ===================================================================
@@ -6119,9 +6383,9 @@ async function waitMapReady() {
         marker.setLatLng([STATE.lat, STATE.lon]);
         rangeCircle.setLatLng([STATE.lat, STATE.lon]);
         map.setView([STATE.lat, STATE.lon], map.getZoom(), { animate: false });
-        [map, linesMap, antennasMap, ighMap, sevesoMap, uasMap, airspaceMap, railMap, naturalMap].forEach(m => { try { m && m.invalidateSize(false); } catch (e) {} });
+        [map, linesMap, antennasMap, ighMap, sevesoMap, uasMap, airspaceMap, railMap, naturalMap].forEach(m => { try { if (m) { if (m.invalidateSize) m.invalidateSize(false); else if (m.resize) m.resize(); } } catch (e) {} });
         setTimeout(() => {
-            [map, linesMap, antennasMap, ighMap, sevesoMap, uasMap, airspaceMap, railMap, naturalMap].forEach(m => { try { m && m.invalidateSize(false); } catch (e) {} });
+            [map, linesMap, antennasMap, ighMap, sevesoMap, uasMap, airspaceMap, railMap, naturalMap].forEach(m => { try { if (m) { if (m.invalidateSize) m.invalidateSize(false); else if (m.resize) m.resize(); } } catch (e) {} });
             setTimeout(resolve, 700);
         }, 300);
     });
