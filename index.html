@@ -6660,7 +6660,7 @@ function initAircraftMap(aircraft, lat, lon) {
     if (!el) return;
     if (aircraftMap) { try { aircraftMap.remove(); } catch (e) {} aircraftMap = null; }
     aircraftMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 11);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/voyager/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB · ADSB.lol', crossOrigin: true }).addTo(aircraftMap);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB · ADSB.lol', crossOrigin: true, subdomains: 'abcd', maxZoom: 19 }).addTo(aircraftMap);
 
     // Point de mission
     L.circleMarker([lat, lon], { radius: 8, color: '#fff', fillColor: '#0b3d91', fillOpacity: 1, weight: 2 }).addTo(aircraftMap).bindPopup('<b>Point de mission</b>');
