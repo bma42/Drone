@@ -1403,7 +1403,7 @@
         <section class="card">
             <div class="card-head">
                 <div class="card-num">4</div>
-                <div class="card-title">Météo prévisionnelle<span class="sub">Open-Meteo · prévision horaire pour la date de mission</span></div>
+                <div class="card-title">Météo prévisionnelle<span class="sub">Open-Meteo · prévision horaire · radar pluie temps réel RainViewer (-2 h → +30 min)</span></div>
                 <span class="card-status" id="status-meteo">en attente</span>
             </div>
             <div class="card-body" id="meteo-body">
@@ -2846,11 +2846,139 @@ function renderWeather(j, dateISO) {
         </table>
 
         <div style="font-size:11px; color:var(--c-muted); margin-top:8px;">Pression moyenne sur la fenêtre&nbsp;: <strong>${press.toFixed(0)} hPa</strong> · humidité&nbsp;: <strong>${rh}%</strong>.</div>
+
+        <!-- Radar pluie LIVE (RainViewer) -->
+        <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--c-border);">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
+                <div style="font-weight:600; font-size:13px;">🌧 Radar pluie temps réel</div>
+                <div class="no-print" style="display:flex; align-items:center; gap:8px; margin-left:auto;">
+                    <button type="button" id="rain-play-btn" onclick="toggleRainAnimation()" title="Lecture / Pause" style="background:var(--c-primary); color:#fff; border:0; border-radius:6px; padding:4px 10px; font-size:13px; font-weight:700; cursor:pointer; min-width:34px;">⏸</button>
+                    <span id="rain-time" style="font-family:'Inter',monospace; font-weight:700; font-size:12px; color:var(--c-text); background:#fef3c7; padding:3px 8px; border-radius:6px; border:1px solid #fcd34d; min-width:72px; text-align:center;">--:--</span>
+                </div>
+            </div>
+            <div id="rain-radar" style="height:300px; width:100%; border-radius:6px; border:1px solid var(--c-border); overflow:hidden;"></div>
+            <div style="display:flex; align-items:center; gap:12px; margin-top:6px; font-size:11px; color:var(--c-muted); flex-wrap:wrap;">
+                <span>Échelle :</span>
+                <span style="display:inline-flex; align-items:center; gap:3px;"><span style="width:10px; height:10px; background:#a4f9ff; border-radius:2px;"></span>léger</span>
+                <span style="display:inline-flex; align-items:center; gap:3px;"><span style="width:10px; height:10px; background:#1e90ff; border-radius:2px;"></span>modéré</span>
+                <span style="display:inline-flex; align-items:center; gap:3px;"><span style="width:10px; height:10px; background:#ffeb3b; border-radius:2px;"></span>fort</span>
+                <span style="display:inline-flex; align-items:center; gap:3px;"><span style="width:10px; height:10px; background:#ff5722; border-radius:2px;"></span>orage</span>
+                <span style="display:inline-flex; align-items:center; gap:3px;"><span style="width:10px; height:10px; background:#e91e63; border-radius:2px;"></span>grêle</span>
+                <span style="margin-left:auto;">Source : <a href="https://www.rainviewer.com" target="_blank" rel="noopener">RainViewer</a> · refresh 10 min</span>
+            </div>
+        </div>
     `;
     document.getElementById('meteo-body').innerHTML = html;
     setStatus('meteo', verdict === 'no' ? 'err' : verdict === 'warn' ? 'warn' : 'ok', verdictLabel);
     STATE.weather = { wind, gust, vis, precip, maxPrecipHourly, verdict, nextGoTime };
     updateGlobalVerdict();
+    // Lance le radar pluie LIVE après que le DOM soit prêt
+    if (STATE.lat != null) setTimeout(() => initRainRadar(STATE.lat, STATE.lon), 60);
+}
+
+/* ===================================================================
+   §4 — RADAR PLUIE LIVE (RainViewer · gratuit, sans clé)
+   =================================================================== */
+let rainMap = null;
+let rainTileLayer = null;
+let rainFrames = [];           // [{time, path, isNowcast}]
+let rainCurrentIdx = 0;
+let rainHost = 'https://tilecache.rainviewer.com';
+let rainAnimTimer = null;
+let rainPlaying = true;
+let rainRefetchTimer = null;
+let rainPastCount = 0;
+
+async function initRainRadar(lat, lon) {
+    const el = document.getElementById('rain-radar');
+    if (!el) return;
+    // Stop animations / cleanup précédent
+    if (rainAnimTimer) { clearInterval(rainAnimTimer); rainAnimTimer = null; }
+    if (rainRefetchTimer) { clearTimeout(rainRefetchTimer); rainRefetchTimer = null; }
+    if (rainMap) { try { rainMap.remove(); } catch (e) {} rainMap = null; }
+    rainTileLayer = null;
+
+    // Carte Leaflet centrée sur la mission, vue régionale
+    rainMap = L.map(el, { scrollWheelZoom: false, attributionControl: true }).setView([lat, lon], 8);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© OSM · © CartoDB · Radar © RainViewer'
+    }).addTo(rainMap);
+    L.circleMarker([lat, lon], { radius: 7, color: '#0b3d91', fillColor: '#fff', fillOpacity: 1, weight: 3 }).addTo(rainMap).bindPopup('<b>Point de mission</b>');
+    L.circle([lat, lon], { radius: 50000, color: '#0b3d91', fillOpacity: 0, weight: 1, dashArray: '4,4' }).addTo(rainMap);
+
+    await loadRainFrames();
+    // Re-fetch des frames toutes les 10 min (RainViewer publie une nouvelle frame /10 min)
+    rainRefetchTimer = setTimeout(function tick() {
+        loadRainFrames().finally(() => {
+            rainRefetchTimer = setTimeout(tick, 10 * 60 * 1000);
+        });
+    }, 10 * 60 * 1000);
+}
+
+async function loadRainFrames() {
+    try {
+        const r = await fetchWithTimeout('https://api.rainviewer.com/public/weather-maps.json', {}, 9000);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const data = await r.json();
+        rainHost = data.host || 'https://tilecache.rainviewer.com';
+        const past = (data.radar && data.radar.past) || [];
+        const nowcast = (data.radar && data.radar.nowcast) || [];
+        rainPastCount = past.length;
+        rainFrames = [
+            ...past.map(f => ({ time: f.time, path: f.path, isNowcast: false })),
+            ...nowcast.map(f => ({ time: f.time, path: f.path, isNowcast: true }))
+        ];
+        if (rainFrames.length === 0) throw new Error('Aucune frame');
+        // Démarre sur la frame "now" (dernière frame past)
+        rainCurrentIdx = Math.max(0, rainPastCount - 1);
+        showRainFrame(rainCurrentIdx);
+        startRainAnimation();
+    } catch (e) {
+        console.warn('[RainViewer]', e);
+        const lbl = document.getElementById('rain-time');
+        if (lbl) { lbl.innerText = 'erreur'; lbl.style.background = '#fee2e2'; lbl.style.borderColor = '#fca5a5'; lbl.style.color = '#991b1b'; }
+    }
+}
+
+function showRainFrame(idx) {
+    if (!rainMap || !rainFrames[idx]) return;
+    const f = rainFrames[idx];
+    if (rainTileLayer) { try { rainMap.removeLayer(rainTileLayer); } catch (e) {} }
+    // Schéma couleur 2 (Universal Blue), 1_1 = lissage + neige
+    const url = `${rainHost}${f.path}/256/{z}/{x}/{y}/2/1_1.png`;
+    rainTileLayer = L.tileLayer(url, { opacity: 0.72, zIndex: 100 }).addTo(rainMap);
+    rainCurrentIdx = idx;
+
+    const ts = new Date(f.time * 1000);
+    const tsStr = ts.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const lbl = document.getElementById('rain-time');
+    if (lbl) {
+        lbl.innerText = (f.isNowcast ? '⏩ ' : '') + tsStr;
+        lbl.style.background = f.isNowcast ? '#dbeafe' : '#fef3c7';
+        lbl.style.borderColor = f.isNowcast ? '#93c5fd' : '#fcd34d';
+        lbl.style.color = f.isNowcast ? '#1e40af' : 'var(--c-text)';
+    }
+}
+
+function startRainAnimation() {
+    if (rainAnimTimer) clearInterval(rainAnimTimer);
+    rainPlaying = true;
+    const btn = document.getElementById('rain-play-btn');
+    if (btn) btn.innerText = '⏸';
+    rainAnimTimer = setInterval(() => {
+        if (!rainFrames.length) return;
+        rainCurrentIdx = (rainCurrentIdx + 1) % rainFrames.length;
+        showRainFrame(rainCurrentIdx);
+    }, 700);
+}
+function stopRainAnimation() {
+    if (rainAnimTimer) { clearInterval(rainAnimTimer); rainAnimTimer = null; }
+    rainPlaying = false;
+    const btn = document.getElementById('rain-play-btn');
+    if (btn) btn.innerText = '▶';
+}
+function toggleRainAnimation() {
+    if (rainPlaying) stopRainAnimation(); else startRainAnimation();
 }
 
 
@@ -6925,9 +7053,9 @@ async function waitMapReady() {
         marker.setLatLng([STATE.lat, STATE.lon]);
         rangeCircle.setLatLng([STATE.lat, STATE.lon]);
         map.setView([STATE.lat, STATE.lon], map.getZoom(), { animate: false });
-        [map, linesMap, antennasMap, ighMap, sevesoMap, uasMap, airspaceMap, railMap, naturalMap, aircraftMap].forEach(m => { try { if (m) { if (m.invalidateSize) m.invalidateSize(false); else if (m.resize) m.resize(); } } catch (e) {} });
+        [map, linesMap, antennasMap, ighMap, sevesoMap, uasMap, airspaceMap, railMap, naturalMap, aircraftMap, rainMap].forEach(m => { try { if (m) { if (m.invalidateSize) m.invalidateSize(false); else if (m.resize) m.resize(); } } catch (e) {} });
         setTimeout(() => {
-            [map, linesMap, antennasMap, ighMap, sevesoMap, uasMap, airspaceMap, railMap, naturalMap, aircraftMap].forEach(m => { try { if (m) { if (m.invalidateSize) m.invalidateSize(false); else if (m.resize) m.resize(); } } catch (e) {} });
+            [map, linesMap, antennasMap, ighMap, sevesoMap, uasMap, airspaceMap, railMap, naturalMap, aircraftMap, rainMap].forEach(m => { try { if (m) { if (m.invalidateSize) m.invalidateSize(false); else if (m.resize) m.resize(); } } catch (e) {} });
             setTimeout(resolve, 700);
         }, 300);
     });
