@@ -6143,6 +6143,88 @@ let aircraftElongationCircle = null;
 let aircraftRefreshTimer = null;
 let aircraftSearchRadiusKm = 50;       // rayon de recherche par défaut (km)
 let aircraftAutoRefresh = true;        // rafraîchissement auto activé par défaut
+let aircraftAlertSound = true;         // alerte sonore hélico < 5 km activée par défaut
+const ALERT_RADIUS_M = 5000;           // rayon de déclenchement de l'alerte (5 km)
+const _alertedHexes = new Set();       // hex déjà alertés (évite de re-biper à chaque refresh)
+let _alertAudioCtx = null;
+// Restaure la préférence sonore depuis localStorage
+try { const v = localStorage.getItem('drone_aircraft_alert'); if (v !== null) aircraftAlertSound = (v === '1'); } catch (e) {}
+// Débloque l'AudioContext iOS dès la 1ʳᵉ interaction utilisateur (Safari le suspend tant qu'aucun geste)
+document.addEventListener('pointerdown', () => {
+    if (!aircraftAlertSound) return;
+    try {
+        if (!_alertAudioCtx) _alertAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (_alertAudioCtx && _alertAudioCtx.state === 'suspended') _alertAudioCtx.resume();
+    } catch (e) {}
+}, { once: true, capture: true });
+
+// Beep d'alerte synthétisé : 3 tons (radar ping urgent), pas de fichier externe.
+function playHeliAlertBeep() {
+    if (!aircraftAlertSound) return;
+    try {
+        if (!_alertAudioCtx) _alertAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const ctx = _alertAudioCtx;
+        if (!ctx) return;
+        if (ctx.state === 'suspended') ctx.resume();
+        const t0 = ctx.currentTime;
+        function tone(freq, start, dur, peakGain) {
+            const osc = ctx.createOscillator();
+            const g = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, start);
+            g.gain.setValueAtTime(0, start);
+            g.gain.linearRampToValueAtTime(peakGain, start + 0.015);
+            g.gain.exponentialRampToValueAtTime(0.0008, start + dur);
+            osc.connect(g).connect(ctx.destination);
+            osc.start(start); osc.stop(start + dur + 0.05);
+        }
+        tone(1100, t0,        0.18, 0.45);
+        tone( 880, t0 + 0.22, 0.18, 0.45);
+        tone(1320, t0 + 0.44, 0.32, 0.55);
+    } catch (e) { console.warn('[heli-alert]', e); }
+}
+
+function toggleAircraftAlert(enabled) {
+    aircraftAlertSound = !!enabled;
+    try { localStorage.setItem('drone_aircraft_alert', aircraftAlertSound ? '1' : '0'); } catch (e) {}
+    if (aircraftAlertSound) {
+        // Coup de beep court pour confirmer l'activation (et débloquer l'audio iOS)
+        try {
+            if (!_alertAudioCtx) _alertAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (_alertAudioCtx && _alertAudioCtx.state === 'suspended') _alertAudioCtx.resume();
+        } catch (e) {}
+        const t0 = _alertAudioCtx && _alertAudioCtx.currentTime;
+        if (_alertAudioCtx && t0 != null) {
+            const o = _alertAudioCtx.createOscillator(); const g = _alertAudioCtx.createGain();
+            o.type = 'sine'; o.frequency.value = 1320;
+            g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.25, t0 + 0.01); g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.15);
+            o.connect(g).connect(_alertAudioCtx.destination); o.start(t0); o.stop(t0 + 0.2);
+        }
+    }
+}
+
+// Vérifie les hélicos détectés < 5 km par rapport au point de mission.
+// Bipe uniquement pour les nouveaux (hex non encore alertés) → pas de spam à chaque refresh.
+function _checkHeliAlerts(aircraft) {
+    const heliClose = aircraft.filter(a => a.isHelicopter && a.dist <= ALERT_RADIUS_M && a.hex);
+    const fresh = heliClose.filter(a => !_alertedHexes.has(a.hex));
+    if (fresh.length > 0) {
+        playHeliAlertBeep();
+        fresh.forEach(h => _alertedHexes.add(h.hex));
+        // Flash visuel sur le pill statut + le bouton alerte
+        const pill = document.getElementById('status-aircraft');
+        if (pill) {
+            pill.style.transition = 'box-shadow .2s';
+            pill.style.boxShadow = '0 0 0 4px rgba(220,38,38,0.4)';
+            setTimeout(() => { if (pill) pill.style.boxShadow = ''; }, 1800);
+        }
+    }
+    // Cleanup : oublier les hex qui ne sont plus présents (pour pouvoir ré-alerter si l'hélico réapparait)
+    const presentHexes = new Set(aircraft.map(a => a.hex).filter(Boolean));
+    for (const hex of Array.from(_alertedHexes)) {
+        if (!presentHexes.has(hex)) _alertedHexes.delete(hex);
+    }
+}
 
 // Callsigns français de secours / urgences sanitaires / sûreté à mettre en évidence
 const PRIORITY_CALLSIGN_RE = /^(SAMU|DRAGON|HELISAMU|HEMS|HOSPIT|FAGN|GIGN|RESCUE|MEDIC|AIRMED)/i;
@@ -6327,6 +6409,9 @@ function renderAircraft(aircraft, lat, lon) {
             <label style="display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap;">
                 <input type="checkbox" id="aircraft-auto-cb" ${aircraftAutoRefresh ? 'checked' : ''} onchange="toggleAircraftAuto(this.checked)" style="accent-color:var(--c-primary);"> Auto 15 s
             </label>
+            <label style="display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap;" title="Beep d'alerte si un hélicoptère est détecté à moins de 5 km du point de mission">
+                <input type="checkbox" id="aircraft-alert-cb" ${aircraftAlertSound ? 'checked' : ''} onchange="toggleAircraftAlert(this.checked)" style="accent-color:#dc2626;"> 🔔 Alerte hélico &lt; 5 km
+            </label>
         </div>`;
 
     const rows = aircraft.length === 0
@@ -6363,6 +6448,9 @@ function renderAircraft(aircraft, lat, lon) {
     else if (helis.length > 0)                   { st = 'warn'; label = `${helis.length} hélico · ${aircraft.length} total`; }
     else if (aircraft.length === 0)              { st = 'ok';   label = 'aucun aéronef'; }
     setStatus('aircraft', st, label);
+
+    // Alerte sonore : nouveau hélico détecté dans les 5 km
+    _checkHeliAlerts(aircraft);
 }
 
 function initAircraftMap(aircraft, lat, lon) {
