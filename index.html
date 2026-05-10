@@ -2899,14 +2899,14 @@ async function initRainRadar(lat, lon) {
     if (rainMap) { try { rainMap.remove(); } catch (e) {} rainMap = null; }
     rainTileLayer = null;
 
-    // Carte Leaflet centrée sur la mission, vue régionale
-    // RainViewer ne sert que jusqu'à z12 → on cap la carte à z11 pour éviter "zoom level not supported"
+    // Carte Leaflet centrée sur la mission, vue régionale ~100 km (z7)
+    // RainViewer ne sert que jusqu'à z12 → cap maxZoom à 11
     rainMap = L.map(el, {
         scrollWheelZoom: false,
         attributionControl: true,
         minZoom: 4,
         maxZoom: 11
-    }).setView([lat, lon], 8);
+    }).setView([lat, lon], 7);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
         attribution: '© OSM · © CartoDB · Radar © RainViewer',
         maxZoom: 11,
@@ -2915,7 +2915,14 @@ async function initRainRadar(lat, lon) {
     L.circleMarker([lat, lon], { radius: 7, color: '#0b3d91', fillColor: '#fff', fillOpacity: 1, weight: 3 }).addTo(rainMap).bindPopup('<b>Point de mission</b>');
     L.circle([lat, lon], { radius: 50000, color: '#0b3d91', fillOpacity: 0, weight: 1, dashArray: '4,4' }).addTo(rainMap);
 
+    // Force le recalcul de taille avant d'ajouter la couche radar (sinon les tuiles
+    // ne se chargent qu'au prochain zoom/pan parce que le conteneur n'avait pas encore
+    // ses dimensions au moment du init)
+    setTimeout(() => { try { rainMap && rainMap.invalidateSize(); } catch (e) {} }, 80);
+
     await loadRainFrames();
+    // Après ajout des tuiles radar, refresh une dernière fois pour forcer le fetch
+    setTimeout(() => { try { rainMap && rainMap.invalidateSize(); } catch (e) {} }, 200);
     // Re-fetch des frames toutes les 10 min (RainViewer publie une nouvelle frame /10 min)
     rainRefetchTimer = setTimeout(function tick() {
         loadRainFrames().finally(() => {
