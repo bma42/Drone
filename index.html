@@ -136,6 +136,26 @@
         .map-loader-label { color: rgba(255,255,255,0.92); font-size: 11px; font-weight: 600; margin-top: 12px; letter-spacing: .8px; text-transform: uppercase; }
         .map-loader-out { animation: map-loader-out .28s ease-in forwards; }
         @keyframes drone-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.92); } }
+        /* Loader spécifique aux modules altimétriques (§1 preview & §19 cartes) */
+        .elev-loader {
+            background: linear-gradient(135deg, #0b3d91 0%, #082f70 45%, #1a8754 100%);
+            border-radius: 8px; padding: 18px 14px 22px;
+            color: rgba(255,255,255,0.95); text-align: center;
+            animation: map-loader-in .25s ease-out;
+        }
+        .elev-loader .drone-logo { animation: drone-pulse 1.4s ease-in-out infinite; }
+        .elev-loader-title {
+            font-size: 11px; font-weight: 600; letter-spacing: .8px;
+            text-transform: uppercase; margin: 8px 0 12px; opacity: .9;
+        }
+        .elev-loader-curve { width: 100%; max-width: 480px; margin: 0 auto; display: block; }
+        .elev-fake-path {
+            stroke: rgba(255,255,255,0.95); stroke-width: 2; fill: none;
+            stroke-linejoin: round; stroke-linecap: round;
+            stroke-dasharray: 1; stroke-dashoffset: 1;
+            animation: draw-elev-curve 2.4s cubic-bezier(.25,.7,.35,1) forwards;
+        }
+        @keyframes draw-elev-curve { to { stroke-dashoffset: 0; } }
         @keyframes map-loader-in  { from { opacity: 0; } to { opacity: 1; } }
         @keyframes map-loader-out { to   { opacity: 0; } }
         /* UI cartes cachée par défaut — apparaît au touch/clic, se masque après 4 s d'inactivité */
@@ -5705,6 +5725,61 @@ const ELEV_HALF = 24; // 2 axes × 48 + 1 centre = 97 ≤ 100 (limite Open-Meteo
 let _elevPreviewAxisName = null;
 // Debounce du refresh complet de §16 quand on bouge le slider Hauteur max
 let _elevHeightDebounce = null;
+// Lecture sûre de la hauteur max (slider §1) — accepte 0 comme valeur valide,
+// fallback 120 uniquement si la valeur est absente ou non numérique.
+function _readHeightMax() {
+    const el = document.getElementById('height-num');
+    if (!el) return 120;
+    const n = parseInt(el.textContent, 10);
+    return Number.isFinite(n) ? n : 120;
+}
+
+// Génère un chemin SVG d'allure altimétrique stylisée (mélange de sinusoïdes + bruit léger)
+function _fakeElevPath(W, H, n) {
+    n = n || 56;
+    const pts = [];
+    const seed = (Date.now() % 1000) * 0.001;
+    for (let i = 0; i < n; i++) {
+        const x = (i / (n - 1)) * W;
+        const t = i / (n - 1);
+        const y = H * 0.55
+                  - Math.sin(t * Math.PI * 2.6 + seed * 6) * H * 0.20
+                  - Math.sin(t * Math.PI * 6.1 + seed * 3) * H * 0.10
+                  + Math.sin(t * Math.PI * 13 + seed * 11) * H * 0.04;
+        pts.push(x.toFixed(1) + ',' + Math.max(4, Math.min(H - 4, y)).toFixed(1));
+    }
+    return 'M ' + pts.join(' L ');
+}
+
+function _elevLoaderHtml(opts) {
+    opts = opts || {};
+    const W = opts.w || 460, H = opts.h || 90;
+    const droneSize = opts.small ? 36 : 52;
+    const path = _fakeElevPath(W, H);
+    const title = opts.title || 'Calcul du profil altimétrique';
+    const fillId = 'elev-loader-fill-' + Math.floor(Math.random() * 1e6);
+    return '<div class="elev-loader">'
+        + '<svg class="drone-logo" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:' + droneSize + 'px; height:' + droneSize + 'px;">'
+        + DRONE_LOGO_SVG_INNER + '</svg>'
+        + '<div class="elev-loader-title">' + title + '</div>'
+        + '<svg class="elev-loader-curve" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" style="height:' + H + 'px;">'
+        + '<defs><linearGradient id="' + fillId + '" x1="0" y1="0" x2="0" y2="1">'
+        + '<stop offset="0%" stop-color="rgba(255,255,255,0.22)"/>'
+        + '<stop offset="100%" stop-color="rgba(255,255,255,0)"/></linearGradient></defs>'
+        + '<path d="' + path + ' L ' + W + ',' + H + ' L 0,' + H + ' Z" fill="url(#' + fillId + ')" stroke="none"/>'
+        + '<path d="' + path + '" class="elev-fake-path" pathLength="1"/>'
+        + '</svg></div>';
+}
+
+function showElevLoader(containerId, opts) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = _elevLoaderHtml(opts);
+}
+
+// Garantit que le loader §19 + §1 reste affiché au moins 2 s avant le rendu réel
+let _elevLoaderStart = 0;
+const ELEV_LOADER_MIN_MS = 2000;
 
 // Slider §1 « Hauteur max » → met à jour le plafond de vol sur l'aperçu §1 ET sur les coupes §16
 function updateHeightMax(value) {
@@ -5724,6 +5799,10 @@ function updateHeightMax(value) {
 
 async function fetchElevation(lat, lon, radius) {
     setStatus('elev', 'load');
+    // Loader visuel : gradient + drone qui pulse + courbe fake animée
+    _elevLoaderStart = Date.now();
+    showElevLoader('elev-body',    { w: 480, h: 96, title: 'Calcul du profil altimétrique' });
+    showElevLoader('elev-preview', { w: 360, h: 60, title: 'Profil…', small: true });
     const lats = [lat], lons = [lon]; // index 0 = centre
     for (const ax of ELEV_AXES) {
         const rad = ax.bearing * Math.PI / 180;
@@ -5740,7 +5819,9 @@ async function fetchElevation(lat, lon, radius) {
         const url = `https://api.open-meteo.com/v1/elevation?latitude=${lats.join(',')}&longitude=${lons.join(',')}`;
         const j = await cachedFetch(cacheKey, url, 24 * 60 * 60 * 1000); // cache 24 h (terrain ne change pas)
         _elevPreviewAxisName = null;  // nouveau jeu de données → l'aperçu §1 re-tirera un axe
-        renderElevation(j.elevation, radius);
+        // Garantit un minimum de 2 s d'affichage du loader (animation du drone + tracé fake)
+        const wait = Math.max(0, ELEV_LOADER_MIN_MS - (Date.now() - _elevLoaderStart));
+        setTimeout(() => { try { renderElevation(j.elevation, radius); } catch (e) { console.warn(e); } }, wait);
         return j;
     } catch (e) {
         const isLimit = String(e.message || e).includes('429');
@@ -5798,7 +5879,7 @@ function renderElevation(elevs, radius) {
     };
 
     // Plafond de vol = altitude du point de décollage + Hauteur max (slider §1, en m AGL)
-    const heightMax = parseInt((document.getElementById('height-num') || {}).textContent || '120', 10) || 120;
+    const heightMax = _readHeightMax();
     const flightCeiling = center + heightMax;
 
     // Génère le SVG d'un axe (échelle Y locale, élargie pour englober le plafond de vol)
@@ -5959,7 +6040,7 @@ function renderElevPreview(series, radius) {
     const N = s.values.length;
     const xs = Array.from({ length: N }, (_, i) => P + (i / (N - 1)) * (W - 2 * P));
     // Plafond de vol = altitude du décollage + Hauteur max (slider §1, AGL)
-    const heightMax = parseInt((document.getElementById('height-num') || {}).textContent || '120', 10) || 120;
+    const heightMax = _readHeightMax();
     const center = (STATE.elev && STATE.elev.center != null) ? STATE.elev.center : s.values[Math.floor(s.values.length / 2)];
     const flightCeiling = center + heightMax;
     const yMaxAxis = Math.max(s.vMax, flightCeiling);
