@@ -102,6 +102,9 @@
         .pill.err .dot  { background: #f87171; }
         .pill.load .dot { background: #60a5fa; animation: pulse 1s infinite; }
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+        @keyframes acpulse { 0%,100% { transform: scale(1); filter: drop-shadow(0 0 4px #dc2626); } 50% { transform: scale(1.18); filter: drop-shadow(0 0 10px #dc2626); } }
+        .ac-marker { background:transparent !important; border:0 !important; }
+        .ac-priority { animation: acpulse 1.2s ease-in-out infinite; }
         /* Animation du logo drone : flottement + hélices qui tournent */
         @keyframes drone-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
         @keyframes prop-spin { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
@@ -1534,10 +1537,23 @@
             </div>
         </section>
 
-        <!-- §18 Altimétrie -->
+        <!-- §18 Trafic aérien LIVE (ADSB.lol) -->
         <section class="card">
             <div class="card-head">
-                <div class="card-num">18</div>
+                <div class="card-num" style="background:#dc2626;">18</div>
+                <div class="card-title">Trafic aérien LIVE — Hélicoptères &amp; basse altitude<span class="sub">ADSB.lol · ADS-B + MLAT temps réel · accent SAMU / Sécurité Civile (Dragon) · rayon configurable</span></div>
+                <button type="button" class="no-print" onclick="if(STATE.lat) fetchAircraft(STATE.lat, STATE.lon)" title="Rafraîchir" style="background:transparent; border:1px solid var(--c-border-strong); border-radius:4px; padding:3px 9px; cursor:pointer; font-size:11px; color:var(--c-text-soft); margin-right:8px;">↻ Rafraîchir</button>
+                <span class="card-status" id="status-aircraft">en attente</span>
+            </div>
+            <div class="card-body" id="aircraft-body">
+                <div class="empty-state">Sélectionnez une adresse pour suivre le trafic aérien temps réel.</div>
+            </div>
+        </section>
+
+        <!-- §19 Altimétrie -->
+        <section class="card">
+            <div class="card-head">
+                <div class="card-num">19</div>
                 <div class="card-title">Profil altimétrique<span class="sub">Open-Meteo Elevation · transect autour du point</span></div>
                 <span class="card-status" id="status-elev">en attente</span>
             </div>
@@ -1546,10 +1562,10 @@
             </div>
         </section>
 
-        <!-- §19 GNSS -->
+        <!-- §20 GNSS -->
         <section class="card">
             <div class="card-head">
-                <div class="card-num">19</div>
+                <div class="card-num">20</div>
                 <div class="card-title">Conditions GNSS<span class="sub">Indice Kp planétaire (perturbations électromagnétiques)</span></div>
                 <button type="button" class="no-print" onclick="refreshKp()" title="Rafraîchir l'indice Kp" style="background:transparent; border:1px solid var(--c-border-strong); border-radius:4px; padding:3px 9px; cursor:pointer; font-size:11px; color:var(--c-text-soft); margin-right:8px;">↻ Rafraîchir</button>
                 <span class="card-status" id="status-kp">en attente</span>
@@ -1559,10 +1575,10 @@
             </div>
         </section>
 
-        <!-- §20 Risques -->
+        <!-- §21 Risques -->
         <section class="card">
             <div class="card-head">
-                <div class="card-num">20</div>
+                <div class="card-num">21</div>
                 <div class="card-title">Analyse de risques<span class="sub">Risques identifiés · niveau (probabilité × gravité) · mesures de mitigation</span></div>
             </div>
             <div class="card-body">
@@ -1574,10 +1590,10 @@
             </div>
         </section>
 
-        <!-- §21 Étapes de vérification -->
+        <!-- §22 Étapes de vérification -->
         <section class="card">
             <div class="card-head">
-                <div class="card-num">21</div>
+                <div class="card-num">22</div>
                 <div class="card-title">Informations complémentaires<span class="sub">Points complémentaires, observations, illustrations photographiques</span></div>
             </div>
             <div class="card-body">
@@ -1590,10 +1606,10 @@
             </div>
         </section>
 
-        <!-- §22 Validation -->
+        <!-- §23 Validation -->
         <section class="card">
             <div class="card-head">
-                <div class="card-num">22</div>
+                <div class="card-num">23</div>
                 <div class="card-title">Validation<span class="sub">Visa hiérarchique et signatures</span></div>
             </div>
             <div class="card-body">
@@ -2013,6 +2029,7 @@ function updateElongation(val) {
     if (uasElongationCircle) uasElongationCircle.setRadius(STATE.radius);
     if (ighElongationCircle) ighElongationCircle.setRadius(STATE.radius);
     if (typeof ighMap3DUpdateElongation === 'function') { try { ighMap3DUpdateElongation(); } catch (e) {} }
+    if (aircraftElongationCircle) aircraftElongationCircle.setRadius(STATE.radius);
     if (airspaceElongationCircle) airspaceElongationCircle.setRadius(STATE.radius);
     if (railElongationCircle) railElongationCircle.setRadius(STATE.radius);
     if (naturalElongationCircle) naturalElongationCircle.setRadius(STATE.radius);
@@ -2023,7 +2040,7 @@ function updateElongation(val) {
     [linesElongationCircle, antennasElongationCircle, sevesoElongationCircle,
      uasElongationCircle, ighElongationCircle, airspaceElongationCircle,
      railElongationCircle, naturalElongationCircle, trafficElongationCircle,
-     zicadElongationCircle]
+     zicadElongationCircle, aircraftElongationCircle]
         .forEach(c => { if (c && c.setPopupContent) c.setPopupContent(popupHtml); });
     // Le module §10 affiche uniquement les voies dans la zone d'évolution
     // → on relance le rendu (filtre client) à chaque changement de rayon.
@@ -2051,6 +2068,7 @@ function refitAllMaps() {
     // ighMap est désormais une carte MapLibre 3D : on saute fitMapToRadius (API Leaflet uniquement).
     if (railMap)     fitMapToRadius(railMap, lat, lon, 3000);
     if (naturalMap)  fitMapToRadius(naturalMap, lat, lon, 5000);
+    if (aircraftMap) fitMapToRadius(aircraftMap, lat, lon, aircraftSearchRadiusKm * 1000);
 }
 
 function toggleObserver() {
@@ -2418,7 +2436,8 @@ function refreshAuto() {
         fetchAirspaces(STATE.lat, STATE.lon),
         fetchMetarTaf(STATE.lat, STATE.lon),
         fetchElevation(STATE.lat, STATE.lon, STATE.radius),
-        fetchKp()
+        fetchKp(),
+        fetchAircraft(STATE.lat, STATE.lon)
     ]).then(populateRiskTable);
 }
 
@@ -5702,9 +5721,235 @@ function renderKp(kp, ts) {
 }
 
 /* ===================================================================
-   §18 — RISQUES (auto + manuel)
+   §18 — TRAFIC AÉRIEN LIVE (ADSB.lol — ADS-B + MLAT public)
+   Focus : hélicoptères et aéronefs basse altitude. Détection par callsign
+   des helicos SAMU / Sécurité Civile (DRAGON) / HEMS / FAGN.
    =================================================================== */
-// Niveaux de probabilité / gravité : valeurs simples 1..3 mappées sur libellés
+let aircraftMap = null;
+let aircraftElongationCircle = null;
+let aircraftRefreshTimer = null;
+let aircraftSearchRadiusKm = 50;       // rayon de recherche par défaut (km)
+let aircraftAutoRefresh = true;        // rafraîchissement auto activé par défaut
+
+// Callsigns français de secours / urgences sanitaires / sûreté à mettre en évidence
+const PRIORITY_CALLSIGN_RE = /^(SAMU|DRAGON|HELISAMU|HEMS|HOSPIT|FAGN|GIGN|RESCUE|MEDIC|AIRMED)/i;
+// Modèles d'hélicoptères courants en France (préfixes ICAO de l'attribut "t")
+const HELICO_TYPE_RE = /^(EC1|H1[02-9]|H2[0-9]{2}|AS3[0-9]|AS5[0-9]|AS6[0-9]|AW1[0-9]{2}|S76|S92|R22|R44|R66|MD5[0-9]{2}|MD6[0-9]{2}|MD9[0-9]{2}|BO105|BK117|EC120|EC130|EC135|EC145|EC155|EC175|EC225)/i;
+
+async function fetchAircraft(lat, lon) {
+    if (lat == null || lon == null) return;
+    setStatus('aircraft', 'load');
+    const body = document.getElementById('aircraft-body');
+    if (body && body.children.length <= 1 && body.querySelector('.empty-state')) {
+        body.innerHTML = '<div class="empty-state">⏳ Récupération du trafic aérien…</div>';
+    }
+    try {
+        const distNm = Math.max(5, Math.round(aircraftSearchRadiusKm / 1.852));   // km → NM
+        const url = `https://api.adsb.lol/v2/lat/${lat.toFixed(5)}/lon/${lon.toFixed(5)}/dist/${distNm}`;
+        const r = await fetchWithTimeout(url, {}, 12000);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const j = await r.json();
+        const aircraft = (j.ac || []).map(a => enrichAircraft(a, lat, lon))
+                                     .filter(a => a.lat != null && a.lon != null)
+                                     .sort((a, b) => a.dist - b.dist);
+        STATE.aircraft = aircraft;
+        renderAircraft(aircraft, lat, lon);
+        scheduleAircraftRefresh();
+        return aircraft;
+    } catch (e) {
+        console.warn('[Aircraft]', e);
+        setStatus('aircraft', 'err', 'indisponible');
+        if (body) body.innerHTML = `
+            <div class="empty-state" style="margin-bottom:10px;">Trafic aérien indisponible (${e.message || 'erreur réseau'}).</div>
+            <button class="no-print" onclick="if(STATE.lat) fetchAircraft(STATE.lat, STATE.lon)" style="background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer;">↻ Réessayer</button>`;
+        scheduleAircraftRefresh(); // on retentera dans 15 s
+        return null;
+    }
+}
+
+function scheduleAircraftRefresh() {
+    if (aircraftRefreshTimer) { clearTimeout(aircraftRefreshTimer); aircraftRefreshTimer = null; }
+    if (!aircraftAutoRefresh) return;
+    aircraftRefreshTimer = setTimeout(() => {
+        if (STATE.lat != null) fetchAircraft(STATE.lat, STATE.lon);
+    }, 15000);
+}
+
+function toggleAircraftAuto(enabled) {
+    aircraftAutoRefresh = !!enabled;
+    if (aircraftAutoRefresh) {
+        if (STATE.lat != null) fetchAircraft(STATE.lat, STATE.lon);
+    } else if (aircraftRefreshTimer) {
+        clearTimeout(aircraftRefreshTimer); aircraftRefreshTimer = null;
+    }
+}
+
+function setAircraftRadius(km) {
+    aircraftSearchRadiusKm = Math.max(10, Math.min(150, parseInt(km, 10) || 50));
+    const numEl = document.getElementById('aircraft-radius-num');
+    if (numEl) numEl.innerText = aircraftSearchRadiusKm;
+}
+
+function enrichAircraft(a, lat, lon) {
+    const aLat = (typeof a.lat === 'number') ? a.lat : null;
+    const aLon = (typeof a.lon === 'number') ? a.lon : null;
+    const dist = (aLat != null && aLon != null) ? haversine(lat, lon, aLat, aLon) : Infinity;
+    const callsign = (a.flight || '').trim();
+    const reg = (a.r || '').trim();
+    const type = (a.t || '').trim();
+    const desc = (a.desc || '').trim();
+    const cat = a.category || a.emergency || '';
+    const altBaroFt = (typeof a.alt_baro === 'number') ? a.alt_baro : null;
+    const altGeomFt = (typeof a.alt_geom === 'number') ? a.alt_geom : null;
+    const altFt = altGeomFt != null ? altGeomFt : altBaroFt;
+    const altM = (altFt != null) ? altFt * 0.3048 : null;
+    const gs = (typeof a.gs === 'number') ? a.gs : null;        // knots
+    const track = (typeof a.track === 'number') ? a.track : 0;  // degrés
+    const vrFpm = (typeof a.baro_rate === 'number') ? a.baro_rate : null; // ft/min
+    const isHelicopter = cat === 'A7' || /helicopter|rotorcraft|copter/i.test(desc) || HELICO_TYPE_RE.test(type);
+    const isPriority = PRIORITY_CALLSIGN_RE.test(callsign) || /^(F-Z|F-G[A-Z]{2})/i.test(reg) && isHelicopter;
+    const isLowAlt = altM != null && altM < 500;
+    const emergency = /(emergency|squawk:?(7500|7600|7700))/i.test(String(a.emergency || '')) || a.squawk === '7700' || a.squawk === '7600' || a.squawk === '7500';
+    return {
+        hex: a.hex, callsign, reg, type, desc, cat,
+        lat: aLat, lon: aLon,
+        altBaroFt, altGeomFt, altFt, altM,
+        gs, track, vrFpm,
+        dist, isHelicopter, isPriority, isLowAlt, emergency,
+        squawk: a.squawk || '',
+        seen: (typeof a.seen === 'number') ? a.seen : 0
+    };
+}
+
+function renderAircraft(aircraft, lat, lon) {
+    const helis = aircraft.filter(a => a.isHelicopter);
+    const priority = aircraft.filter(a => a.isPriority);
+    const lowAlt = aircraft.filter(a => a.isLowAlt);
+    const emerg = aircraft.filter(a => a.emergency);
+
+    const stats = `
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px;">
+            <div class="metric ${priority.length || emerg.length ? 'danger' : ''}"><div class="v">${priority.length}</div><div class="k">SAMU / Dragon</div></div>
+            <div class="metric ${helis.length ? 'alert' : ''}"><div class="v">${helis.length}</div><div class="k">Hélicoptères</div></div>
+            <div class="metric ${lowAlt.length ? 'alert' : ''}"><div class="v">${lowAlt.length}</div><div class="k">&lt; 500 m alt.</div></div>
+            <div class="metric"><div class="v">${aircraft.length}</div><div class="k">Total aéronefs</div></div>
+        </div>`;
+
+    const radiusControl = `
+        <div class="no-print" style="display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:10px; padding:8px 10px; background:#f4f6fa; border-radius:6px; font-size:12px;">
+            <span style="font-weight:600; white-space:nowrap;">Rayon : <span id="aircraft-radius-num">${aircraftSearchRadiusKm}</span> km</span>
+            <input type="range" min="10" max="150" step="5" value="${aircraftSearchRadiusKm}"
+                   oninput="setAircraftRadius(this.value)"
+                   onchange="if(STATE.lat) fetchAircraft(STATE.lat, STATE.lon)"
+                   style="flex:1; min-width:120px;">
+            <label style="display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap;">
+                <input type="checkbox" id="aircraft-auto-cb" ${aircraftAutoRefresh ? 'checked' : ''} onchange="toggleAircraftAuto(this.checked)" style="accent-color:var(--c-primary);"> Auto 15 s
+            </label>
+        </div>`;
+
+    const rows = aircraft.length === 0
+        ? `<tr><td colspan="5" class="empty-state">Aucun aéronef détecté dans un rayon de ${aircraftSearchRadiusKm} km.</td></tr>`
+        : aircraft.slice(0, 15).map(a => {
+            const badge = a.isPriority ? '<span style="background:#dc2626; color:#fff; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:700;">🚨 SAMU/DRAGON</span>'
+                        : a.emergency ? '<span style="background:#dc2626; color:#fff; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:700;">🆘 URG.</span>'
+                        : a.isHelicopter ? '<span style="background:#d97706; color:#fff; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:700;">🚁 HELI</span>'
+                        : '<span style="background:#0066cc; color:#fff; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:700;">✈ AVION</span>';
+            return `<tr ${a.isPriority ? 'style="background:#fef2f2;"' : ''}>
+                <td>${badge}</td>
+                <td><strong>${a.callsign || a.reg || a.hex || '—'}</strong>${a.type ? '<br><span style="color:var(--c-muted); font-size:11px;">' + a.type + '</span>' : ''}</td>
+                <td>${a.altM != null ? '<strong>' + Math.round(a.altM) + ' m</strong><br><span style="color:var(--c-muted); font-size:11px;">' + Math.round(a.altFt) + ' ft</span>' : '—'}</td>
+                <td>${a.gs != null ? Math.round(a.gs * 1.852) + ' km/h' : '—'}</td>
+                <td style="text-align:right; white-space:nowrap;"><strong>${a.dist === Infinity ? '—' : fmtDist(a.dist)}</strong></td>
+            </tr>`;
+        }).join('');
+
+    document.getElementById('aircraft-body').innerHTML = `
+        ${stats}
+        ${radiusControl}
+        <div id="aircraft-map" style="height:340px; width:100%; border-radius:6px; border:1px solid var(--c-border); margin-bottom:12px;"></div>
+        <table class="tbl">
+            <thead><tr><th>Type</th><th>Callsign / Modèle</th><th>Altitude</th><th>Vitesse</th><th style="text-align:right;">Distance</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+        <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source : <a href="https://adsb.lol" target="_blank" rel="noopener">ADSB.lol</a> — données ADS-B + MLAT publiques temps réel · rafraîchissement automatique 15 s · top 15 affichés. Détection SAMU / Sécurité Civile par callsign (SAMU*, DRAGON*, HEMS*, FAGN*) · type d'hélicoptère par modèle ICAO.</div>
+    `;
+
+    setTimeout(() => initAircraftMap(aircraft, lat, lon), 50);
+
+    let st = 'ok', label = `${aircraft.length} aéronefs`;
+    if (priority.length > 0 || emerg.length > 0) { st = 'err';  label = `🚨 ${priority.length || emerg.length} prioritaire${(priority.length || emerg.length) > 1 ? 's' : ''}`; }
+    else if (helis.length > 0)                   { st = 'warn'; label = `${helis.length} hélico · ${aircraft.length} total`; }
+    else if (aircraft.length === 0)              { st = 'ok';   label = 'aucun aéronef'; }
+    setStatus('aircraft', st, label);
+}
+
+function initAircraftMap(aircraft, lat, lon) {
+    const el = document.getElementById('aircraft-map');
+    if (!el) return;
+    if (aircraftMap) { try { aircraftMap.remove(); } catch (e) {} aircraftMap = null; }
+    aircraftMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 11);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB · ADSB.lol', crossOrigin: true }).addTo(aircraftMap);
+
+    // Point de mission
+    L.circleMarker([lat, lon], { radius: 8, color: '#fff', fillColor: '#0b3d91', fillOpacity: 1, weight: 2 }).addTo(aircraftMap).bindPopup('<b>Point de mission</b>');
+
+    // Rayon de recherche
+    L.circle([lat, lon], { radius: aircraftSearchRadiusKm * 1000, color: '#3b82f6', fillOpacity: .03, weight: 1, dashArray: '6,4' })
+        .addTo(aircraftMap)
+        .bindPopup(`<b>Rayon de recherche</b><br>${aircraftSearchRadiusKm} km`);
+
+    // Élongation de vol
+    aircraftElongationCircle = STATE.radius
+        ? L.circle([lat, lon], { radius: STATE.radius, color: '#d97706', fillColor: '#fbbf24', fillOpacity: .12, weight: 2 }).addTo(aircraftMap).bindPopup(`<b>Élongation de vol</b><br>${STATE.radius} m`)
+        : null;
+
+    // Ajustement à la zone d'analyse
+    fitMapToRadius(aircraftMap, lat, lon, aircraftSearchRadiusKm * 1000);
+
+    // Marqueurs aéronefs
+    aircraft.forEach(a => {
+        if (a.lat == null || a.lon == null) return;
+        const isPrio = a.isPriority || a.emergency;
+        const isHeli = a.isHelicopter;
+        const color = isPrio ? '#dc2626' : isHeli ? '#f97316' : a.isLowAlt ? '#ea580c' : '#3b82f6';
+        const icon = isHeli ? '🚁' : '✈';
+        const size = isPrio ? 32 : isHeli ? 28 : 22;
+        const labelHtml = isPrio
+            ? `<div style="position:absolute; top:-16px; left:50%; transform:translateX(-50%); background:#dc2626; color:#fff; padding:1px 5px; border-radius:6px; font-size:9px; font-weight:700; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,.6); pointer-events:none;">${(a.callsign || a.reg || 'PRIO').slice(0, 12)}</div>`
+            : '';
+        const html = `<div style="position:relative; width:${size}px; height:${size}px;">
+            ${labelHtml}
+            <div class="${isPrio ? 'ac-priority' : ''}" style="width:${size}px; height:${size}px; transform:rotate(${a.track}deg); transform-origin:center; display:flex; align-items:center; justify-content:center; font-size:${size - 4}px; line-height:1;">
+                <span style="filter:drop-shadow(0 0 2px ${color}) drop-shadow(0 0 1px #000);">${icon}</span>
+            </div>
+        </div>`;
+        const marker = L.marker([a.lat, a.lon], {
+            icon: L.divIcon({ className: 'ac-marker', iconSize: [size, size], iconAnchor: [size / 2, size / 2], html })
+        });
+        const popup = `
+            <div style="min-width:210px; font-size:12px;">
+                <div style="font-weight:700; font-size:13px; margin-bottom:4px; color:${color};">${isPrio ? '🚨 ' : isHeli ? '🚁 ' : '✈ '}${a.callsign || a.reg || a.hex}</div>
+                ${a.reg && a.callsign && a.callsign !== a.reg ? `<div style="color:var(--c-muted);">Imm. ${a.reg}</div>` : ''}
+                ${a.type ? `<div>Type : <strong>${a.type}</strong>${a.desc ? ' · ' + a.desc : ''}</div>` : ''}
+                ${a.altM != null ? `<div>Alt. : <strong>${Math.round(a.altM)} m</strong> (${Math.round(a.altFt)} ft)</div>` : ''}
+                ${a.gs != null ? `<div>Vitesse : ${Math.round(a.gs * 1.852)} km/h (${Math.round(a.gs)} kt)</div>` : ''}
+                <div>Cap : ${Math.round(a.track)}°</div>
+                ${a.vrFpm != null ? `<div>V/S : ${a.vrFpm > 0 ? '+' : ''}${Math.round(a.vrFpm)} ft/min</div>` : ''}
+                <div>Distance : <strong>${fmtDist(a.dist)}</strong></div>
+                ${a.squawk ? `<div>Squawk : ${a.squawk}${a.emergency ? ' <span style="color:#dc2626; font-weight:700;">URGENCE</span>' : ''}</div>` : ''}
+                ${a.seen > 30 ? `<div style="color:var(--c-warning);">⚠ Dernier contact il y a ${Math.round(a.seen)} s</div>` : ''}
+            </div>`;
+        marker.bindPopup(popup);
+        marker.addTo(aircraftMap);
+    });
+
+    setTimeout(() => aircraftMap.invalidateSize(), 100);
+}
+
+
+/* ===================================================================
+   §21 — RISQUES (auto + manuel)
+   =================================================================== */
 const RISK_LEVELS = ['Faible', 'Modérée', 'Élevée'];
 function riskBadgeCls(level) {
     return level === 'Faible' ? 'sev-low' : level === 'Modérée' ? 'sev-med' : 'sev-high';
@@ -6170,6 +6415,33 @@ function populateRiskTable() {
             rows.push([`Antenne / mât haut${tall.h ? ' (' + tall.h + ' m)' : ''} à ${fmtDist(tall.dist)}`, tall.dist < 500 ? 'Élevée' : 'Modérée', 'Élevée', 'Contournement latéral · maintien hauteur de vol < antenne · vigilance turbulences', { lat: tall.lat, lon: tall.lon }]);
     }
 
+    // Risques liés au trafic aérien temps réel (SAMU / Dragon / hélico basse altitude)
+    if (Array.isArray(STATE.aircraft) && STATE.aircraft.length > 0) {
+        const prio = STATE.aircraft.filter(a => a.isPriority || a.emergency)
+                                   .sort((a, b) => a.dist - b.dist);
+        const heliClose = STATE.aircraft.filter(a => a.isHelicopter && a.dist < 5000 && (a.altM == null || a.altM < 600))
+                                        .sort((a, b) => a.dist - b.dist);
+        if (prio.length > 0) {
+            const a = prio[0];
+            const altTxt = a.altM != null ? `${Math.round(a.altM)} m` : 'altitude inconnue';
+            rows.push([
+                `Hélicoptère prioritaire ${a.callsign || a.reg || ''} (SAMU/Dragon/HEMS) à ${fmtDist(a.dist)} · ${altTxt}`,
+                'Élevée', 'Élevée',
+                "Suspendre immédiatement le vol drone · contact opérationnel SAMU/SC pour coordination · ne pas reprendre tant que l'aéronef n'a pas dégagé la zone · journaliser l'événement",
+                { lat: a.lat, lon: a.lon }
+            ]);
+        } else if (heliClose.length > 0) {
+            const a = heliClose[0];
+            const altTxt = a.altM != null ? `${Math.round(a.altM)} m` : 'altitude inconnue';
+            rows.push([
+                `Hélicoptère ${a.callsign || a.reg || a.type || ''} à basse altitude (${altTxt}) à ${fmtDist(a.dist)}`,
+                a.dist < 2000 ? 'Élevée' : 'Modérée', 'Élevée',
+                "Maintenir le drone sous 30 m AGL · vigilance trajectoire · prêt à atterrir si rapprochement",
+                { lat: a.lat, lon: a.lon }
+            ]);
+        }
+    }
+
     // Risques liés aux lignes électriques HT
     if (Array.isArray(STATE.lines) && STATE.lines.length > 0) {
         const htb = STATE.lines.find(l => l.level === 'HTB');
@@ -6411,9 +6683,9 @@ async function waitMapReady() {
         marker.setLatLng([STATE.lat, STATE.lon]);
         rangeCircle.setLatLng([STATE.lat, STATE.lon]);
         map.setView([STATE.lat, STATE.lon], map.getZoom(), { animate: false });
-        [map, linesMap, antennasMap, ighMap, sevesoMap, uasMap, airspaceMap, railMap, naturalMap].forEach(m => { try { if (m) { if (m.invalidateSize) m.invalidateSize(false); else if (m.resize) m.resize(); } } catch (e) {} });
+        [map, linesMap, antennasMap, ighMap, sevesoMap, uasMap, airspaceMap, railMap, naturalMap, aircraftMap].forEach(m => { try { if (m) { if (m.invalidateSize) m.invalidateSize(false); else if (m.resize) m.resize(); } } catch (e) {} });
         setTimeout(() => {
-            [map, linesMap, antennasMap, ighMap, sevesoMap, uasMap, airspaceMap, railMap, naturalMap].forEach(m => { try { if (m) { if (m.invalidateSize) m.invalidateSize(false); else if (m.resize) m.resize(); } } catch (e) {} });
+            [map, linesMap, antennasMap, ighMap, sevesoMap, uasMap, airspaceMap, railMap, naturalMap, aircraftMap].forEach(m => { try { if (m) { if (m.invalidateSize) m.invalidateSize(false); else if (m.resize) m.resize(); } } catch (e) {} });
             setTimeout(resolve, 700);
         }, 300);
     });
