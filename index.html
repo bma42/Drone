@@ -111,8 +111,10 @@
         .pill.load .dot { background: #60a5fa; animation: pulse 1s infinite; }
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
         @keyframes acpulse { 0%,100% { transform: scale(1); filter: drop-shadow(0 0 4px #dc2626); } 50% { transform: scale(1.18); filter: drop-shadow(0 0 10px #dc2626); } }
+        @keyframes acpulse-soft { 0%,100% { box-shadow: 0 0 0 2px rgba(0,0,0,0.55), 0 0 14px rgba(0,0,0,0.7), 0 0 6px currentColor; } 50% { box-shadow: 0 0 0 2px rgba(0,0,0,0.55), 0 0 18px rgba(0,0,0,0.8), 0 0 14px currentColor; } }
         .ac-marker { background:transparent !important; border:0 !important; }
         .ac-priority { animation: acpulse 1.2s ease-in-out infinite; }
+        .ac-normal   { animation: acpulse-soft 2.4s ease-in-out infinite; }
         /* Logo drone : seules les hélices tournent (pas de flottement vertical) */
         @keyframes prop-spin { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
         .drone-logo { transform-origin: center; }
@@ -6237,8 +6239,9 @@ function _startAlertReminderLoop() {
     _alertReminderTimer = setInterval(() => {
         if (!aircraftAlertSound) return;
         if (!Array.isArray(STATE.aircraft) || STATE.aircraft.length === 0) return;
-        const heliInZone = STATE.aircraft.some(a => a.isHelicopter && a.dist <= ALERT_RADIUS_M);
-        if (heliInZone) {
+        const threatInZone = STATE.aircraft.some(a => a.dist <= ALERT_RADIUS_M
+            && (a.isHelicopter || (a.altM != null && a.altM < 500)));
+        if (threatInZone) {
             playHeliAlertBeep();
             const pill = document.getElementById('status-aircraft');
             if (pill) {
@@ -6255,11 +6258,14 @@ function _stopAlertReminderLoop() {
 // Démarre la boucle de rappel au chargement si l'alerte est activée par préférence
 if (aircraftAlertSound) _startAlertReminderLoop();
 
-// Vérifie les hélicos détectés < 5 km par rapport au point de mission.
+// Vérifie les aéronefs critiques < 5 km :
+//   - Tout hélicoptère
+//   - Tout aéronef à moins de 500 m d'altitude (basse altitude → conflit drone réel)
 // Bipe uniquement pour les nouveaux (hex non encore alertés) → pas de spam à chaque refresh.
 function _checkHeliAlerts(aircraft) {
-    const heliClose = aircraft.filter(a => a.isHelicopter && a.dist <= ALERT_RADIUS_M && a.hex);
-    const fresh = heliClose.filter(a => !_alertedHexes.has(a.hex));
+    const close = aircraft.filter(a => a.dist <= ALERT_RADIUS_M && a.hex
+        && (a.isHelicopter || (a.altM != null && a.altM < 500)));
+    const fresh = close.filter(a => !_alertedHexes.has(a.hex));
     if (fresh.length > 0) {
         playHeliAlertBeep();
         fresh.forEach(h => _alertedHexes.add(h.hex));
@@ -6461,8 +6467,8 @@ function renderAircraft(aircraft, lat, lon) {
             <label style="display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap;">
                 <input type="checkbox" id="aircraft-auto-cb" ${aircraftAutoRefresh ? 'checked' : ''} onchange="toggleAircraftAuto(this.checked)" style="accent-color:var(--c-primary);"> Auto 15 s
             </label>
-            <label style="display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap;" title="Beep d'alerte si un hélicoptère est détecté à moins de 5 km du point de mission">
-                <input type="checkbox" id="aircraft-alert-cb" ${aircraftAlertSound ? 'checked' : ''} onchange="toggleAircraftAlert(this.checked)" style="accent-color:#dc2626;"> 🔔 Alerte hélico &lt; 5 km
+            <label style="display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap;" title="Beep d'alerte si un hélicoptère OU tout aéronef à moins de 500 m d'altitude est détecté dans les 5 km">
+                <input type="checkbox" id="aircraft-alert-cb" ${aircraftAlertSound ? 'checked' : ''} onchange="toggleAircraftAlert(this.checked)" style="accent-color:#dc2626;"> 🔔 Alerte hélico ou trafic &lt; 500 m (5 km)
             </label>
         </div>`;
 
@@ -6533,21 +6539,23 @@ function initAircraftMap(aircraft, lat, lon) {
         if (a.lat == null || a.lon == null) return;
         const isPrio = a.isPriority || a.emergency;
         const isHeli = a.isHelicopter;
-        // Couleurs vives lisibles sur fond carto sombre
+        // Couleurs très vives lisibles sur fond carto sombre
         const color = isPrio ? '#ef4444'    // rouge vif (SAMU/Dragon/urg.)
                     : isHeli ? '#fb923c'    // orange vif (hélicoptère)
-                    : a.isLowAlt ? '#fbbf24' // ambre (basse altitude)
-                    : '#22d3ee';            // cyan vif (avion classique)
+                    : a.isLowAlt ? '#fde047' // jaune vif (basse altitude — bien visible)
+                    : '#67e8f9';            // cyan clair (avion classique)
         const icon = isHeli ? '🚁' : '✈';
-        const size = isPrio ? 34 : isHeli ? 30 : 26;
+        // Tailles agrandies + bordure 3px + halo plus marqué
+        const size = isPrio ? 42 : isHeli ? 38 : 34;
         const labelHtml = isPrio
-            ? `<div style="position:absolute; top:-16px; left:50%; transform:translateX(-50%); background:#ef4444; color:#fff; padding:1px 5px; border-radius:6px; font-size:9px; font-weight:700; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,.6); pointer-events:none;">${(a.callsign || a.reg || 'PRIO').slice(0, 12)}</div>`
+            ? `<div style="position:absolute; top:-17px; left:50%; transform:translateX(-50%); background:#ef4444; color:#fff; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:700; white-space:nowrap; box-shadow:0 1px 4px rgba(0,0,0,.7); pointer-events:none;">${(a.callsign || a.reg || 'PRIO').slice(0, 12)}</div>`
             : '';
-        // Disque coloré derrière l'emoji → marqueur visible quel que soit le rendu emoji système
+        // Disque coloré + bordure blanche 3px + double halo (couleur + ombre noire)
+        // Pulse subtile pour tous les marqueurs (priorités = pulse plus marquée via .ac-priority)
         const html = `<div style="position:relative; width:${size}px; height:${size}px;">
             ${labelHtml}
-            <div class="${isPrio ? 'ac-priority' : ''}" style="width:${size}px; height:${size}px; transform:rotate(${a.track}deg); transform-origin:center; background:${color}; border:2px solid #fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:${size - 12}px; line-height:1; box-shadow:0 0 10px rgba(0,0,0,0.7), 0 0 4px ${color};">
-                <span style="filter:drop-shadow(0 1px 1px rgba(0,0,0,0.8)); color:#fff;">${icon}</span>
+            <div class="${isPrio ? 'ac-priority' : 'ac-normal'}" style="width:${size}px; height:${size}px; transform:rotate(${a.track}deg); transform-origin:center; background:${color}; border:3px solid #fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:${size - 14}px; line-height:1; box-shadow:0 0 0 2px rgba(0,0,0,0.55), 0 0 14px rgba(0,0,0,0.7), 0 0 6px ${color};">
+                <span style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.95)); color:#fff; font-weight:900;">${icon}</span>
             </div>
         </div>`;
         const marker = L.marker([a.lat, a.lon], {
