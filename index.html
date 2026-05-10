@@ -3418,10 +3418,9 @@ function initIghMap(items, allFeatures, lat, lon) {
     if (ighMap) { try { ighMap.remove(); } catch (e) {} ighMap = null; }
     ighMap3DUpdateElongation = null;
 
-    // Bbox initiale ≈ 2 km autour du point
+    // Bbox initiale ≈ 2 km autour du point (pour les overlays cercles, pas pour le cadrage)
     const dLat = 2000 / 111000;
     const dLon = 2000 / (111000 * Math.cos(lat * Math.PI / 180));
-    const bounds = [[lon - dLon, lat - dLat], [lon + dLon, lat + dLat]];
 
     // Style raster CartoDB Voyager (sans labels, pour ne pas masquer les bâtiments en 3D)
     const style = {
@@ -3445,14 +3444,16 @@ function initIghMap(items, allFeatures, lat, lon) {
     ighMap = new maplibregl.Map({
         container: el,
         style: style,
-        bounds: bounds,
-        fitBoundsOptions: { padding: 28 },
-        pitch: 55,
-        bearing: -20,
-        maxPitch: 78,
+        center: [lon, lat],
+        zoom: 15.2,
+        pitch: 62,
+        bearing: -22,
+        maxPitch: 80,
         antialias: true,
         attributionControl: false
     });
+    // Force le pitch après le 1er render (sécurité au cas où une option l'aurait écrasé)
+    ighMap.once('load', () => { try { ighMap.setPitch(62); ighMap.setBearing(-22); } catch (e) {} });
     ighMap.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showCompass: true }), 'top-right');
     ighMap.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
     ighMap.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 100 }), 'bottom-left');
@@ -3462,16 +3463,22 @@ function initIghMap(items, allFeatures, lat, lon) {
         if (!ighMap) return;
 
         // Enrichit chaque bâtiment avec hauteur + classification (GHA / IGH / OTHER)
+        // Fallback hauteur : étages × 3 m, sinon 6 m (BDTOPO renvoie souvent null en zone rurale)
         const enriched = (allFeatures || []).map(f => {
+            if (!f.geometry) return null;
             const p = f.properties || {};
-            const h = parseFloat(p.hauteur) || 0;
-            if (h <= 0 || !f.geometry) return null;
+            let h = parseFloat(p.hauteur);
+            if (!h || h <= 0) {
+                const et = parseFloat(p.nombre_d_etages);
+                h = (et && et > 0) ? et * 3 + 3 : 6;
+            }
             const cls = classifyIgh(p.usage_1, p.hauteur);
             return {
                 type: 'Feature',
                 geometry: f.geometry,
                 properties: {
                     hauteur: h,
+                    estimated: !p.hauteur || parseFloat(p.hauteur) <= 0 ? 1 : 0,
                     kind: cls ? cls.kind : 'OTHER',
                     usage: p.usage_1 || '',
                     etages: p.nombre_d_etages != null ? String(p.nombre_d_etages) : ''
@@ -3536,10 +3543,10 @@ function initIghMap(items, allFeatures, lat, lon) {
                 'fill-extrusion-color': [
                     'match', ['get', 'kind'],
                     'GHA', '#dc2626',
-                    'IGH', '#d97706',
-                    '#9aa3ad'
+                    'IGH', '#f59e0b',
+                    ['case', ['==', ['get', 'estimated'], 1], '#cbd5e1', '#94a3b8']
                 ],
-                'fill-extrusion-opacity': 0.88,
+                'fill-extrusion-opacity': 0.92,
                 'fill-extrusion-vertical-gradient': true
             }
         });
@@ -3548,8 +3555,16 @@ function initIghMap(items, allFeatures, lat, lon) {
             id: 'buildings-outline',
             type: 'line',
             source: 'buildings',
-            paint: { 'line-color': 'rgba(255,255,255,0.7)', 'line-width': 0.4 }
+            paint: { 'line-color': 'rgba(255,255,255,0.85)', 'line-width': 0.5 }
         });
+        // Couche ciel (gradient au-dessus de l'horizon en vue inclinée)
+        try {
+            ighMap.addLayer({
+                id: 'sky',
+                type: 'background',
+                paint: { 'background-color': '#cfe2f3', 'background-opacity': 0 }
+            });
+        } catch (e) {}
 
         // Marqueur point de mission
         const dot = document.createElement('div');
