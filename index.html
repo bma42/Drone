@@ -6532,7 +6532,7 @@ let aircraftElongationCircle = null;
 let aircraftRefreshTimer = null;
 let aircraftSearchRadiusKm = 10;       // rayon de recherche par défaut (km)
 try { const v = localStorage.getItem('drone_aircraft_search_radius'); if (v) aircraftSearchRadiusKm = Math.max(5, Math.min(150, parseInt(v, 10) || 10)); } catch (e) {}
-let aircraftAutoRefresh = true;        // rafraîchissement auto activé par défaut
+let aircraftAutoRefresh = false;       // rafraîchissement auto désactivé par défaut (l'utilisateur l'active s'il veut)
 let aircraftAlertSound = true;         // alerte sonore activée par défaut
 let aircraftAlertRadiusKm = 10;        // rayon de détection alerte (configurable, 1–50 km)
 function _alertRadiusM() { return aircraftAlertRadiusKm * 1000; }
