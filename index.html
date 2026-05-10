@@ -632,6 +632,7 @@
         @media print {
             html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
             .no-print { display: none !important; }
+            .print-only { display: inline !important; }
             .container { max-width: none !important; padding: 0 !important; margin: 0 !important; width: 100% !important; }
             #pdf-area { padding: 0 !important; max-width: none !important; width: 100% !important; }
             #fastfly-progress { display: none !important; }
@@ -5453,8 +5454,9 @@ function isLowerSFC(limit) {
 
 function renderAirspaces(items, lat, lon) {
     const RELEVANT = new Set([1, 2, 3, 4, 5, 6, 7, 26, 13, 14]);
-    const enriched = items.filter(z => RELEVANT.has(z.type)).map(z => ({
+    const enriched = items.filter(z => RELEVANT.has(z.type)).map((z, i) => ({
         ...z,
+        _uid: 'aspc-' + i,    // identifiant stable pour le toggle des polygones
         inside: pointInGeometry(lat, lon, z.geometry),
         minDist: pointInGeometry(lat, lon, z.geometry) ? 0 : minDistToGeom(lat, lon, z.geometry),
         startsSFC: isLowerSFC(z.lowerLimit),
@@ -5479,8 +5481,15 @@ function renderAirspaces(items, lat, lon) {
     const prd = enriched.filter(z => z.type === 1 || z.type === 2 || z.type === 3);
     const sfcZones = inFlight.filter(z => z.startsSFC);
 
+    const chipFor = z => `<button type="button" class="aspc-chip no-print" data-uid="${z._uid}" data-active="on" onclick="toggleAirspaceLayer('${z._uid}', this)" title="Cliquer pour masquer / afficher cette zone sur la carte" style="background:rgba(255,255,255,0.92); color:#991b1b; border:1.5px solid ${z.color}; border-radius:6px; padding:3px 9px; font-size:11px; font-weight:700; cursor:pointer; margin:2px 3px; display:inline-flex; align-items:center; gap:4px; transition:opacity .15s;"><span style="display:inline-block; width:8px; height:8px; border-radius:2px; background:${z.color};"></span>${z.typeLabel}${z.cls!=='?'?' '+z.cls:''} « ${(z.name||'').slice(0,28)} »</button>`;
+    // Version statique (pour le PDF) : juste le texte des zones, sans bouton
+    const chipPrint = z => `<span class="print-only" style="display:none; margin-right:8px;">${z.typeLabel}${z.cls!=='?'?' '+z.cls:''} « ${(z.name||'').slice(0,28)} »${insideZones.indexOf(z) < insideZones.length - 1 ? ' ·' : ''}</span>`;
     const insideBanner = insideZones.length === 0 ? ''
-        : `<div style="background:#fee2e2; border:2px solid #dc2626; padding:10px 14px; border-radius:8px; margin-bottom:12px; font-weight:700; color:#991b1b;">⚠ Le point est dans ${insideZones.length} espace${insideZones.length>1?'s':''} contrôlé${insideZones.length>1?'s':''}&nbsp;: ${insideZones.map(z => `${z.typeLabel}${z.cls!=='?'?' '+z.cls:''} « ${(z.name||'').slice(0,28)} »`).join(' · ')}</div>`;
+        : `<div style="background:#fee2e2; border:2px solid #dc2626; padding:10px 14px; border-radius:8px; margin-bottom:12px; font-weight:700; color:#991b1b;">
+                <div style="margin-bottom:6px;">⚠ Le point est dans ${insideZones.length} espace${insideZones.length>1?'s':''} contrôlé${insideZones.length>1?'s':''}&nbsp;:</div>
+                <div style="display:flex; flex-wrap:wrap; gap:2px;">${insideZones.map(chipFor).join('')}${insideZones.map(chipPrint).join('')}</div>
+                <div class="no-print" style="font-size:10.5px; font-weight:500; margin-top:6px; opacity:.8;">↑ Cliquer une zone pour la masquer / réafficher sur la carte ci-dessous</div>
+            </div>`;
 
     const rows = inFlight.length === 0
         ? `<tr><td colspan="4" class="empty-state">Aucun espace aérien contrôlé ne touche l'aire de vol (rayon ${(flightRadius/1000).toFixed(1)} km).</td></tr>`
@@ -5536,10 +5545,27 @@ function renderAirspaces(items, lat, lon) {
     setStatus('airspace', st, insideZones.length ? `SUR ZONE` : sfcZones.length ? `${sfcZones.length} SFC` : `${enriched.length} esp.`);
 }
 
+// Map des couches polygones par _uid → permet de toggler chacune via les chips du bandeau
+const airspaceLayersById = new Map();
+
+function toggleAirspaceLayer(uid, btn) {
+    const layer = airspaceLayersById.get(uid);
+    if (!layer || !airspaceMap) return;
+    const isActive = btn ? btn.dataset.active !== 'off' : airspaceMap.hasLayer(layer);
+    if (isActive) {
+        try { airspaceMap.removeLayer(layer); } catch (e) {}
+        if (btn) { btn.dataset.active = 'off'; btn.style.opacity = '0.45'; btn.style.textDecoration = 'line-through'; }
+    } else {
+        try { layer.addTo(airspaceMap); } catch (e) {}
+        if (btn) { btn.dataset.active = 'on'; btn.style.opacity = '1'; btn.style.textDecoration = 'none'; }
+    }
+}
+
 function initAirspaceMap(items, lat, lon) {
     const el = document.getElementById('airspace-map');
     if (!el) return;
     if (airspaceMap) { airspaceMap.remove(); airspaceMap = null; }
+    airspaceLayersById.clear();
     airspaceMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 11);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', crossOrigin: true }).addTo(airspaceMap);
 
@@ -5547,7 +5573,7 @@ function initAirspaceMap(items, lat, lon) {
     const sorted = [...items].sort((a, b) => (a.inside ? 0 : 1) - (b.inside ? 0 : 1));
     sorted.forEach(z => {
         try {
-            L.geoJSON(z.geometry, {
+            const layer = L.geoJSON(z.geometry, {
                 style: {
                     color: z.color, fillColor: z.color,
                     fillOpacity: z.inside ? .25 : .08,
@@ -5556,6 +5582,7 @@ function initAirspaceMap(items, lat, lon) {
             })
               .bindPopup(`<b style="color:${z.color};">${z.typeLabel}${z.cls !== '?' ? ' classe ' + z.cls : ''}</b><br><strong>${z.name || ''}</strong><br>De ${fmtAlt(z.lowerLimit)} à ${fmtAlt(z.upperLimit)}${z.inside ? '<br><b style="color:#dc2626;">⚠ Point de mission DANS cet espace</b>' : ''}`)
               .addTo(airspaceMap);
+            if (z._uid) airspaceLayersById.set(z._uid, layer);
         } catch (e) { /* skip invalid geom */ }
     });
 
