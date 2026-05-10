@@ -7,6 +7,14 @@
 
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700&display=swap" rel="stylesheet">
+    <!-- Favicon (SVG inline du logo drone) -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230b3d91' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><line x1='6' y1='6' x2='9.5' y2='9.5'/><line x1='18' y1='6' x2='14.5' y2='9.5'/><line x1='6' y1='18' x2='9.5' y2='14.5'/><line x1='18' y1='18' x2='14.5' y2='14.5'/><circle cx='6' cy='6' r='2.6'/><circle cx='18' cy='6' r='2.6'/><circle cx='6' cy='18' r='2.6'/><circle cx='18' cy='18' r='2.6'/><rect x='9.3' y='9.3' width='5.4' height='5.4' rx='1'/></svg>">
+    <!-- PWA : couleur de la barre + nom court · l'icône PNG iOS et le manifest sont injectés au runtime par setupAppIcons() -->
+    <meta name="theme-color" content="#0b3d91">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Drone">
+    <meta name="mobile-web-app-capable" content="yes">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <link rel="stylesheet" href="maplibre-gl.css" />
@@ -105,15 +113,49 @@
         @keyframes acpulse { 0%,100% { transform: scale(1); filter: drop-shadow(0 0 4px #dc2626); } 50% { transform: scale(1.18); filter: drop-shadow(0 0 10px #dc2626); } }
         .ac-marker { background:transparent !important; border:0 !important; }
         .ac-priority { animation: acpulse 1.2s ease-in-out infinite; }
-        /* Animation du logo drone : flottement + hélices qui tournent */
-        @keyframes drone-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
+        /* Logo drone : seules les hélices tournent (pas de flottement vertical) */
         @keyframes prop-spin { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
-        .drone-logo { animation: drone-float 2.4s ease-in-out infinite; transform-origin: center; }
+        .drone-logo { transform-origin: center; }
         .drone-logo .prop { animation: prop-spin .15s linear infinite; transform-box: fill-box; transform-origin: center; }
         .drone-logo .prop-1 { animation-delay:    0ms; }
         .drone-logo .prop-2 { animation-delay:  37ms; }
         .drone-logo .prop-3 { animation-delay:  75ms; }
         .drone-logo .prop-4 { animation-delay: 112ms; }
+        /* Frame de chargement carte — gradient bleu+vert + drone qui pulse en fondu */
+        .map-loader {
+            position: absolute; inset: 0; z-index: 1000;
+            background: linear-gradient(135deg, #0b3d91 0%, #082f70 45%, #1a8754 100%);
+            display: flex; align-items: center; justify-content: center;
+            border-radius: inherit; pointer-events: none;
+            animation: map-loader-in .25s ease-out;
+        }
+        .map-loader-content { text-align: center; }
+        .map-loader .drone-logo { width: 64px; height: 64px; animation: drone-pulse 1.4s ease-in-out infinite; }
+        .map-loader-label { color: rgba(255,255,255,0.92); font-size: 11px; font-weight: 600; margin-top: 12px; letter-spacing: .8px; text-transform: uppercase; }
+        .map-loader-out { animation: map-loader-out .28s ease-in forwards; }
+        @keyframes drone-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.92); } }
+        @keyframes map-loader-in  { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes map-loader-out { to   { opacity: 0; } }
+        /* UI cartes cachée par défaut — apparaît au touch/clic, se masque après 4 s d'inactivité */
+        .leaflet-control-container,
+        .maplibregl-ctrl-top-left, .maplibregl-ctrl-top-right,
+        .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right {
+            opacity: 0; transition: opacity .25s ease-out; pointer-events: none;
+        }
+        .map-controls-visible .leaflet-control-container,
+        .map-controls-visible .maplibregl-ctrl-top-left,
+        .map-controls-visible .maplibregl-ctrl-top-right,
+        .map-controls-visible .maplibregl-ctrl-bottom-left,
+        .map-controls-visible .maplibregl-ctrl-bottom-right {
+            opacity: 1; pointer-events: auto;
+        }
+        /* À l'impression PDF : forcer la visibilité des contrôles cartes */
+        @media print {
+            .leaflet-control-container,
+            .maplibregl-ctrl-top-left, .maplibregl-ctrl-top-right,
+            .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right { opacity: 1 !important; }
+            .map-loader { display: none !important; }
+        }
         @media print { .drone-logo, .drone-logo .prop { animation: none !important; transform: none !important; } }
         @keyframes fastfly-pulse {
             0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,.6); }
@@ -1709,6 +1751,127 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
+
+/* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
+// SVG inline du logo drone — utilisé partout (loader, header, lock screen).
+const DRONE_LOGO_SVG_INNER = '<line x1="6" y1="6" x2="9.5" y2="9.5"/><line x1="18" y1="6" x2="14.5" y2="9.5"/>'
+    + '<line x1="6" y1="18" x2="9.5" y2="14.5"/><line x1="18" y1="18" x2="14.5" y2="14.5"/>'
+    + '<circle class="prop prop-1" cx="6" cy="6" r="2.6"/><circle class="prop prop-2" cx="18" cy="6" r="2.6"/>'
+    + '<circle class="prop prop-3" cx="6" cy="18" r="2.6"/><circle class="prop prop-4" cx="18" cy="18" r="2.6"/>'
+    + '<rect x="9.3" y="9.3" width="5.4" height="5.4" rx="1"/>';
+
+function showMapLoader(elOrId, label) {
+    const el = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
+    if (!el) return;
+    if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+    let loader = el.querySelector(':scope > .map-loader');
+    if (loader) { loader.classList.remove('map-loader-out'); return; }
+    loader = document.createElement('div');
+    loader.className = 'map-loader';
+    loader.innerHTML = '<div class="map-loader-content">'
+        + '<svg class="drone-logo" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">'
+        + DRONE_LOGO_SVG_INNER + '</svg>'
+        + '<div class="map-loader-label">' + (label || 'Chargement de la carte') + '</div></div>';
+    el.appendChild(loader);
+}
+function hideMapLoader(elOrId) {
+    const el = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
+    if (!el) return;
+    const loader = el.querySelector(':scope > .map-loader');
+    if (!loader) return;
+    loader.classList.add('map-loader-out');
+    setTimeout(() => { try { loader.remove(); } catch (e) {} }, 300);
+}
+
+/* -------- Monkey-patch L.map() : loader auto pour toutes les cartes Leaflet -------- */
+(function () {
+    if (typeof L === 'undefined' || !L.map) return;
+    const orig = L.map;
+    L.map = function (idOrEl, opts) {
+        const el = typeof idOrEl === 'string' ? document.getElementById(idOrEl) : idOrEl;
+        if (el) showMapLoader(el);
+        const m = orig.apply(this, arguments);
+        if (el) {
+            // Cache le loader quand la 1ʳᵉ tuile est prête (ou au plus tard 1.5 s)
+            let hidden = false;
+            const hide = () => { if (hidden) return; hidden = true; setTimeout(() => hideMapLoader(el), 80); };
+            m.whenReady(() => {
+                m.eachLayer(layer => {
+                    if (layer && typeof layer.on === 'function' && layer.options && layer.options.tileSize) {
+                        layer.once('load', hide);
+                    }
+                });
+                setTimeout(hide, 1500);
+            });
+        }
+        return m;
+    };
+})();
+
+/* -------- Auto-hide des contrôles cartes : visibles 4 s après chaque interaction -------- */
+(function () {
+    function show(mapEl) {
+        if (!mapEl) return;
+        mapEl.classList.add('map-controls-visible');
+        clearTimeout(mapEl._mapCtrlHideTimer);
+        mapEl._mapCtrlHideTimer = setTimeout(() => {
+            mapEl.classList.remove('map-controls-visible');
+        }, 4000);
+    }
+    document.addEventListener('pointerdown', (e) => {
+        const mapEl = e.target && e.target.closest && e.target.closest('.leaflet-container, .maplibregl-map');
+        if (mapEl) show(mapEl);
+    }, true);
+})();
+
+/* -------- Icônes app (favicon SVG déjà dans le head) + apple-touch-icon PNG + manifest PWA -------- */
+(function setupAppIcons() {
+    const iconSvg = (size) => '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 180 180">'
+        + '<defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#0b3d91"/><stop offset="100%" stop-color="#082f70"/></linearGradient></defs>'
+        + '<rect width="180" height="180" rx="38" fill="url(#g)"/>'
+        + '<g transform="translate(30 30) scale(5)" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">'
+        + DRONE_LOGO_SVG_INNER + '</g></svg>';
+    function svgToPng(size) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                const c = document.createElement('canvas');
+                c.width = size; c.height = size;
+                c.getContext('2d').drawImage(img, 0, 0, size, size);
+                resolve(c.toDataURL('image/png'));
+            };
+            img.onerror = reject;
+            img.src = 'data:image/svg+xml;base64,' + btoa(iconSvg(size));
+        });
+    }
+    Promise.all([svgToPng(180), svgToPng(192), svgToPng(512)]).then(([png180, png192, png512]) => {
+        // apple-touch-icon (iOS « Ajouter à l'écran d'accueil »)
+        const appleLink = document.createElement('link');
+        appleLink.rel = 'apple-touch-icon';
+        appleLink.sizes = '180x180';
+        appleLink.href = png180;
+        document.head.appendChild(appleLink);
+        // Manifest PWA (Android Chrome)
+        const manifest = {
+            name: "Étude de faisabilité — Mission drone",
+            short_name: "Drone",
+            display: "standalone",
+            start_url: location.pathname,
+            background_color: "#0b3d91",
+            theme_color: "#0b3d91",
+            orientation: "portrait",
+            icons: [
+                { src: png192, sizes: "192x192", type: "image/png", purpose: "any" },
+                { src: png512, sizes: "512x512", type: "image/png", purpose: "any maskable" }
+            ]
+        };
+        const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+        const link = document.createElement('link');
+        link.rel = 'manifest';
+        link.href = URL.createObjectURL(blob);
+        document.head.appendChild(link);
+    }).catch(e => console.warn('[icons]', e));
+})();
 
 /* -------- État global -------- */
 const STATE = {
@@ -3484,6 +3647,7 @@ function initIghMap(items, allFeatures, lat, lon) {
     }
     if (ighMap) { try { ighMap.remove(); } catch (e) {} ighMap = null; }
     ighMap3DUpdateElongation = null;
+    showMapLoader(el, 'Vue 3D · IGN BDTOPO');
 
     // Bbox initiale ≈ 2 km autour du point (pour les overlays cercles, pas pour le cadrage)
     const dLat = 2000 / 111000;
@@ -3526,6 +3690,8 @@ function initIghMap(items, allFeatures, lat, lon) {
     }
     // Force le pitch après le 1er render (sécurité au cas où une option l'aurait écrasé)
     ighMap.once('load', () => { try { ighMap.setPitch(62); ighMap.setBearing(-22); } catch (e) {} });
+    ighMap.once('idle', () => hideMapLoader(el));
+    setTimeout(() => hideMapLoader(el), 4000);  // safety net
     ighMap.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showCompass: true }), 'top-right');
     ighMap.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
     ighMap.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 100 }), 'bottom-left');
