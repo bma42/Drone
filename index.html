@@ -6641,7 +6641,7 @@ function scheduleAircraftRefresh() {
     if (!aircraftAutoRefresh) return;
     aircraftRefreshTimer = setTimeout(() => {
         if (STATE.lat != null) fetchAircraft(STATE.lat, STATE.lon);
-    }, 15000);
+    }, 1000);
 }
 
 function toggleAircraftAuto(enabled) {
@@ -6713,7 +6713,7 @@ function renderAircraft(aircraft, lat, lon) {
                    onchange="if(STATE.lat) fetchAircraft(STATE.lat, STATE.lon)"
                    style="flex:1; min-width:120px;">
             <label style="display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap;">
-                <input type="checkbox" id="aircraft-auto-cb" ${aircraftAutoRefresh ? 'checked' : ''} onchange="toggleAircraftAuto(this.checked)" style="accent-color:var(--c-primary);"> Auto 15 s
+                <input type="checkbox" id="aircraft-auto-cb" ${aircraftAutoRefresh ? 'checked' : ''} onchange="toggleAircraftAuto(this.checked)" style="accent-color:var(--c-primary);"> Auto
             </label>
         </div>
         <div class="no-print" style="display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:10px; padding:8px 10px; background:#fef3c7; border:1px solid #fcd34d; border-radius:6px; font-size:12px;">
@@ -6740,7 +6740,7 @@ function renderAircraft(aircraft, lat, lon) {
             <thead><tr><th>Type</th><th>Callsign / Modèle</th><th>Altitude</th><th>Vitesse</th><th style="text-align:right;">Distance</th></tr></thead>
             <tbody>${rows}</tbody>
         </table>
-        <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source : <strong>${STATE.aircraftSource || 'ADS-B public'}</strong> (cascade ADSB.lol → airplanes.live → OpenSky) · rafraîchissement 15 s · top 15 affichés. Détection SAMU / Sécurité Civile par callsign (SAMU*, DRAGON*, HEMS*, FAGN*) · hélicoptère par modèle ICAO.</div>
+        <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source : <strong>${STATE.aircraftSource || 'ADS-B public'}</strong> (cascade ADSB.lol → airplanes.live → OpenSky) · rafraîchissement 1 s · top 15 affichés. Détection SAMU / Sécurité Civile par callsign (SAMU*, DRAGON*, HEMS*, FAGN*) · hélicoptère par modèle ICAO.</div>
     `;
 
     setTimeout(() => initAircraftMap(aircraft, lat, lon), 50);
