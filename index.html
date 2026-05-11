@@ -5913,6 +5913,23 @@ const ELEV_HALF = 24; // 2 axes × 48 + 1 centre = 97 ≤ 100 (limite Open-Meteo
 
 // Axe choisi (aléatoirement) pour l'aperçu §1 — stable durant un drag de slider, retiré au prochain fetch
 let _elevPreviewAxisName = null;
+// Gradients SVG réutilisés par §1 preview ET §19 charts (sortis au scope module
+// pour ne pas être réservés à renderElevation seul → renderElevPreview les utilise aussi)
+const ELEV_GRADIENT_DEFS = `<defs>
+    <linearGradient id="elev-tag-blue" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#0b3d91"/>
+        <stop offset="100%" stop-color="#0066cc"/>
+    </linearGradient>
+    <linearGradient id="elev-tag-red" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#dc2626"/>
+        <stop offset="100%" stop-color="#7f1d1d"/>
+    </linearGradient>
+    <linearGradient id="elev-fill-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%"   stop-color="rgba(255,255,255,0.45)"/>
+        <stop offset="60%"  stop-color="rgba(255,255,255,0.18)"/>
+        <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </linearGradient>
+</defs>`;
 // Debounce du refresh complet de §16 quand on bouge le slider Hauteur max
 let _elevHeightDebounce = null;
 // Lecture sûre de la hauteur max (slider §1) — accepte 0 comme valeur valide,
@@ -6138,22 +6155,6 @@ function renderElevation(elevs, radius) {
              + `<text x="${x.toFixed(1)}" y="${(y + 0.5).toFixed(1)}" text-anchor="${anchor}" font-size="10.5" font-weight="700" fill="#fff" style="paint-order:stroke; stroke:rgba(0,0,0,0.35); stroke-width:1.5; stroke-linejoin:round;">${label}</text>`;
     };
     // Bloc <defs> avec les 2 gradients à insérer dans chaque SVG d'axe
-    const ELEV_GRADIENT_DEFS = `<defs>
-        <linearGradient id="elev-tag-blue" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#0b3d91"/>
-            <stop offset="100%" stop-color="#0066cc"/>
-        </linearGradient>
-        <linearGradient id="elev-tag-red" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#dc2626"/>
-            <stop offset="100%" stop-color="#7f1d1d"/>
-        </linearGradient>
-        <linearGradient id="elev-fill-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%"   stop-color="rgba(255,255,255,0.45)"/>
-            <stop offset="60%"  stop-color="rgba(255,255,255,0.18)"/>
-            <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
-        </linearGradient>
-    </defs>`;
-
     const niceStep = (r) => {
         const candidates = [50, 100, 200, 250, 500, 1000, 2000];
         for (const c of candidates) if (r / c <= 5) return c;
