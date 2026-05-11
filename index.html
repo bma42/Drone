@@ -2777,6 +2777,10 @@ function selectAddr(label, lat, lon, dept) {
     if (satRangeCircle) satRangeCircle.setLatLng([lat, lon]);
     if (satMap) satMap.setView([lat, lon], Math.max(map.getZoom(), 14));
     updateElongation(document.getElementById('elong-slider').value);
+    // updateElongation a pu programmer un fetchElevation debouncé (si STATE.elev existait
+    // déjà d'une mission précédente). On l'annule : refreshAuto va fetcher l'altimétrie
+    // immédiatement → sinon on aurait 2 fetch = courbe §1 tracée 2 fois.
+    clearTimeout(_elevDebounce); _elevDebounce = null;
     setTimeout(() => map.invalidateSize(), 200);
     refreshAuto();
 }
