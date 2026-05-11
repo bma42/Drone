@@ -5965,7 +5965,8 @@ function showElevLoader(containerId, opts) {
     const el = document.getElementById(containerId);
     if (!el) return;
     el.innerHTML = _elevLoaderHtml(opts);
-    _animateElevPaths(el, 2400);
+    // Anime après que le SVG soit posé dans le DOM (sinon getTotalLength = 0 sur Safari iOS)
+    requestAnimationFrame(() => _animateElevPaths(el, 2400));
 }
 
 // Anime tous les .elev-fake-path et .elev-real-path présents dans `root` :
@@ -6014,11 +6015,14 @@ function updateHeightMax(value) {
         const elapsed = Date.now() - _elevSliderLoaderShownAt;
         const wait = Math.max(0, ELEV_SLIDER_MIN_MS - elapsed);
         setTimeout(() => {
-            try { renderElevPreview(STATE.elev.series, STATE.elev.radius); } catch (e) {}
+            // §19 d'abord (lourd). Si erreur, on continue quand même pour libérer le §1.
             if (STATE.elev && STATE.elev.elevs) {
-                try { renderElevation(STATE.elev.elevs, STATE.elev.radius); } catch (e) {}
+                try { renderElevation(STATE.elev.elevs, STATE.elev.radius); } catch (e) { console.warn('[elev §19]', e); }
             }
-            _elevSliderLoaderShownAt = 0;  // session terminée, prochain drag relancera un loader
+            // Toujours §1 preview en DERNIER — garantit le remplacement du loader §1
+            // même si renderElevation a échoué (qui le rappelle déjà en interne).
+            try { renderElevPreview(STATE.elev.series, STATE.elev.radius); } catch (e) { console.warn('[elev §1]', e); }
+            _elevSliderLoaderShownAt = 0;
         }, wait);
     }, 250);
 }
