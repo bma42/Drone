@@ -5969,9 +5969,11 @@ function showElevLoader(containerId, opts) {
     requestAnimationFrame(() => _animateElevPaths(el, 2400));
 }
 
-// Anime tous les .elev-fake-path et .elev-real-path présents dans `root` :
-// mesure la longueur réelle avec getTotalLength(), pose dasharray + dashoffset
-// initial, force un reflow, puis transitionne vers 0 → tracé fluide universel.
+// Anime tous les .elev-fake-path et .elev-real-path présents dans `root`.
+// Pattern double-RAF : on pose l'état initial (caché), on laisse 2 frames passer
+// pour que le navigateur commit ces styles, puis on lance la transition. Sans
+// double-RAF, certains navigateurs (Safari surtout) consolident les changements
+// dans le même tick et la transition ne joue pas du tout.
 function _animateElevPaths(root, durationMs) {
     durationMs = durationMs || 1400;
     const paths = (root || document).querySelectorAll('.elev-fake-path, .elev-real-path');
@@ -5980,13 +5982,17 @@ function _animateElevPaths(root, durationMs) {
             const len = p.getTotalLength();
             if (!len || !isFinite(len)) return;
             p.style.transition = 'none';
-            p.style.strokeDasharray = len;
+            p.style.strokeDasharray = len + ' ' + len;
             p.style.strokeDashoffset = len;
-            // Force reflow pour que la transition reparte de l'état initial
-            // (lecture d'une propriété layout suffit)
-            void p.getBoundingClientRect();
-            p.style.transition = `stroke-dashoffset ${durationMs}ms cubic-bezier(.25,.7,.35,1)`;
-            p.style.strokeDashoffset = 0;
+            // Double requestAnimationFrame → garantit que l'état initial est committé
+            // avant qu'on enable la transition. Pattern standard pour les CSS
+            // transitions déclenchées par JS.
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    p.style.transition = `stroke-dashoffset ${durationMs}ms cubic-bezier(.25,.7,.35,1)`;
+                    p.style.strokeDashoffset = '0';
+                });
+            });
         } catch (e) { /* path non mesurable → laisser visible directement */ }
     });
 }
@@ -6390,8 +6396,6 @@ function renderElevPreview(series, radius) {
     const yScale = v => H - PB - ((v - yMinAxis) / localRange) * (H - PT - PB);
     const yCeil = Math.max(PT - 4, Math.min(H - PB, yScale(flightCeiling)));
     const path = s.values.map((v, i) => (i === 0 ? 'M' : 'L') + xs[i].toFixed(1) + ',' + yScale(v).toFixed(1)).join(' ');
-    const fillPts = s.values.map((v, i) => xs[i].toFixed(1) + ',' + yScale(v).toFixed(1)).join(' L ');
-    const fillPath = `M ${P},${H-PB} L ${fillPts} L ${(W-P).toFixed(1)},${(H-PB).toFixed(1)} Z`;
     const xMax = xs[s.iMax], yMax = yScale(s.vMax);
     const xMin = xs[s.iMin], yMin = yScale(s.vMin);
 
@@ -6425,10 +6429,10 @@ function renderElevPreview(series, radius) {
              + `<text x="${(pl.xR + w/2).toFixed(1)}" y="${(pl.yR + 12).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="800" fill="#fff" style="paint-order:stroke; stroke:rgba(0,0,0,0.4); stroke-width:1.2;">${sign}${Math.abs(hauteur)}m (${alt} m Alt)</text>`;
     };
 
-    // Fill descend jusqu'au bas du SVG (gradient dégressif)
-    // Le path commence par 'M' (sans espace). On le remplace par 'L' pour le raccorder
-    // au coin bas-gauche de la zone de fill (sinon SVG crée deux sub-paths invalides).
-    const fillPathDown = `M ${P},${H - 2} ${path.replace(/^M/, 'L')} L ${(W-P).toFixed(1)},${(H - 2).toFixed(1)} Z`;
+    // Fill descend jusqu'au bas du SVG (gradient dégressif).
+    // On construit le path directement à partir des points pour éviter les regex.
+    const fillPts = s.values.map((v, i) => xs[i].toFixed(1) + ',' + yScale(v).toFixed(1)).join(' L ');
+    const fillPathDown = `M ${P},${(H - 2).toFixed(1)} L ${fillPts} L ${(W - P).toFixed(1)},${(H - 2).toFixed(1)} Z`;
 
     el.innerHTML = `
         <div style="background:linear-gradient(135deg,#0b3d91 0%,#082f70 50%,#1a8754 100%); border-radius:8px; padding:8px 10px 6px; box-shadow:0 1px 6px rgba(0,0,0,0.18);">
