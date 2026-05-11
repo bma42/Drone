@@ -6280,15 +6280,42 @@ function renderElevation(elevs, radius) {
         }
 
         // Étiquettes altitude aux extrémités (texte blanc avec halo, sauf si déjà ▲/▼)
+        // — anti-chevauchement vs pastilles plafond/décollage : bascule de l'autre côté si conflit.
         const vL = s.values[0], vR = s.values[s.values.length - 1];
         const yL = yScale(vL), yR = yScale(vR);
         const isExtreme = (i) => i === s.iMin || i === s.iMax;
-        const offY = (yPos) => (yPos < H / 2 ? 16 : -8);
         const edgeText = (x, y, lbl, anchor) =>
             `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" font-size="10" font-weight="700" fill="rgba(255,255,255,0.92)" style="paint-order:stroke; stroke:rgba(0,0,0,0.5); stroke-width:2.4; stroke-linejoin:round;">${lbl}</text>`;
+        // Place le label d'extrémité : essaie 'top' (au-dessus du point) puis 'bottom',
+        // évite les obstacles enregistrés (ceil, takeoff, pastilles ▲▼).
+        const placeEdge = (xLeftRect, yCurve, w, h, anchor) => {
+            const tries = yCurve < H / 2
+                ? [{baseline: yCurve + 16, top: yCurve + 4}, {baseline: yCurve - 6, top: yCurve - 6 - h + 4}]
+                : [{baseline: yCurve - 6, top: yCurve - 6 - h + 4}, {baseline: yCurve + 16, top: yCurve + 4}];
+            for (const t of tries) {
+                if (t.top < 2 || t.top + h > H + 4) continue;
+                const cand = { x: xLeftRect, y: t.top, w, h };
+                if (obstacles.every(o => !_rectsOverlap(cand, o))) {
+                    obstacles.push(cand);
+                    return t.baseline;
+                }
+            }
+            // Fallback : prend la première option même si overlap
+            return tries[0].baseline;
+        };
         let edgeLabels = '';
-        if (!isExtreme(0))                          edgeLabels += edgeText(P + 4,    yL + offY(yL), vL.toFixed(0) + ' m', 'start');
-        if (!isExtreme(s.values.length - 1))        edgeLabels += edgeText(W - P - 4, yR + offY(yR), vR.toFixed(0) + ' m', 'end');
+        if (!isExtreme(0)) {
+            const lbl = vL.toFixed(0) + ' m';
+            const w = lbl.length * 6.5 + 6, h = 13;
+            const newY = placeEdge(P + 4, yL, w, h, 'start');
+            edgeLabels += edgeText(P + 4, newY, lbl, 'start');
+        }
+        if (!isExtreme(s.values.length - 1)) {
+            const lbl = vR.toFixed(0) + ' m';
+            const w = lbl.length * 6.5 + 6, h = 13;
+            const newY = placeEdge(W - P - 4 - w, yR, w, h, 'end');
+            edgeLabels += edgeText(W - P - 4, newY, lbl, 'end');
+        }
 
         // Règle d'élongation — couleurs adaptées au fond gradient sombre
         const rulerY = H + 16, rulerLabY = H + 30, rulerColor = 'rgba(255,255,255,0.85)';
