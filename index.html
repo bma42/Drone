@@ -472,12 +472,27 @@
             background: linear-gradient(90deg, #16a34a 0%, #16a34a 33%, #f59e0b 33%, #f59e0b 55%, #dc2626 55%, #dc2626 100%);
             position: relative;
         }
+        /* Reflet animé qui balaie la barre — effet "donnée live" */
+        .kp-bar::after {
+            content: ''; position: absolute; inset: 0; pointer-events: none;
+            background: linear-gradient(105deg, transparent 38%, rgba(255,255,255,0.5) 50%, transparent 62%);
+            background-size: 220% 100%;
+            animation: kp-shimmer 3.4s linear infinite;
+        }
+        @keyframes kp-shimmer { 0% { background-position: 160% 0; } 100% { background-position: -60% 0; } }
         .kp-marker {
             position: absolute; top: -3px; width: 4px; height: 20px;
             background: #1a2332; border-radius: 2px;
-            box-shadow: 0 0 0 2px #fff;
+            left: 0;
+            transition: left 1.2s cubic-bezier(.34,1.05,.5,1);  /* slide-in avec léger overshoot */
+            animation: kp-marker-glow 2.2s ease-in-out infinite;
+        }
+        @keyframes kp-marker-glow {
+            0%,100% { box-shadow: 0 0 0 2px #fff, 0 0 4px 1px rgba(26,35,50,0.3); }
+            50%     { box-shadow: 0 0 0 2px #fff, 0 0 11px 3px rgba(26,35,50,0.55); }
         }
         .kp-legend { font-size: 11px; color: var(--c-muted); display: flex; justify-content: space-between; margin-top: 4px; }
+        @media print { .kp-marker { transition: none !important; animation: none !important; } .kp-bar::after { display: none !important; } }
 
         /* ---------- Risk table ---------- */
         /* §15 — Cartes de risque responsives */
@@ -2250,6 +2265,22 @@ function cachedFetch(key, url, ttlMs = 30 * 60 * 1000) {
 }
 
 function fmtDist(m) { return m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(1) + ' km'; }
+
+// Anime le texte d'un élément d'une valeur à une autre (ease-out cubic)
+function _animateNumber(el, from, to, durMs, fmt) {
+    if (!el) return;
+    fmt = fmt || (v => String(Math.round(v)));
+    durMs = durMs || 900;
+    const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    function step(now) {
+        const t = Math.min(1, ((now || Date.now()) - t0) / durMs);
+        const eased = 1 - Math.pow(1 - t, 3);
+        el.textContent = fmt(from + (to - from) * eased);
+        if (t < 1) requestAnimationFrame(step);
+        else el.textContent = fmt(to);
+    }
+    requestAnimationFrame(step);
+}
 
 // Cadre la carte sur un cercle de rayon = max(élongation, données analysées) + padding
 // Cadre la carte au plus juste : englobe le contenu réellement tracé (markers,
@@ -6812,9 +6843,9 @@ function renderKp(kp, ts) {
     document.getElementById('kp-body').innerHTML = `
         <div class="verdict ${color}"><span>●</span> Kp ${kp.toFixed(1)} — ${level}</div>
         <div class="kp-row">
-            <div class="kp-value">${kp.toFixed(1)}</div>
+            <div class="kp-value">0.0</div>
             <div style="flex:1;">
-                <div class="kp-bar"><div class="kp-marker" style="left:calc(${pct}% - 2px)"></div></div>
+                <div class="kp-bar"><div class="kp-marker"></div></div>
                 <div class="kp-legend"><span>0</span><span>3 · nominal</span><span>5 · alerte</span><span>9</span></div>
             </div>
         </div>
@@ -6822,6 +6853,13 @@ function renderKp(kp, ts) {
         <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Dernière mise à jour&nbsp;: ${ts} UTC.</div>
         ${KP_INFO_BLOCK}
     `;
+    // Animations : le marqueur glisse de 0 vers sa position, la valeur compte de 0 à kp
+    requestAnimationFrame(() => {
+        const marker = document.querySelector('#kp-body .kp-marker');
+        if (marker) requestAnimationFrame(() => { marker.style.left = `calc(${pct}% - 2px)`; });
+        const valEl = document.querySelector('#kp-body .kp-value');
+        if (valEl) _animateNumber(valEl, 0, kp, 1100, v => v.toFixed(1));
+    });
     setStatus('kp', kp <= 3 ? 'ok' : kp <= 4 ? 'warn' : 'err', 'Kp ' + kp.toFixed(1));
     STATE.kp = kp;
     updateGlobalVerdict();
