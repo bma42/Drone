@@ -356,6 +356,10 @@
             min-width: 0;
             max-width: 100%;
             display: block;
+            /* iOS Safari : un input date VIDE se rétrécit en hauteur faute de contenu.
+               min-height force la même hauteur que les inputs text, valeur ou pas. */
+            min-height: 38px;
+            line-height: 18px;
         }
         input[type="date"]::-webkit-date-and-time-value,
         input[type="time"]::-webkit-date-and-time-value { text-align: left; }
@@ -1358,7 +1362,7 @@
                     <label class="lbl">Détails de l'arrêté préfectoral</label>
                     <div class="row-2">
                         <input type="text" placeholder="Numéro de l'arrêté…">
-                        <input type="date">
+                        <input type="date" id="arrete-pref-date">
                     </div>
                 </div>
                 <div id="finalite-box" style="display:none;" class="field-group">
@@ -8369,6 +8373,8 @@ window.addEventListener('load', () => {
     document.getElementById('mission-date').value = today;
     document.getElementById('sig-redac-date').value = today;
     document.getElementById('sig-chef-date').value = today;
+    const arrDate = document.getElementById('arrete-pref-date');
+    if (arrDate) arrDate.value = today;   // évite le rétrécissement iOS d'un champ date vide
     onDateChange();
     toggleArrete();
     checkStepsEmpty();
