@@ -6124,6 +6124,11 @@ function renderElevation(elevs, radius) {
             <stop offset="0%" stop-color="#dc2626"/>
             <stop offset="100%" stop-color="#7f1d1d"/>
         </linearGradient>
+        <linearGradient id="elev-fill-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%"   stop-color="rgba(255,255,255,0.45)"/>
+            <stop offset="60%"  stop-color="rgba(255,255,255,0.18)"/>
+            <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+        </linearGradient>
     </defs>`;
 
     const niceStep = (r) => {
@@ -6136,9 +6141,13 @@ function renderElevation(elevs, radius) {
     const heightMax = _readHeightMax();
     const flightCeiling = center + heightMax;
 
+    // Utilitaire : 2 rectangles {x,y,w,h} se chevauchent ?
+    const _rectsOverlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+
     // Génère le SVG d'un axe (échelle Y locale, élargie pour englober le plafond de vol)
     const axisSvg = (s) => {
         const W = 460, H = 170, P = 18;
+        const RULER_TOP = H + 8;            // zone ruler à éviter pour les pastilles
         const N = s.values.length;
         const xs = Array.from({ length: N }, (_, i) => P + (i / (N - 1)) * (W - 2 * P));
         const yMaxAxis = Math.max(s.vMax, flightCeiling);
@@ -6147,32 +6156,75 @@ function renderElevation(elevs, radius) {
         const yScale = v => H - P - ((v - yMinAxis) / localRange) * (H - 2 * P);
 
         const pathD = s.values.map((v, i) => (i === 0 ? 'M' : 'L') + xs[i].toFixed(1) + ',' + yScale(v).toFixed(1)).join(' ');
-        const fillD = pathD + ` L ${(W - P).toFixed(1)},${(H - P).toFixed(1)} L ${P},${(H - P).toFixed(1)} Z`;
-        const polyline = `<path d="${fillD}" fill="rgba(255,255,255,0.16)" stroke="none"/>`
+        // Fill descend jusque sous la zone du ruler (gradient blanc dégressif)
+        const fillBottomY = H + 4;
+        const fillD = pathD + ` L ${(W - P).toFixed(1)},${fillBottomY.toFixed(1)} L ${P},${fillBottomY.toFixed(1)} Z`;
+        const polyline = `<path d="${fillD}" fill="url(#elev-fill-grad)" stroke="none"/>`
                        + `<path d="${pathD}" fill="none" stroke="#fff" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round" pathLength="1" class="elev-real-path" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.45));"/>`;
 
-        // Plafond de vol : ligne verte clair + pastille verte avec hauteur AGL bien lisible
+        // Pastille verte plafond — épurée : juste la hauteur max (slider §1)
         const yCeil = Math.max(P + 6, Math.min(H - P, yScale(flightCeiling)));
-        const cwidth = 158;
+        const cwidth = 64;
+        const ceilRect = { x: P + 4, y: yCeil - 10, w: cwidth, h: 18 };
         const ceilLine = `<line x1="${P}" y1="${yCeil.toFixed(1)}" x2="${W-P}" y2="${yCeil.toFixed(1)}" stroke="#86efac" stroke-width="1.6" stroke-dasharray="7,4" opacity="0.95"/>`
-                       + `<rect x="${P + 4}" y="${(yCeil - 11).toFixed(1)}" width="${cwidth}" height="20" rx="5" fill="rgba(22,163,74,0.95)" stroke="rgba(255,255,255,0.6)" stroke-width="0.8"/>`
-                       + `<text x="${P + 4 + cwidth/2}" y="${(yCeil + 3).toFixed(1)}" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff">⌐ Plafond ${flightCeiling.toFixed(0)} m NGF (+${heightMax} sol)</text>`;
+                       + `<rect x="${ceilRect.x}" y="${ceilRect.y.toFixed(1)}" width="${ceilRect.w}" height="${ceilRect.h}" rx="5" fill="rgba(22,163,74,0.95)" stroke="rgba(255,255,255,0.6)" stroke-width="0.8"/>`
+                       + `<text x="${(ceilRect.x + ceilRect.w/2).toFixed(1)}" y="${(yCeil + 4).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="800" fill="#fff">${heightMax} m</text>`;
+
+        // Décollage : pastille rouge compacte « Décollage · 380 m »
+        const xCenter = W / 2;
+        const yTakeoff = yScale(center);
+        const tkw = 130;
+        const takeoffRect = { x: xCenter - tkw/2, y: H - 22, w: tkw, h: 20 };
+        const takeoff = `<line x1="${xCenter}" y1="${P}" x2="${xCenter}" y2="${H-P}" stroke="#fca5a5" stroke-width="1.4" stroke-dasharray="3,3"/>`
+                      + `<circle cx="${xCenter}" cy="${yTakeoff.toFixed(1)}" r="4.8" fill="#fff" stroke="#dc2626" stroke-width="2.4" style="filter:drop-shadow(0 0 5px rgba(220,38,38,0.85));"/>`;
+        const takeoffLabel = `<rect x="${takeoffRect.x.toFixed(1)}" y="${takeoffRect.y.toFixed(1)}" width="${tkw}" height="20" rx="5" fill="#dc2626" stroke="rgba(255,255,255,0.65)" stroke-width="0.9"/>`
+                           + `<text x="${xCenter}" y="${(H - 8).toFixed(1)}" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff">⊙ Décollage · ${center.toFixed(0)} m</text>`;
+
+        // Liste des obstacles à éviter pour le placement des pastilles ▲▼
+        const obstacles = [
+            ceilRect,
+            takeoffRect,
+            { x: 0, y: RULER_TOP, w: W, h: 40 }                  // zone ruler en bas
+        ];
+
+        // Placement avec anti-chevauchement : essaie la position préférée, sinon l'autre
+        const placeRect = (px, py, tw, th, prefPlacement) => {
+            const tries = prefPlacement === 'top'
+                ? [{p:'top',    yR: py - th - 10}, {p:'bottom', yR: py + 12}]
+                : [{p:'bottom', yR: py + 12},      {p:'top',    yR: py - th - 10}];
+            for (const t of tries) {
+                let xR = Math.max(P + 4, Math.min(W - P - 4 - tw, px - tw / 2));
+                let yR = t.yR;
+                if (yR < P + 2 || yR + th > H + 4) continue;
+                const cand = { x: xR, y: yR, w: tw, h: th };
+                if (obstacles.every(o => !_rectsOverlap(cand, o))) {
+                    return { xR, yR, placement: t.p };
+                }
+            }
+            // Fallback : on prend quand même la position préférée, même si overlap
+            const fy = prefPlacement === 'top' ? py - th - 10 : py + 12;
+            return {
+                xR: Math.max(P + 4, Math.min(W - P - 4 - tw, px - tw / 2)),
+                yR: Math.max(P + 2, Math.min(H + 4 - th, fy)),
+                placement: prefPlacement
+            };
+        };
 
         const xMax = xs[s.iMax], yMax = yScale(s.vMax);
         const xMin = xs[s.iMin], yMin = yScale(s.vMin);
-        // Cartouche 2 lignes : altitude NGF + hauteur relative au sol (vs décollage)
-        const tagAltNgf = (x, y, alt, hauteur, gradId, placement) => {
-            const w = 122, h = 34;
-            let xRect = Math.max(P + 4, Math.min(W - P - 4 - w, x - w / 2));
-            const yRect = placement === 'top' ? Math.max(P + 2, y - h - 10) : Math.min(H - P - h - 2, y + 12);
-            const cx = xRect + w / 2;
-            const cy = placement === 'top' ? yRect + h : yRect;
+        // Cartouche compacte 1 ligne : « +45m (380 m Alt) »
+        const tagAltNgf = (x, y, alt, hauteur, gradId, prefPlacement) => {
+            const w = 116, h = 22;
+            const pl = placeRect(x, y, w, h, prefPlacement);
+            const cx = pl.xR + w / 2;
+            const cy = pl.placement === 'top' ? pl.yR + h : pl.yR;
             const sign = hauteur >= 0 ? '+' : '−';
             const habs = Math.abs(hauteur);
+            const cartoucheRect = { x: pl.xR, y: pl.yR, w, h };
+            obstacles.push(cartoucheRect);  // futur pastilles évitent celle-ci
             return `<line x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${cx.toFixed(1)}" y2="${cy.toFixed(1)}" stroke="rgba(255,255,255,0.7)" stroke-width="1" stroke-dasharray="2,2"/>`
-                 + `<rect x="${xRect.toFixed(1)}" y="${yRect.toFixed(1)}" width="${w}" height="${h}" rx="6" fill="url(#${gradId})" stroke="rgba(255,255,255,0.6)" stroke-width="1"/>`
-                 + `<text x="${cx.toFixed(1)}" y="${(yRect + 13).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="600" fill="rgba(255,255,255,0.92)" letter-spacing="0.4">ALT ${alt} m NGF</text>`
-                 + `<text x="${cx.toFixed(1)}" y="${(yRect + 27).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="800" fill="#fff" style="paint-order:stroke; stroke:rgba(0,0,0,0.4); stroke-width:1.6; stroke-linejoin:round;">Hauteur ${sign}${habs} m</text>`;
+                 + `<rect x="${pl.xR.toFixed(1)}" y="${pl.yR.toFixed(1)}" width="${w}" height="${h}" rx="5" fill="url(#${gradId})" stroke="rgba(255,255,255,0.6)" stroke-width="1"/>`
+                 + `<text x="${cx.toFixed(1)}" y="${(pl.yR + 15).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="800" fill="#fff" style="paint-order:stroke; stroke:rgba(0,0,0,0.4); stroke-width:1.4; stroke-linejoin:round;">${sign}${habs}m (${alt} m Alt)</text>`;
         };
         const dotStyle = 'filter:drop-shadow(0 0 6px rgba(0,0,0,0.7));';
         const annot =
@@ -6180,15 +6232,6 @@ function renderElevation(elevs, radius) {
             tagAltNgf(xMax, yMax, s.vMax.toFixed(0), Math.round(s.vMax - center), 'elev-tag-blue', 'top') +
             `<circle cx="${xMin.toFixed(1)}" cy="${yMin.toFixed(1)}" r="4.6" fill="#fff" stroke="#dc2626" stroke-width="2.4" style="${dotStyle}"/>` +
             tagAltNgf(xMin, yMin, s.vMin.toFixed(0), Math.round(s.vMin - center), 'elev-tag-red', 'bottom');
-
-        // Trait rouge centre + marqueur décollage avec altitude NGF
-        const xCenter = W / 2;
-        const yTakeoff = yScale(center);
-        const takeoff = `<line x1="${xCenter}" y1="${P}" x2="${xCenter}" y2="${H-P}" stroke="#fca5a5" stroke-width="1.4" stroke-dasharray="3,3"/>`
-                      + `<circle cx="${xCenter}" cy="${yTakeoff.toFixed(1)}" r="4.8" fill="#fff" stroke="#dc2626" stroke-width="2.4" style="filter:drop-shadow(0 0 5px rgba(220,38,38,0.85));"/>`;
-        const tkw = 178;
-        const takeoffLabel = `<rect x="${(xCenter - tkw/2).toFixed(1)}" y="${(H - 22).toFixed(1)}" width="${tkw}" height="20" rx="5" fill="#dc2626" stroke="rgba(255,255,255,0.65)" stroke-width="0.9"/>`
-                           + `<text x="${xCenter}" y="${(H - 8).toFixed(1)}" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff">⊙ Décollage · ${center.toFixed(0)} m NGF (réf. 0)</text>`;
 
         // Observateurs ±1 km — pastilles ambre
         let observerMarkers = '';
@@ -6337,16 +6380,35 @@ function renderElevPreview(series, radius) {
     // Trace l'axe choisi sur la carte principale (calque dédié) + marqueurs ▲ ▼
     drawElevAxisOnMainMap(s, radius, heightMax, flightCeiling);
 
-    // Pastilles compactes 1 ligne pour l'aperçu §1 (place limitée)
+    // Pastilles 1 ligne compactes avec anti-chevauchement vs plafond/centre
     const hMax = Math.round(s.vMax - center), hMin = Math.round(s.vMin - center);
-    const previewTag = (x, y, alt, hauteur, gradId, placement) => {
-        const w = 86, h = 17;
-        let xRect = Math.max(P + 2, Math.min(W - P - 2 - w, x - w / 2));
-        const yRect = placement === 'top' ? Math.max(2, y - h - 4) : Math.min(H - h - 2, y + 6);
+    const _rectsOverlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    const ceilRect = { x: W - P - 56, y: yCeil - 9, w: 52, h: 16 };
+    const obstacles = [ceilRect];
+    const previewTag = (x, y, alt, hauteur, gradId, prefPlacement) => {
+        const w = 102, h = 17;
+        const tries = prefPlacement === 'top'
+            ? [{p:'top',    yR: y - h - 5}, {p:'bottom', yR: y + 6}]
+            : [{p:'bottom', yR: y + 6},     {p:'top',    yR: y - h - 5}];
+        let pl = null;
+        for (const t of tries) {
+            const xR = Math.max(P + 2, Math.min(W - P - 2 - w, x - w / 2));
+            if (t.yR < 2 || t.yR + h > H - 2) continue;
+            const cand = { x: xR, y: t.yR, w, h };
+            if (obstacles.every(o => !_rectsOverlap(cand, o))) { pl = { xR, yR: t.yR, p: t.p }; break; }
+        }
+        if (!pl) {
+            const yFb = prefPlacement === 'top' ? y - h - 5 : y + 6;
+            pl = { xR: Math.max(P + 2, Math.min(W - P - 2 - w, x - w / 2)), yR: Math.max(2, Math.min(H - h - 2, yFb)), p: prefPlacement };
+        }
+        obstacles.push({ x: pl.xR, y: pl.yR, w, h });
         const sign = hauteur >= 0 ? '+' : '−';
-        return `<rect x="${xRect.toFixed(1)}" y="${yRect.toFixed(1)}" width="${w}" height="${h}" rx="4" fill="url(#${gradId})" stroke="rgba(255,255,255,0.55)" stroke-width="0.8"/>`
-             + `<text x="${(xRect + w/2).toFixed(1)}" y="${(yRect + 12).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="#fff" style="paint-order:stroke; stroke:rgba(0,0,0,0.4); stroke-width:1.2;">${alt} m · ${sign}${Math.abs(hauteur)}m sol</text>`;
+        return `<rect x="${pl.xR.toFixed(1)}" y="${pl.yR.toFixed(1)}" width="${w}" height="${h}" rx="4" fill="url(#${gradId})" stroke="rgba(255,255,255,0.55)" stroke-width="0.8"/>`
+             + `<text x="${(pl.xR + w/2).toFixed(1)}" y="${(pl.yR + 12).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="800" fill="#fff" style="paint-order:stroke; stroke:rgba(0,0,0,0.4); stroke-width:1.2;">${sign}${Math.abs(hauteur)}m (${alt} m Alt)</text>`;
     };
+
+    // Fill descend jusqu'au bas du SVG (gradient dégressif)
+    const fillPathDown = `M ${P},${H - 2} L ${path.replace(/^M /, '')} L ${(W-P).toFixed(1)},${(H - 2).toFixed(1)} Z`;
 
     el.innerHTML = `
         <div style="background:linear-gradient(135deg,#0b3d91 0%,#082f70 50%,#1a8754 100%); border-radius:8px; padding:8px 10px 6px; box-shadow:0 1px 6px rgba(0,0,0,0.18);">
@@ -6357,11 +6419,12 @@ function renderElevPreview(series, radius) {
             </div>
             <svg viewBox="0 0 ${W} ${H}" style="display:block; width:100%; height:auto; overflow:visible;">
                 ${ELEV_GRADIENT_DEFS}
-                <path d="${fillPath}" fill="rgba(255,255,255,0.18)" stroke="none"/>
+                <path d="${fillPathDown}" fill="url(#elev-fill-grad)" stroke="none"/>
                 <path d="${path}" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" pathLength="1" class="elev-real-path" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5));"/>
                 <line x1="${W/2}" y1="${PT}" x2="${W/2}" y2="${H-PB}" stroke="#fca5a5" stroke-width="1" stroke-dasharray="3,2" opacity="0.85"/>
                 <line x1="${P}" y1="${yCeil.toFixed(1)}" x2="${W-P}" y2="${yCeil.toFixed(1)}" stroke="#86efac" stroke-width="1.4" stroke-dasharray="5,3" opacity="0.95"/>
-                <text x="${(W-P).toFixed(1)}" y="${(yCeil - 3).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" fill="#86efac" style="paint-order:stroke; stroke:rgba(0,0,0,0.5); stroke-width:2;">Plafond +${heightMax} m sol</text>
+                <rect x="${ceilRect.x}" y="${ceilRect.y.toFixed(1)}" width="${ceilRect.w}" height="${ceilRect.h}" rx="4" fill="rgba(22,163,74,0.95)" stroke="rgba(255,255,255,0.6)" stroke-width="0.8"/>
+                <text x="${(ceilRect.x + ceilRect.w/2).toFixed(1)}" y="${(yCeil + 3).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="800" fill="#fff">${heightMax} m</text>
                 <circle cx="${xMax.toFixed(1)}" cy="${yMax.toFixed(1)}" r="3" fill="#fff" stroke="#0066cc" stroke-width="1.6"/>
                 <circle cx="${xMin.toFixed(1)}" cy="${yMin.toFixed(1)}" r="3" fill="#fff" stroke="#dc2626" stroke-width="1.6"/>
                 ${previewTag(xMax, yMax, s.vMax.toFixed(0), hMax, 'elev-tag-blue', 'top')}
