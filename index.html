@@ -152,15 +152,12 @@
         .elev-fake-path {
             stroke: rgba(255,255,255,0.95); stroke-width: 2; fill: none;
             stroke-linejoin: round; stroke-linecap: round;
-            stroke-dasharray: 1; stroke-dashoffset: 1;
-            animation: draw-elev-curve 2.4s cubic-bezier(.25,.7,.35,1) forwards;
         }
         @keyframes draw-elev-curve { to { stroke-dashoffset: 0; } }
-        /* Animation de tracé de la courbe altimétrique réelle (§1 + §19) */
-        .elev-real-path {
-            stroke-dasharray: 1; stroke-dashoffset: 1;
-            animation: draw-elev-curve 1.4s cubic-bezier(.3,.7,.4,1) forwards;
-        }
+        /* Animation tracé courbe (§1 + §19) : déclenchée par JS via _animateElevPaths()
+           qui mesure getTotalLength(), pose dasharray + dashoffset et lance la
+           transition. Plus robuste que le CSS animation + pathLength qui se bloque
+           sur certains SVG petits (Safari iOS). */
         /* Mode fluide du radar pluie : cross-fade entre frames pré-chargées */
         .rain-smooth-tile { transition: opacity 380ms linear; }
         @keyframes map-loader-in  { from { opacity: 0; } to { opacity: 1; } }
@@ -5968,6 +5965,29 @@ function showElevLoader(containerId, opts) {
     const el = document.getElementById(containerId);
     if (!el) return;
     el.innerHTML = _elevLoaderHtml(opts);
+    _animateElevPaths(el, 2400);
+}
+
+// Anime tous les .elev-fake-path et .elev-real-path présents dans `root` :
+// mesure la longueur réelle avec getTotalLength(), pose dasharray + dashoffset
+// initial, force un reflow, puis transitionne vers 0 → tracé fluide universel.
+function _animateElevPaths(root, durationMs) {
+    durationMs = durationMs || 1400;
+    const paths = (root || document).querySelectorAll('.elev-fake-path, .elev-real-path');
+    paths.forEach(p => {
+        try {
+            const len = p.getTotalLength();
+            if (!len || !isFinite(len)) return;
+            p.style.transition = 'none';
+            p.style.strokeDasharray = len;
+            p.style.strokeDashoffset = len;
+            // Force reflow pour que la transition reparte de l'état initial
+            // (lecture d'une propriété layout suffit)
+            void p.getBoundingClientRect();
+            p.style.transition = `stroke-dashoffset ${durationMs}ms cubic-bezier(.25,.7,.35,1)`;
+            p.style.strokeDashoffset = 0;
+        } catch (e) { /* path non mesurable → laisser visible directement */ }
+    });
 }
 
 // Garantit que le loader §19 + §1 reste affiché au moins 2 s avant le rendu réel
@@ -6271,6 +6291,8 @@ function renderElevation(elevs, radius) {
     setStatus('elev', range > 100 ? 'warn' : 'ok', `Δ ${range.toFixed(0)} m`);
     STATE.elev = { min, max, avg, range, center, series, elevs, radius };
     renderElevPreview(series, radius);
+    // Animation tracé des courbes §19 (déclenchée après insertion DOM)
+    setTimeout(() => _animateElevPaths(document.getElementById('elev-body'), 1500), 30);
 }
 
 // Aperçu compact du transect en §1 — affiche l'axe avec le plus grand dénivelé
@@ -6343,6 +6365,8 @@ function renderElevPreview(series, radius) {
             </svg>
         </div>
     `;
+    // Anime le tracé de la courbe une fois insérée dans le DOM
+    setTimeout(() => _animateElevPaths(el, 1300), 30);
 }
 
 // Trace l'axe altimétrique choisi (celui de l'aperçu §1) sur la carte principale,
