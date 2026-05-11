@@ -5974,7 +5974,7 @@ function _elevLoaderHtml(opts) {
         + '<stop offset="0%" stop-color="rgba(255,255,255,0.22)"/>'
         + '<stop offset="100%" stop-color="rgba(255,255,255,0)"/></linearGradient></defs>'
         + '<path d="' + path + ' L ' + W + ',' + H + ' L 0,' + H + ' Z" fill="url(#' + fillId + ')" stroke="none"/>'
-        + '<path d="' + path + '" class="elev-fake-path" pathLength="1"/>'
+        + '<path d="' + path + '" class="elev-fake-path"/>'
         + '</svg></div>';
 }
 
@@ -5987,30 +5987,33 @@ function showElevLoader(containerId, opts) {
 }
 
 // Anime tous les .elev-fake-path et .elev-real-path présents dans `root`.
-// Pattern double-RAF : on pose l'état initial (caché), on laisse 2 frames passer
-// pour que le navigateur commit ces styles, puis on lance la transition. Sans
-// double-RAF, certains navigateurs (Safari surtout) consolident les changements
-// dans le même tick et la transition ne joue pas du tout.
+// Étapes : on attend 1 frame que le SVG soit layouté, on mesure getTotalLength,
+// on pose l'état initial (caché), on attend ENCORE 2 frames pour que le commit
+// de styles soit fait par le navigateur, puis on enable la transition.
+// Sans cette double séquence RAF, Safari batche les style updates et la
+// transition ne se déclenche jamais.
 function _animateElevPaths(root, durationMs) {
     durationMs = durationMs || 1400;
-    const paths = (root || document).querySelectorAll('.elev-fake-path, .elev-real-path');
-    paths.forEach(p => {
-        try {
-            const len = p.getTotalLength();
-            if (!len || !isFinite(len)) return;
-            p.style.transition = 'none';
-            p.style.strokeDasharray = len + ' ' + len;
-            p.style.strokeDashoffset = len;
-            // Double requestAnimationFrame → garantit que l'état initial est committé
-            // avant qu'on enable la transition. Pattern standard pour les CSS
-            // transitions déclenchées par JS.
-            requestAnimationFrame(() => {
+    // 1. Attend une frame pour que le SVG soit layouté (getTotalLength fiable)
+    requestAnimationFrame(() => {
+        const paths = (root || document).querySelectorAll('.elev-fake-path, .elev-real-path');
+        paths.forEach(p => {
+            try {
+                const len = p.getTotalLength();
+                if (!len || !isFinite(len) || len < 1) return;
+                // 2. État initial : caché
+                p.style.transition = 'none';
+                p.style.strokeDasharray = len + ' ' + len;
+                p.style.strokeDashoffset = len;
+                // 3. Double RAF avant d'enabler la transition (sinon Safari batche)
                 requestAnimationFrame(() => {
-                    p.style.transition = `stroke-dashoffset ${durationMs}ms cubic-bezier(.25,.7,.35,1)`;
-                    p.style.strokeDashoffset = '0';
+                    requestAnimationFrame(() => {
+                        p.style.transition = 'stroke-dashoffset ' + durationMs + 'ms cubic-bezier(.25,.7,.35,1)';
+                        p.style.strokeDashoffset = '0';
+                    });
                 });
-            });
-        } catch (e) { /* path non mesurable → laisser visible directement */ }
+            } catch (e) { /* path non mesurable → laisser visible directement */ }
+        });
     });
 }
 
@@ -6184,7 +6187,7 @@ function renderElevation(elevs, radius) {
         const fillBottomY = H + 4;
         const fillD = pathD + ` L ${(W - P).toFixed(1)},${fillBottomY.toFixed(1)} L ${P},${fillBottomY.toFixed(1)} Z`;
         const polyline = `<path d="${fillD}" fill="url(#elev-fill-grad)" stroke="none"/>`
-                       + `<path d="${pathD}" fill="none" stroke="#fff" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round" pathLength="1" class="elev-real-path" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.45));"/>`;
+                       + `<path d="${pathD}" fill="none" stroke="#fff" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round" class="elev-real-path" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.45));"/>`;
 
         // Pastille verte plafond — épurée : juste la hauteur max (slider §1)
         const yCeil = Math.max(P + 6, Math.min(H - P, yScale(flightCeiling)));
@@ -6445,7 +6448,7 @@ function renderElevPreview(series, radius) {
             <svg viewBox="0 0 ${W} ${H}" style="display:block; width:100%; height:auto; overflow:visible;">
                 ${ELEV_GRADIENT_DEFS}
                 <path d="${fillPathDown}" fill="url(#elev-fill-grad)" stroke="none"/>
-                <path d="${path}" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" pathLength="1" class="elev-real-path" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5));"/>
+                <path d="${path}" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" class="elev-real-path" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5));"/>
                 <line x1="${W/2}" y1="${PT}" x2="${W/2}" y2="${H-PB}" stroke="#fca5a5" stroke-width="1" stroke-dasharray="3,2" opacity="0.85"/>
                 <line x1="${P}" y1="${yCeil.toFixed(1)}" x2="${W-P}" y2="${yCeil.toFixed(1)}" stroke="#86efac" stroke-width="1.4" stroke-dasharray="5,3" opacity="0.95"/>
                 <rect x="${ceilRect.x}" y="${ceilRect.y.toFixed(1)}" width="${ceilRect.w}" height="${ceilRect.h}" rx="4" fill="rgba(22,163,74,0.95)" stroke="rgba(255,255,255,0.6)" stroke-width="0.8"/>
