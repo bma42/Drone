@@ -1696,7 +1696,7 @@
         <section class="card">
             <div class="card-head">
                 <div class="card-num">17</div>
-                <div class="card-title">METAR &amp; TAF aéronautiques<span class="sub">CheckWX · 3 stations les plus proches avec prévisions VFR/IFR</span></div>
+                <div class="card-title">METAR &amp; TAF aéronautiques<span class="sub">NOAA aviationweather.gov (fallback CheckWX) · 3 stations les plus proches · VFR / MVFR / IFR / LIFR</span></div>
                 <button type="button" class="no-print" onclick="if(STATE.lat) fetchMetarTaf(STATE.lat, STATE.lon)" title="Rafraîchir" style="background:transparent; border:1px solid var(--c-border-strong); border-radius:4px; padding:3px 9px; cursor:pointer; font-size:11px; color:var(--c-text-soft); margin-right:8px;">↻ Rafraîchir</button>
                 <span class="card-status" id="status-metar">en attente</span>
             </div>
@@ -5768,114 +5768,219 @@ function initAirspaceMap(items, lat, lon) {
 }
 
 /* ===================================================================
-   §15 — METAR / TAF aéronautiques (CheckWX)
+   §17 — METAR / TAF aéronautiques
+   Source primaire : NOAA aviationweather.gov (gratuit, sans clé, mondial)
+   Fallback : CheckWX (clé requise — quota gratuit limité)
    =================================================================== */
 const CHECKWX_KEY_DEFAULT = 'c94501f020ee48be809331a2404ea41f';
 function checkwxKey() {
     return localStorage.getItem('drone_checkwx_key') || CHECKWX_KEY_DEFAULT;
 }
-
-async function fetchMetarTaf(lat, lon) {
-    setStatus('metar', 'load');
-    document.getElementById('metar-body').innerHTML = `<div class="empty-state">⏳ Recherche stations CheckWX (50 km)…</div>`;
-    const key = checkwxKey();
-    if (!key) { setStatus('metar', 'err', 'pas de clé'); document.getElementById('metar-body').innerHTML = `<div class="empty-state">Clé API CheckWX manquante — saisis-la dans le menu de configuration.</div>`; return; }
-
-    try {
-        // 1. Récupère les 3 stations les plus proches qui DIFFUSENT METAR (filtrer ICAO standard 4 lettres)
-        const r = await fetchWithTimeout(`https://api.checkwx.com/station/lat/${lat}/lon/${lon}/radius/80`, { headers: { 'X-API-Key': key } }, 12000);
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const j = await r.json();
-        const stations = (j.data || []).filter(s => /^[A-Z]{4}$/.test(s.icao || '')).slice(0, 5);
-        if (stations.length === 0) {
-            setStatus('metar', 'warn', 'aucune station');
-            document.getElementById('metar-body').innerHTML = `<div class="empty-state">Aucune station METAR diffusant dans un rayon de 80 km.</div>`;
-            return;
-        }
-        const ids = stations.map(s => s.icao).join(',');
-        // 2. Récupère METAR + TAF en parallèle
-        const [metarR, tafR] = await Promise.allSettled([
-            fetchWithTimeout(`https://api.checkwx.com/metar/${ids}/decoded`, { headers: { 'X-API-Key': key } }, 12000).then(r => r.json()),
-            fetchWithTimeout(`https://api.checkwx.com/taf/${ids}/decoded`, { headers: { 'X-API-Key': key } }, 12000).then(r => r.json())
-        ]);
-        const metars = metarR.status === 'fulfilled' ? (metarR.value.data || []) : [];
-        const tafs   = tafR.status   === 'fulfilled' ? (tafR.value.data   || []) : [];
-        renderMetarTaf(stations, metars, tafs, lat, lon);
-        STATE.metars = metars;
-    } catch (e) {
-        console.warn('CheckWX:', e);
-        setStatus('metar', 'err', 'indisponible');
-        document.getElementById('metar-body').innerHTML = `
-            <div class="empty-state" style="margin-bottom:10px;">METAR/TAF indisponibles (${e.message || 'erreur réseau'}).</div>
-            <button class="no-print" onclick="if(STATE.lat) fetchMetarTaf(STATE.lat, STATE.lon)" style="background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer;">↻ Réessayer</button>`;
-    }
-}
-
 function flightCatColor(c) {
     return c === 'VFR' ? '#16a34a' : c === 'MVFR' ? '#0891b2' : c === 'IFR' ? '#d97706' : c === 'LIFR' ? '#dc2626' : '#6b7280';
 }
-
-// Helpers défensifs : CheckWX expose le cap dans `degrees` mais parfois
-// `direction` (numérique ou lettre cardinale "N/E/S/W/VRB"). On gère les
-// deux et on évite d'écrire "undefined°".
-function _fmtWindAng(w) {
-    if (!w) return '';
-    if (typeof w.degrees === 'number') return Math.round(w.degrees) + '°';
-    if (typeof w.direction === 'number') return Math.round(w.direction) + '°';
-    if (typeof w.direction === 'string' && w.direction) return w.direction;  // VRB, E, N…
-    return 'VRB';
+// Catégorie de vol calculée d'après le plafond (ft, base la plus basse BKN/OVC) et la visi (statute miles)
+function _computeFlightCat(ceilFt, visSm) {
+    if (ceilFt == null && visSm == null) return null;
+    const c = ceilFt != null ? ceilFt : Infinity;
+    const v = visSm != null ? visSm : Infinity;
+    if (c < 500 || v < 1) return 'LIFR';
+    if (c < 1000 || v < 3) return 'IFR';
+    if (c <= 3000 || v <= 5) return 'MVFR';
+    return 'VFR';
 }
-function _fmtWindFull(w) {
-    if (!w) return '—';
-    const ang = _fmtWindAng(w);
-    const kts = (typeof w.speed_kts === 'number') ? w.speed_kts : null;
-    const kph = (typeof w.speed_kph === 'number') ? w.speed_kph : (kts != null ? Math.round(kts * 1.852) : null);
-    const gust = (typeof w.gust_kts === 'number') ? ` raf. ${w.gust_kts} kt` : '';
-    if (kts == null) return ang || '—';
-    return `${ang} / ${kts} kt (${kph != null ? kph + ' km/h' : '?'})${gust}`;
+function _parseNoaaVisib(v) {
+    if (v == null) return null;
+    if (typeof v === 'number') return v;
+    const s = String(v).trim();
+    if (s.endsWith('+')) return parseFloat(s);   // "6+" → 6
+    const n = parseFloat(s);
+    return isNaN(n) ? null : n;
 }
-// Format TAF timestamp : objet { from, to } ISO ou strings dans variantes ;
-// renvoie "HH:MMZ → HH:MMZ" ou chaîne vide si inexploitable.
-function _fmtTafTime(ts) {
-    if (!ts) return '';
-    const a = (ts.from || ts.start || '');
-    const b = (ts.to   || ts.end   || '');
-    if (typeof a === 'string' && typeof b === 'string' && a.length >= 16 && b.length >= 16) {
-        return a.slice(11, 16) + 'Z → ' + b.slice(11, 16) + 'Z';
-    }
-    return '';
+function _ceilingFromClouds(clouds) {
+    if (!Array.isArray(clouds)) return null;
+    const bases = clouds.filter(c => c && (c.cover === 'BKN' || c.cover === 'OVC') && typeof c.base === 'number').map(c => c.base);
+    return bases.length ? Math.min(...bases) : null;
+}
+function _fmtWindCompact(dir, kts, gustKts) {
+    const a = (dir === 'VRB' || dir == null) ? 'VRB' : Math.round(dir) + '°';
+    if (kts == null) return a;
+    const kph = Math.round(kts * 1.852);
+    return `${a} / ${kts} kt (${kph} km/h)${gustKts ? ' raf. ' + gustKts + ' kt' : ''}`;
 }
 
-function renderMetarTaf(stations, metars, tafs, lat, lon) {
-    const metarById = new Map(metars.map(m => [m.icao, m]));
-    const tafById   = new Map(tafs.map(t => [t.icao, t]));
+// ---- Source NOAA ----
+async function _fetchMetarTafNoaa(lat, lon) {
+    const dLat = 110 / 111;
+    const dLon = 110 / (111 * Math.cos(lat * Math.PI / 180));
+    const bbox = `${(lat - dLat).toFixed(3)},${(lon - dLon).toFixed(3)},${(lat + dLat).toFixed(3)},${(lon + dLon).toFixed(3)}`;
+    const rM = await fetchWithTimeout(`https://aviationweather.gov/api/data/metar?bbox=${bbox}&format=json`, {}, 12000);
+    if (!rM.ok) throw new Error('NOAA metar HTTP ' + rM.status);
+    let metars = await rM.json();
+    if (!Array.isArray(metars)) metars = [];
+    metars = metars.filter(m => m && typeof m.lat === 'number' && typeof m.lon === 'number' && /^[A-Z0-9]{4}$/.test(m.icaoId || ''));
+    if (metars.length === 0) return [];
+    const near = metars.map(m => ({ ...m, _dist: haversine(lat, lon, m.lat, m.lon) }))
+                       .sort((a, b) => a._dist - b._dist).slice(0, 5);
+    const ids = near.map(m => m.icaoId).join(',');
+    let tafs = [];
+    try {
+        const rT = await fetchWithTimeout(`https://aviationweather.gov/api/data/taf?ids=${ids}&format=json`, {}, 12000);
+        if (rT.ok) { const j = await rT.json(); if (Array.isArray(j)) tafs = j; }
+    } catch (e) { /* TAF optionnel */ }
+    const tafById = new Map(tafs.map(t => [t.icaoId, t]));
+    return near.map(m => _normalizeNoaaStation(m, tafById.get(m.icaoId)));
+}
+function _normalizeNoaaStation(m, t) {
+    const ceilFt = _ceilingFromClouds(m.clouds);
+    const visSm = _parseNoaaVisib(m.visib);
+    let altimHpa = (typeof m.altim === 'number') ? m.altim : null;
+    if (altimHpa != null && altimHpa < 200) altimHpa *= 33.8639;   // si exprimé en inHg
+    const windDir = (m.wdir === 'VRB' || m.wdir === 0) ? 'VRB' : (typeof m.wdir === 'number' ? m.wdir : null);
+    return {
+        icao: m.icaoId, name: m.name || '',
+        lat: m.lat, lon: m.lon,
+        elevM: (typeof m.elev === 'number') ? Math.round(m.elev) : null,
+        dist: m._dist,
+        metar: {
+            raw: m.rawOb || '',
+            flightCat: _computeFlightCat(ceilFt, visSm),
+            windDir, windKts: (typeof m.wspd === 'number') ? m.wspd : null, windGustKts: (typeof m.wgst === 'number') ? m.wgst : null,
+            visibKm: visSm != null ? visSm * 1.60934 : null,
+            tempC: (typeof m.temp === 'number') ? Math.round(m.temp) : null,
+            dewpC: (typeof m.dewp === 'number') ? Math.round(m.dewp) : null,
+            altimHpa: altimHpa != null ? Math.round(altimHpa) : null,
+            wx: m.wxString || ''
+        },
+        taf: t ? {
+            raw: t.rawTAF || '',
+            forecast: (Array.isArray(t.fcsts) ? t.fcsts : []).slice(0, 5).map(f => {
+                const fcCeil = _ceilingFromClouds(f.clouds);
+                const fcVis = _parseNoaaVisib(f.visib);
+                return {
+                    from: f.timeFrom ? new Date(f.timeFrom * 1000) : null,
+                    to:   f.timeTo   ? new Date(f.timeTo   * 1000) : null,
+                    change: f.fcstChange || '',
+                    prob: (typeof f.probability === 'number') ? f.probability : null,
+                    windDir: (f.wdir === 'VRB' || f.wdir === 0) ? 'VRB' : (typeof f.wdir === 'number' ? f.wdir : null),
+                    windKts: (typeof f.wspd === 'number') ? f.wspd : null,
+                    visibKm: fcVis != null ? fcVis * 1.60934 : null,
+                    flightCat: _computeFlightCat(fcCeil, fcVis)
+                };
+            })
+        } : null
+    };
+}
 
+// ---- Fallback CheckWX ----
+async function _fetchMetarTafCheckwx(lat, lon) {
+    const key = checkwxKey();
+    if (!key) throw new Error('pas de clé CheckWX');
+    const rs = await fetchWithTimeout(`https://api.checkwx.com/station/lat/${lat}/lon/${lon}/radius/100`, { headers: { 'X-API-Key': key } }, 12000);
+    if (!rs.ok) throw new Error('CheckWX station HTTP ' + rs.status);
+    const sj = await rs.json();
+    const stations = (sj.data || []).filter(s => /^[A-Z0-9]{4}$/.test(s.icao || '')).slice(0, 5);
+    if (stations.length === 0) return [];
+    const ids = stations.map(s => s.icao).join(',');
+    const [mR, tR] = await Promise.allSettled([
+        fetchWithTimeout(`https://api.checkwx.com/metar/${ids}/decoded`, { headers: { 'X-API-Key': key } }, 12000).then(r => r.json()),
+        fetchWithTimeout(`https://api.checkwx.com/taf/${ids}/decoded`, { headers: { 'X-API-Key': key } }, 12000).then(r => r.json())
+    ]);
+    const metars = mR.status === 'fulfilled' ? (mR.value.data || []) : [];
+    const tafs   = tR.status === 'fulfilled' ? (tR.value.data   || []) : [];
+    const mById = new Map(metars.map(m => [m.icao, m]));
+    const tById = new Map(tafs.map(t => [t.icao, t]));
+    return stations.map(s => {
+        const m = mById.get(s.icao), t = tById.get(s.icao);
+        const coords = s.geometry && s.geometry.coordinates;
+        const sLat = coords ? coords[1] : lat, sLon = coords ? coords[0] : lon;
+        return {
+            icao: s.icao, name: s.name || '',
+            lat: sLat, lon: sLon,
+            elevM: s.elevation && typeof s.elevation.meters === 'number' ? Math.round(s.elevation.meters) : (s.elevation && s.elevation.feet ? Math.round(s.elevation.feet * 0.3048) : null),
+            dist: (s.position && s.position.distance && s.position.distance.meters) || haversine(lat, lon, sLat, sLon),
+            metar: m ? {
+                raw: m.raw_text || '',
+                flightCat: m.flight_category || null,
+                windDir: m.wind ? (typeof m.wind.degrees === 'number' ? m.wind.degrees : (typeof m.wind.direction === 'string' ? m.wind.direction : null)) : null,
+                windKts: m.wind && typeof m.wind.speed_kts === 'number' ? m.wind.speed_kts : null,
+                windGustKts: m.wind && typeof m.wind.gust_kts === 'number' ? m.wind.gust_kts : null,
+                visibKm: m.visibility && typeof m.visibility.meters === 'number' ? m.visibility.meters / 1000 : null,
+                tempC: m.temperature && typeof m.temperature.celsius === 'number' ? Math.round(m.temperature.celsius) : null,
+                dewpC: m.dewpoint && typeof m.dewpoint.celsius === 'number' ? Math.round(m.dewpoint.celsius) : null,
+                altimHpa: m.barometer && typeof m.barometer.hpa === 'number' ? Math.round(m.barometer.hpa) : null,
+                wx: (m.conditions || []).map(c => c.text || c.code).join(', ')
+            } : null,
+            taf: t ? {
+                raw: t.raw_text || '',
+                forecast: (t.forecast || []).slice(0, 5).map(f => ({
+                    from: f.timestamp && f.timestamp.from ? new Date(f.timestamp.from) : null,
+                    to:   f.timestamp && f.timestamp.to   ? new Date(f.timestamp.to)   : null,
+                    change: f.change ? (f.change.indicator || f.change.indicator_code || '') : '',
+                    prob: f.change && typeof f.change.probability === 'number' ? f.change.probability : null,
+                    windDir: f.wind ? (typeof f.wind.degrees === 'number' ? f.wind.degrees : (typeof f.wind.direction === 'string' ? f.wind.direction : null)) : null,
+                    windKts: f.wind && typeof f.wind.speed_kts === 'number' ? f.wind.speed_kts : null,
+                    visibKm: f.visibility && typeof f.visibility.meters === 'number' ? f.visibility.meters / 1000 : null,
+                    flightCat: f.flight_category || null
+                }))
+            } : null
+        };
+    });
+}
+
+async function fetchMetarTaf(lat, lon) {
+    setStatus('metar', 'load');
+    const body = document.getElementById('metar-body');
+    if (body) body.innerHTML = `<div class="empty-state">⏳ Recherche stations METAR/TAF…</div>`;
+    let lastErr = null;
+    // 1. NOAA (gratuit, sans clé)
+    try {
+        const data = await _fetchMetarTafNoaa(lat, lon);
+        if (data && data.length) { renderMetarTaf(data, lat, lon, 'NOAA aviationweather.gov'); return data; }
+    } catch (e) { console.warn('[NOAA METAR]', e); lastErr = e; }
+    // 2. Fallback CheckWX
+    try {
+        const data = await _fetchMetarTafCheckwx(lat, lon);
+        if (data && data.length) { renderMetarTaf(data, lat, lon, 'CheckWX'); return data; }
+    } catch (e) { console.warn('[CheckWX]', e); lastErr = e; }
+    // 3. Échec
+    setStatus('metar', 'err', 'indisponible');
+    if (body) body.innerHTML = `
+        <div class="empty-state" style="margin-bottom:10px;">METAR/TAF indisponibles (${lastErr && lastErr.message ? lastErr.message : 'aucune source accessible'}).</div>
+        <button class="no-print" onclick="if(STATE.lat) fetchMetarTaf(STATE.lat, STATE.lon)" style="background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer;">↻ Réessayer</button>`;
+    return null;
+}
+
+function _fmtTafTimeShort(d) {
+    if (!(d instanceof Date) || isNaN(d)) return '';
+    const hh = String(d.getUTCHours()).padStart(2, '0');
+    const mm = String(d.getUTCMinutes()).padStart(2, '0');
+    return `${hh}:${mm}Z`;
+}
+
+function renderMetarTaf(stations, lat, lon, sourceLabel) {
+    STATE.metars = stations;
     const nearest = stations[0];
-    const flightCat = metarById.get(nearest && nearest.icao)?.flight_category || '—';
+    const refCat = nearest && nearest.metar ? nearest.metar.flightCat : null;
 
     const blocks = stations.slice(0, 3).map(s => {
-        const m = metarById.get(s.icao);
-        const t = tafById.get(s.icao);
-        const cat = m && m.flight_category;
+        const m = s.metar, t = s.taf;
+        const cat = m && m.flightCat;
         const catColor = flightCatColor(cat);
-        const distKm = s.position && s.position.distance ? (s.position.distance.meters / 1000).toFixed(1) : '?';
-        const wind = m && m.wind ? _fmtWindFull(m.wind) : '—';
-        const vis  = m && m.visibility ? `${(m.visibility.meters/1000).toFixed(1)} km` : '—';
-        const temp = m && m.temperature != null ? `${m.temperature.celsius}°C` : '—';
-        const dewp = m && m.dewpoint    != null ? `${m.dewpoint.celsius}°C` : '—';
-        const baro = m && m.barometer ? `${m.barometer.hpa.toFixed(0)} hPa` : '—';
-        const cond = m && m.conditions && m.conditions.length ? m.conditions.map(c => c.text || c.code).join(', ') : '';
-        const tafLines = t && t.forecast ? t.forecast.slice(0, 4).map(f => {
-            const fc = f.flight_category;
-            const fcSpan = fc ? `<span style="color:${flightCatColor(fc)}; font-weight:700;">${fc}</span>` : '<span style="color:var(--c-muted); font-weight:600;">—</span>';
-            const time = _fmtTafTime(f.timestamp);
-            const change = f.change && (f.change.indicator || f.change.indicator_code) ? `<span style="color:#7c3aed; font-weight:600;">${f.change.indicator || f.change.indicator_code}${f.change.probability ? ' ' + f.change.probability + '%' : ''}</span>` : '';
-            const ang = f.wind ? _fmtWindAng(f.wind) : '';
-            const kts = f.wind && typeof f.wind.speed_kts === 'number' ? f.wind.speed_kts : null;
-            const wd  = f.wind ? `${ang}${kts != null ? ' ' + kts + 'kt' : ''}`.trim() : '';
-            const vs  = f.visibility && typeof f.visibility.meters === 'number'
-                        ? `vis ${(f.visibility.meters/1000).toFixed(1)} km` : '';
-            const parts = [fcSpan, change, time ? `<span style="color:var(--c-muted);">${time}</span>` : '', wd, vs].filter(Boolean);
+        const distKm = (s.dist != null && isFinite(s.dist)) ? (s.dist / 1000).toFixed(1) : '?';
+        const wind = m ? _fmtWindCompact(m.windDir, m.windKts, m.windGustKts) : '—';
+        const vis  = m && m.visibKm != null ? `${m.visibKm.toFixed(1)} km` : '—';
+        const temp = m && m.tempC != null ? `${m.tempC}°C` : '—';
+        const dewp = m && m.dewpC != null ? `${m.dewpC}°C` : '—';
+        const baro = m && m.altimHpa != null ? `${m.altimHpa} hPa` : '—';
+        const cond = m && m.wx ? m.wx : '';
+        const tafLines = t && t.forecast ? t.forecast.slice(0, 5).map(f => {
+            const fcSpan = f.flightCat ? `<span style="color:${flightCatColor(f.flightCat)}; font-weight:700;">${f.flightCat}</span>` : '<span style="color:var(--c-muted); font-weight:600;">—</span>';
+            const ch = f.change ? `<span style="color:#7c3aed; font-weight:600;">${f.change}${f.prob ? ' ' + f.prob + '%' : ''}</span>` : '';
+            const tm = (f.from && f.to) ? `<span style="color:var(--c-muted);">${_fmtTafTimeShort(f.from)} → ${_fmtTafTimeShort(f.to)}</span>` : '';
+            const wd = (f.windKts != null || f.windDir != null) ? `${(f.windDir === 'VRB' || f.windDir == null) ? 'VRB' : Math.round(f.windDir) + '°'}${f.windKts != null ? ' ' + f.windKts + 'kt' : ''}` : '';
+            const vs = f.visibKm != null ? `vis ${f.visibKm.toFixed(1)} km` : '';
+            const parts = [fcSpan, ch, tm, wd, vs].filter(Boolean);
             return `<div style="font-size:11px; padding:3px 0; border-top:1px dashed #e5e7eb;">${parts.join(' · ')}</div>`;
         }).join('') : '';
 
@@ -5884,7 +5989,7 @@ function renderMetarTaf(stations, metars, tafs, lat, lon) {
                 <div>
                     <strong style="font-size:14px;">${s.icao}</strong>
                     <span style="color:var(--c-muted); font-size:12px;">— ${s.name || ''}</span>
-                    <div style="font-size:11px; color:var(--c-muted);">${distKm} km · ${s.elevation ? s.elevation.feet + ' ft' : ''}</div>
+                    <div style="font-size:11px; color:var(--c-muted);">${distKm} km${s.elevM != null ? ' · ' + s.elevM + ' m' : ''}</div>
                 </div>
                 ${cat ? `<span style="background:${catColor}; color:#fff; font-weight:700; padding:3px 10px; border-radius:999px; font-size:11px; letter-spacing:.5px;">${cat}</span>` : ''}
             </div>
@@ -5896,22 +6001,22 @@ function renderMetarTaf(stations, metars, tafs, lat, lon) {
                 <div><strong>${baro}</strong><div style="color:var(--c-muted);">QNH</div></div>
             </div>
             ${cond ? `<div style="margin-top:6px; font-size:11px; color:#d97706;">⚠ ${cond}</div>` : ''}
-            <div style="margin-top:8px; font-family:monospace; font-size:10px; background:#f7f9fc; padding:6px 8px; border-radius:4px; word-break:break-all; color:var(--c-text);">${m.raw_text || ''}</div>
+            <div style="margin-top:8px; font-family:monospace; font-size:10px; background:#f7f9fc; padding:6px 8px; border-radius:4px; word-break:break-all; color:var(--c-text);">${m.raw || ''}</div>
             ` : '<div style="color:var(--c-muted); font-size:11px; margin-top:6px;">Pas de METAR récent.</div>'}
             ${t ? `<div style="margin-top:8px;"><strong style="font-size:11px; color:var(--c-primary);">TAF</strong>
-                <div style="font-family:monospace; font-size:10px; background:#f7f9fc; padding:6px 8px; border-radius:4px; word-break:break-all; margin-top:4px;">${t.raw_text || ''}</div>
+                <div style="font-family:monospace; font-size:10px; background:#f7f9fc; padding:6px 8px; border-radius:4px; word-break:break-all; margin-top:4px;">${t.raw || ''}</div>
                 ${tafLines}
             </div>` : ''}
         </div>`;
     }).join('');
 
     document.getElementById('metar-body').innerHTML = `
-        ${nearest && flightCat !== '—' ? `<div style="display:inline-flex; align-items:center; gap:8px; background:${flightCatColor(flightCat)}; color:#fff; padding:6px 14px; border-radius:999px; font-weight:700; letter-spacing:.5px; margin-bottom:12px;">${flightCat} · station de référence ${nearest.icao}</div>` : ''}
+        ${nearest && refCat ? `<div style="display:inline-flex; align-items:center; gap:8px; background:${flightCatColor(refCat)}; color:#fff; padding:6px 14px; border-radius:999px; font-weight:700; letter-spacing:.5px; margin-bottom:12px;">${refCat} · station de référence ${nearest.icao}</div>` : ''}
         ${blocks}
-        <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source CheckWX · 3 stations les plus proches dans 80 km · catégorie de vol VFR (vert) · MVFR (cyan) · IFR (orange) · LIFR (rouge).</div>
+        <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source : <strong>${sourceLabel || 'ADS-B / METAR public'}</strong> · 3 stations les plus proches (rayon ~110 km) · catégorie de vol calculée d'après plafond &amp; visi : VFR (vert) · MVFR (cyan) · IFR (orange) · LIFR (rouge).</div>
     `;
-    setStatus('metar', flightCat === 'VFR' ? 'ok' : flightCat === 'MVFR' ? 'warn' : flightCat === 'IFR' || flightCat === 'LIFR' ? 'err' : 'warn',
-              flightCat || `${stations.length} stations`);
+    setStatus('metar', refCat === 'VFR' ? 'ok' : refCat === 'MVFR' ? 'warn' : (refCat === 'IFR' || refCat === 'LIFR') ? 'err' : 'warn',
+              refCat || `${stations.length} stations`);
 }
 
 /* ===================================================================
