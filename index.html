@@ -6047,8 +6047,8 @@ function renderMetarTaf(stations, lat, lon, sourceLabel) {
    =================================================================== */
 /* 2 axes : N–S et E–O (4 directions cardinales), chacun avec ELEV_HALF points de part et d'autre du centre */
 const ELEV_AXES = [
-    { name: 'N–S', bearing: 0,  color: '#1d4ed8' },   // bleu vif
-    { name: 'E–O', bearing: 90, color: '#ea580c' }    // orange vif
+    { name: 'Nord – Sud',  short: ['Nord', 'Sud'],  bearing: 0,  color: '#1d4ed8' },   // bleu vif
+    { name: 'Est – Ouest', short: ['Est', 'Ouest'], bearing: 90, color: '#ea580c' }    // orange vif
 ];
 const ELEV_HALF = 24; // 2 axes × 48 + 1 centre = 97 ≤ 100 (limite Open-Meteo)
 
@@ -6267,8 +6267,7 @@ function renderElevation(elevs, radius) {
         }
         const dirAt = i => {
             const off = (i - ELEV_HALF) / ELEV_HALF;
-            const labelNeg = ax.name.split('–')[0];
-            const labelPos = ax.name.split('–')[1];
+            const [labelNeg, labelPos] = ax.short || ['', ''];
             if (off === 0) return 'centre';
             return (off < 0 ? labelNeg : labelPos) + ' ' + fmtDist(Math.abs(off) * radius);
         };
@@ -6480,7 +6479,7 @@ function renderElevation(elevs, radius) {
                    (lbl ? `<text x="${t.x.toFixed(1)}" y="${rulerLabY}" text-anchor="middle" font-size="9" fill="rgba(255,255,255,0.78)">${lbl}</text>` : '');
         }).join('');
         const dispRadius = radius >= 1000 ? (radius / 1000).toFixed(radius % 1000 ? 1 : 0) + ' km' : radius + ' m';
-        const labels = [s.name.split('–')[0], s.name.split('–')[1]];
+        const labels = s.short || ['', ''];
         const rulerExtremes =
             `<text x="${P-1}" y="${rulerY - 5}" text-anchor="start" font-size="9" font-weight="700" fill="#fff">${labels[0]} −${dispRadius}</text>` +
             `<text x="${W-P+1}" y="${rulerY - 5}" text-anchor="end" font-size="9" font-weight="700" fill="#fff">${labels[1]} +${dispRadius}</text>`;
@@ -6662,7 +6661,7 @@ function drawElevAxisOnMainMap(s, radius, heightMax, flightCeiling) {
         return [p1[0] + (p2[0] - p1[0]) * t, p1[1] + (p2[1] - p1[1]) * t];
     };
 
-    const labels = s.name.split('–'); // [labelNeg, labelPos]
+    const labels = s.short || ['', '']; // [labelNeg, labelPos]
     const dirOf = (i) => {
         const t = i / (N - 1);
         if (Math.abs(t - 0.5) < 0.02) return 'centre';
