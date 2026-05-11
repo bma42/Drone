@@ -5818,21 +5818,28 @@ function _fmtWindCompact(dir, kts, gustKts) {
 }
 
 // ---- Source NOAA ----
-// Fetch JSON avec fallback proxy CORS si l'accès direct échoue (réseau filtrant / pas de CORS).
+// Fetch JSON tolérant au CORS : accès direct, puis cascade de proxies CORS publics.
+// Les proxies publics sont parfois lents/instables (408) → on en essaie plusieurs.
 async function _fetchJsonCorsTolerant(url, timeoutMs) {
     timeoutMs = timeoutMs || 12000;
-    // 1. Accès direct
-    try {
-        const r = await fetchWithTimeout(url, { headers: { 'Accept': 'application/json' } }, timeoutMs);
-        if (r.ok) return await r.json();
-        throw new Error('HTTP ' + r.status);
-    } catch (e) {
-        // 2. Via proxy CORS public (allorigins) — relaie la réponse avec les bons en-têtes
-        const proxied = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
-        const r2 = await fetchWithTimeout(proxied, { headers: { 'Accept': 'application/json' } }, timeoutMs + 4000);
-        if (!r2.ok) throw new Error('proxy HTTP ' + r2.status);
-        return await r2.json();
+    const attempts = [
+        () => fetchWithTimeout(url, { headers: { 'Accept': 'application/json' } }, timeoutMs + 3000),
+        () => fetchWithTimeout('https://corsproxy.io/?url=' + encodeURIComponent(url), { headers: { 'Accept': 'application/json' } }, timeoutMs + 5000),
+        () => fetchWithTimeout('https://api.allorigins.win/raw?url=' + encodeURIComponent(url), { headers: { 'Accept': 'application/json' } }, timeoutMs + 6000),
+        () => fetchWithTimeout('https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(url), { headers: { 'Accept': 'application/json' } }, timeoutMs + 6000)
+    ];
+    let lastErr = null;
+    for (const attempt of attempts) {
+        try {
+            const r = await attempt();
+            if (r.ok) {
+                const txt = await r.text();
+                try { return JSON.parse(txt); } catch (e) { lastErr = new Error('réponse non-JSON'); continue; }
+            }
+            lastErr = new Error('HTTP ' + r.status);
+        } catch (e) { lastErr = e; }
     }
+    throw lastErr || new Error('toutes les sources ont échoué');
 }
 
 async function _fetchMetarTafNoaa(lat, lon) {
