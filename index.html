@@ -411,10 +411,17 @@
         }
         .check-option label { cursor: pointer; flex: 1; }
         .redac-tool {
-            font-size: 11px; color: var(--c-muted); display: inline-flex; align-items: center; gap: 5px;
+            font-size: 11px; color: var(--c-muted); display: inline-flex; align-items: center; justify-content: center;
             flex: 0 0 auto !important; cursor: pointer; margin-left: auto;
+            padding: 6px 10px; min-width: 36px;   /* zone cliquable confortable sur mobile */
         }
-        .redac-tool input { accent-color: var(--c-primary); cursor: pointer; }
+        .redac-tool input { accent-color: var(--c-primary); cursor: pointer; width: 16px; height: 16px; }
+        .row-validate-btn {
+            background: #eef3fb; color: var(--c-primary); border: 1px solid #cdd9ee; border-radius: 5px;
+            font-size: 12px; font-weight: 700; cursor: pointer; padding: 3px 9px; flex-shrink: 0;
+        }
+        .row-validate-btn.locked { background: #dcfce7; color: #15803d; border-color: #86efac; }
+        .row-locked input[type="text"], .row-locked select { background: #f4f6fa !important; border-color: transparent !important; cursor: default; pointer-events: none; }
         .redac-label-pdf { display: none; color: var(--c-primary); font-weight: 600; font-size: 11px; }
 
         .divider { height: 1px; background: var(--c-border); margin: 10px 0; }
@@ -1509,14 +1516,17 @@
                     <input type="text" id="other-vehicule" placeholder="Saisir l'immatriculation…" style="display:none; margin-top:6px;">
                 </div>
                 <div class="field-group">
-                    <label class="lbl">Effectifs engagés</label>
+                    <div style="display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:4px;">
+                        <label class="lbl" style="margin-bottom:0;">Effectifs engagés</label>
+                        <span class="no-print" style="font-size:9.5px; font-weight:700; letter-spacing:.4px; color:var(--c-muted); text-transform:uppercase; white-space:nowrap;">Rédacteur de la prép.</span>
+                    </div>
                     <div class="check-list">
-                        <div class="check-option"><input type="checkbox" id="p1"><label for="p1">Major AMATO Jean Baptiste<br><span style="color:var(--c-muted); font-size:11px;">Matricule 471946</span></label><label class="redac-tool no-print"><input type="radio" name="redac" data-name="Major AMATO Jean Baptiste" data-matricule="471946" onchange="updateRedacteur()"> Rédacteur de la préparation mission</label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
-                        <div class="check-option"><input type="checkbox" id="p2"><label for="p2">Major ROUCAIROL Daniel<br><span style="color:var(--c-muted); font-size:11px;">Matricule 455254</span></label><label class="redac-tool no-print"><input type="radio" name="redac" data-name="Major ROUCAIROL Daniel" data-matricule="455254" onchange="updateRedacteur()"> Rédacteur de la préparation mission</label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
-                        <div class="check-option"><input type="checkbox" id="p3"><label for="p3">Major DUDECK Philippe<br><span style="color:var(--c-muted); font-size:11px;">Matricule 472323</span></label><label class="redac-tool no-print"><input type="radio" name="redac" data-name="Major DUDECK Philippe" data-matricule="472323" onchange="updateRedacteur()"> Rédacteur de la préparation mission</label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
-                        <div class="check-option"><input type="checkbox" id="p4"><label for="p4">B/C MOTTER Sylvain<br><span style="color:var(--c-muted); font-size:11px;">Matricule 496397</span></label><label class="redac-tool no-print"><input type="radio" name="redac" data-name="B/C MOTTER Sylvain" data-matricule="496397" onchange="updateRedacteur()"> Rédacteur de la préparation mission</label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
-                        <div class="check-option"><input type="checkbox" id="p5"><label for="p5">B/C FOURNIE Hervé<br><span style="color:var(--c-muted); font-size:11px;">Matricule 477206</span></label><label class="redac-tool no-print"><input type="radio" name="redac" data-name="B/C FOURNIE Hervé" data-matricule="477206" onchange="updateRedacteur()"> Rédacteur de la préparation mission</label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
-                        <div class="check-option"><input type="checkbox" id="p6"><label for="p6">GPX KAOULALA Nordine<br><span style="color:var(--c-muted); font-size:11px;">Matricule 235519</span></label><label class="redac-tool no-print"><input type="radio" name="redac" data-name="GPX KAOULALA Nordine" data-matricule="235519" onchange="updateRedacteur()"> Rédacteur de la préparation mission</label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
+                        <div class="check-option"><input type="checkbox" id="p1"><label for="p1">Major AMATO Jean Baptiste<br><span style="color:var(--c-muted); font-size:11px;">Matricule 471946</span></label><label class="redac-tool no-print" title="Désigner comme rédacteur de la préparation"><input type="radio" name="redac" data-name="Major AMATO Jean Baptiste" data-matricule="471946" onchange="updateRedacteur()"></label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
+                        <div class="check-option"><input type="checkbox" id="p2"><label for="p2">Major ROUCAIROL Daniel<br><span style="color:var(--c-muted); font-size:11px;">Matricule 455254</span></label><label class="redac-tool no-print" title="Désigner comme rédacteur de la préparation"><input type="radio" name="redac" data-name="Major ROUCAIROL Daniel" data-matricule="455254" onchange="updateRedacteur()"></label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
+                        <div class="check-option"><input type="checkbox" id="p3"><label for="p3">Major DUDECK Philippe<br><span style="color:var(--c-muted); font-size:11px;">Matricule 472323</span></label><label class="redac-tool no-print" title="Désigner comme rédacteur de la préparation"><input type="radio" name="redac" data-name="Major DUDECK Philippe" data-matricule="472323" onchange="updateRedacteur()"></label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
+                        <div class="check-option"><input type="checkbox" id="p4"><label for="p4">B/C MOTTER Sylvain<br><span style="color:var(--c-muted); font-size:11px;">Matricule 496397</span></label><label class="redac-tool no-print" title="Désigner comme rédacteur de la préparation"><input type="radio" name="redac" data-name="B/C MOTTER Sylvain" data-matricule="496397" onchange="updateRedacteur()"></label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
+                        <div class="check-option"><input type="checkbox" id="p5"><label for="p5">B/C FOURNIE Hervé<br><span style="color:var(--c-muted); font-size:11px;">Matricule 477206</span></label><label class="redac-tool no-print" title="Désigner comme rédacteur de la préparation"><input type="radio" name="redac" data-name="B/C FOURNIE Hervé" data-matricule="477206" onchange="updateRedacteur()"></label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
+                        <div class="check-option"><input type="checkbox" id="p6"><label for="p6">GPX KAOULALA Nordine<br><span style="color:var(--c-muted); font-size:11px;">Matricule 235519</span></label><label class="redac-tool no-print" title="Désigner comme rédacteur de la préparation"><input type="radio" name="redac" data-name="GPX KAOULALA Nordine" data-matricule="235519" onchange="updateRedacteur()"></label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
                     </div>
                     <div id="custom-pilots"></div>
                     <button type="button" class="no-print" onclick="addCustomPilot()" style="margin-top:8px; width:100%; background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:9px 10px; font-size:13px; font-weight:600; cursor:pointer; text-align:center; display:flex; align-items:center; justify-content:center; gap:6px;">+ Ajouter un télépilote / observateur</button>
@@ -1532,7 +1542,7 @@
                                 <th style="width:14%">Nom pilote</th>
                                 <th style="width:14%">Prénom</th>
                                 <th>Société / unité</th>
-                                <th class="no-print" style="width:30px"></th>
+                                <th class="no-print" style="width:62px"></th>
                             </tr>
                         </thead>
                         <tbody id="auth-drone-tbody"></tbody>
@@ -8002,26 +8012,48 @@ function addCustomPilot() {
     row.innerHTML = `
         <input type="checkbox" id="${id}" checked>
         <label for="${id}" style="display:flex; gap:8px; align-items:center; flex:1; flex-wrap:wrap;">
-            <input type="text" class="pilot-name" placeholder="Nom · Grade" style="flex:2; min-width:160px; padding:5px 8px; font-size:12px;" oninput="onPilotNameOrRoleChange(this.closest('.check-option'))">
-            <input type="text" class="pilot-matricule" placeholder="Matricule" style="flex:1; min-width:90px; padding:5px 8px; font-size:12px;" oninput="onPilotNameOrRoleChange(this.closest('.check-option'))">
-            <select class="pilot-role" style="flex:1; min-width:120px; padding:5px 8px; font-size:12px;" onchange="onPilotNameOrRoleChange(this.closest('.check-option'))">
+            <input type="text" class="pilot-name" placeholder="Nom · Grade" style="flex:2; min-width:140px; padding:5px 8px; font-size:12px;" oninput="onPilotNameOrRoleChange(this.closest('.check-option'))">
+            <input type="text" class="pilot-matricule" placeholder="Matricule" style="flex:1; min-width:80px; padding:5px 8px; font-size:12px;" oninput="onPilotNameOrRoleChange(this.closest('.check-option'))">
+            <select class="pilot-role" style="flex:1; min-width:110px; padding:5px 8px; font-size:12px;" onchange="onPilotNameOrRoleChange(this.closest('.check-option'))">
                 <option>Télépilote</option>
                 <option>Observateur</option>
                 <option>Pilote + Observateur</option>
                 <option>Chef de dispositif</option>
             </select>
         </label>
-        <label class="redac-tool no-print"><input type="radio" name="redac" onchange="
+        <button type="button" class="row-validate-btn no-print" title="Valider / modifier" onclick="toggleRowLock(this)">✓</button>
+        <label class="redac-tool no-print" title="Désigner comme rédacteur de la préparation"><input type="radio" name="redac" onchange="
             const r=this.closest('.check-option');
             this.dataset.name=r.querySelector('.pilot-name').value;
             this.dataset.matricule=r.querySelector('.pilot-matricule').value;
             updateRedacteur();
-        "> Rédacteur</label>
+        "></label>
         <span class="redac-label-pdf">(Rédacteur de la préparation mission)</span>
         <button type="button" class="no-print" onclick="this.closest('.check-option').remove(); refreshChefDispositif();" style="background:transparent; border:0; color:var(--c-danger); font-size:18px; cursor:pointer; padding:0 4px;">×</button>
     `;
     document.getElementById('custom-pilots').appendChild(row);
     row.querySelector('input[type="text"]').focus();
+}
+
+// Verrouille / déverrouille l'édition d'une ligne (télépilote custom ou drone autorisé).
+// Verrouillé = champs en lecture seule, look épuré. Bouton ✓ ↔ ✎.
+function toggleRowLock(btn) {
+    const row = btn.closest('.check-option') || btn.closest('tr');
+    if (!row) return;
+    const wasLocked = row.classList.contains('row-locked');
+    if (wasLocked) {
+        row.classList.remove('row-locked');
+        btn.classList.remove('locked');
+        btn.textContent = '✓';
+        btn.title = 'Valider';
+    } else {
+        row.classList.add('row-locked');
+        btn.classList.add('locked');
+        btn.textContent = '✎';
+        btn.title = 'Modifier';
+    }
+    // Resynchro chef de dispositif après validation
+    if (typeof refreshChefDispositif === 'function') refreshChefDispositif();
 }
 
 // Synchronise le champ "Chef de mission" en §20 avec le pilote dont le rôle est "Chef de dispositif"
@@ -8095,7 +8127,10 @@ function addAuthDrone() {
         <td><input type="text" placeholder="Nom"></td>
         <td><input type="text" placeholder="Prénom"></td>
         <td><input type="text" placeholder="Société / unité"></td>
-        <td class="no-print"><button class="risk-row-del" onclick="this.closest('tr').remove(); checkAuthEmpty();" title="Supprimer">×</button></td>
+        <td class="no-print" style="white-space:nowrap;">
+            <button type="button" class="row-validate-btn" title="Valider / modifier" onclick="toggleRowLock(this)">✓</button>
+            <button class="risk-row-del" onclick="this.closest('tr').remove(); checkAuthEmpty();" title="Supprimer" style="margin-left:4px;">×</button>
+        </td>
     `;
     document.getElementById('auth-drone-tbody').appendChild(tr);
     checkAuthEmpty();
