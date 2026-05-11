@@ -6041,13 +6041,17 @@ function updateHeightMax(value) {
         const elapsed = Date.now() - _elevSliderLoaderShownAt;
         const wait = Math.max(0, ELEV_SLIDER_MIN_MS - elapsed);
         setTimeout(() => {
-            // §19 d'abord (lourd). Si erreur, on continue quand même pour libérer le §1.
+            // renderElevation appelle déjà renderElevPreview à sa fin → pas de
+            // double rendu (qui faisait que la courbe §1 se traçait deux fois).
+            let renderedOk = false;
             if (STATE.elev && STATE.elev.elevs) {
-                try { renderElevation(STATE.elev.elevs, STATE.elev.radius); } catch (e) { console.warn('[elev §19]', e); }
+                try { renderElevation(STATE.elev.elevs, STATE.elev.radius); renderedOk = true; }
+                catch (e) { console.warn('[elev §19]', e); }
             }
-            // Toujours §1 preview en DERNIER — garantit le remplacement du loader §1
-            // même si renderElevation a échoué (qui le rappelle déjà en interne).
-            try { renderElevPreview(STATE.elev.series, STATE.elev.radius); } catch (e) { console.warn('[elev §1]', e); }
+            // Fallback : si renderElevation a échoué, on essaie au moins renderElevPreview
+            if (!renderedOk && STATE.elev && STATE.elev.series) {
+                try { renderElevPreview(STATE.elev.series, STATE.elev.radius); } catch (e) { console.warn('[elev §1]', e); }
+            }
             _elevSliderLoaderShownAt = 0;
         }, wait);
     }, 250);
@@ -6406,35 +6410,10 @@ function renderElevPreview(series, radius) {
     // Trace l'axe choisi sur la carte principale (calque dédié) + marqueurs ▲ ▼
     drawElevAxisOnMainMap(s, radius, heightMax, flightCeiling);
 
-    // Pastilles 1 ligne compactes avec anti-chevauchement vs plafond/centre
-    const hMax = Math.round(s.vMax - center), hMin = Math.round(s.vMin - center);
-    const _rectsOverlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    // Pastille verte plafond (positionnée en bord droit)
     const ceilRect = { x: W - P - 56, y: yCeil - 9, w: 52, h: 16 };
-    const obstacles = [ceilRect];
-    const previewTag = (x, y, alt, hauteur, gradId, prefPlacement) => {
-        const w = 102, h = 17;
-        const tries = prefPlacement === 'top'
-            ? [{p:'top',    yR: y - h - 5}, {p:'bottom', yR: y + 6}]
-            : [{p:'bottom', yR: y + 6},     {p:'top',    yR: y - h - 5}];
-        let pl = null;
-        for (const t of tries) {
-            const xR = Math.max(P + 2, Math.min(W - P - 2 - w, x - w / 2));
-            if (t.yR < 2 || t.yR + h > H - 2) continue;
-            const cand = { x: xR, y: t.yR, w, h };
-            if (obstacles.every(o => !_rectsOverlap(cand, o))) { pl = { xR, yR: t.yR, p: t.p }; break; }
-        }
-        if (!pl) {
-            const yFb = prefPlacement === 'top' ? y - h - 5 : y + 6;
-            pl = { xR: Math.max(P + 2, Math.min(W - P - 2 - w, x - w / 2)), yR: Math.max(2, Math.min(H - h - 2, yFb)), p: prefPlacement };
-        }
-        obstacles.push({ x: pl.xR, y: pl.yR, w, h });
-        const sign = hauteur >= 0 ? '+' : '−';
-        return `<rect x="${pl.xR.toFixed(1)}" y="${pl.yR.toFixed(1)}" width="${w}" height="${h}" rx="4" fill="url(#${gradId})" stroke="rgba(255,255,255,0.55)" stroke-width="0.8"/>`
-             + `<text x="${(pl.xR + w/2).toFixed(1)}" y="${(pl.yR + 12).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="800" fill="#fff" style="paint-order:stroke; stroke:rgba(0,0,0,0.4); stroke-width:1.2;">${sign}${Math.abs(hauteur)}m (${alt} m Alt)</text>`;
-    };
 
     // Fill descend jusqu'au bas du SVG (gradient dégressif).
-    // On construit le path directement à partir des points pour éviter les regex.
     const fillPts = s.values.map((v, i) => xs[i].toFixed(1) + ',' + yScale(v).toFixed(1)).join(' L ');
     const fillPathDown = `M ${P},${(H - 2).toFixed(1)} L ${fillPts} L ${(W - P).toFixed(1)},${(H - 2).toFixed(1)} Z`;
 
@@ -6453,10 +6432,6 @@ function renderElevPreview(series, radius) {
                 <line x1="${P}" y1="${yCeil.toFixed(1)}" x2="${W-P}" y2="${yCeil.toFixed(1)}" stroke="#86efac" stroke-width="1.4" stroke-dasharray="5,3" opacity="0.95"/>
                 <rect x="${ceilRect.x}" y="${ceilRect.y.toFixed(1)}" width="${ceilRect.w}" height="${ceilRect.h}" rx="4" fill="rgba(22,163,74,0.95)" stroke="rgba(255,255,255,0.6)" stroke-width="0.8"/>
                 <text x="${(ceilRect.x + ceilRect.w/2).toFixed(1)}" y="${(yCeil + 3).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="800" fill="#fff">${heightMax} m</text>
-                <circle cx="${xMax.toFixed(1)}" cy="${yMax.toFixed(1)}" r="3" fill="#fff" stroke="#0066cc" stroke-width="1.6"/>
-                <circle cx="${xMin.toFixed(1)}" cy="${yMin.toFixed(1)}" r="3" fill="#fff" stroke="#dc2626" stroke-width="1.6"/>
-                ${previewTag(xMax, yMax, s.vMax.toFixed(0), hMax, 'elev-tag-blue', 'top')}
-                ${previewTag(xMin, yMin, s.vMin.toFixed(0), hMin, 'elev-tag-red', 'bottom')}
             </svg>
         </div>
     `;
