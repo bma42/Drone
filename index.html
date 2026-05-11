@@ -6693,19 +6693,18 @@ let _lastRenderedRadius = null;       // pour détecter quand un full re-render 
 let _lastRenderedLat = null, _lastRenderedLon = null;
 let aircraftElongationCircle = null;
 let aircraftRefreshTimer = null;
-let aircraftSearchRadiusKm = 10;       // rayon de recherche par défaut (km)
+// UN SEUL rayon : sert à la fois pour la recherche d'aéronefs ET pour le déclenchement de l'alerte
+let aircraftSearchRadiusKm = 10;       // 10 km par défaut
 try { const v = localStorage.getItem('drone_aircraft_search_radius'); if (v) aircraftSearchRadiusKm = Math.max(5, Math.min(150, parseInt(v, 10) || 10)); } catch (e) {}
-let aircraftAutoRefresh = false;       // rafraîchissement auto désactivé par défaut (l'utilisateur l'active s'il veut)
-let aircraftAlertSound = true;         // alerte sonore activée par défaut
-let aircraftAlertRadiusKm = 10;        // rayon de détection alerte (configurable, 1–50 km)
-function _alertRadiusM() { return aircraftAlertRadiusKm * 1000; }
-// Restaure la préférence rayon
-try { const v = localStorage.getItem('drone_aircraft_alert_radius'); if (v) aircraftAlertRadiusKm = Math.max(1, Math.min(50, parseInt(v, 10) || 5)); } catch (e) {}
+let aircraftAutoRefresh = false;       // auto-refresh DÉSACTIVÉ par défaut
+let aircraftAlertSound = false;        // alerte sonore DÉSACTIVÉE par défaut
+let aircraftRefreshSec = 15;           // intervalle de rafraîchissement (1 / 5 / 10 / 15 s) — 15 s par défaut
+try { const v = localStorage.getItem('drone_aircraft_refresh_sec'); if (v && [1,5,10,15].includes(parseInt(v,10))) aircraftRefreshSec = parseInt(v,10); } catch (e) {}
+function _alertRadiusM() { return aircraftSearchRadiusKm * 1000; }   // alerte = même rayon que la recherche
 const ALERT_REMINDER_MS = 20000;       // re-bipe toutes les 20 s tant qu'un hélico est dans la zone
 const _alertedHexes = new Set();       // hex déjà alertés (immédiat à la 1ʳᵉ détection)
 let _alertReminderTimer = null;
 let _alertAudioEl = null;
-// Restaure la préférence sonore depuis localStorage
 try { const v = localStorage.getItem('drone_aircraft_alert'); if (v !== null) aircraftAlertSound = (v === '1'); } catch (e) {}
 
 // Génère un WAV PCM 16-bit mono ~22 kHz contenant 3 tons d'alerte radar.
@@ -6813,12 +6812,14 @@ function testAircraftAlert() {
     playHeliAlertBeep(true);
 }
 
-// Slider rayon d'alerte
-function setAlertRadius(km) {
-    aircraftAlertRadiusKm = Math.max(1, Math.min(50, parseInt(km, 10) || 5));
-    try { localStorage.setItem('drone_aircraft_alert_radius', String(aircraftAlertRadiusKm)); } catch (e) {}
-    const lbl = document.getElementById('aircraft-alert-radius-num');
-    if (lbl) lbl.innerText = aircraftAlertRadiusKm;
+// Sélecteur d'intervalle de rafraîchissement (1 / 5 / 10 / 15 s)
+function setAircraftRefreshSec(sec) {
+    sec = parseInt(sec, 10);
+    if (![1, 5, 10, 15].includes(sec)) sec = 15;
+    aircraftRefreshSec = sec;
+    try { localStorage.setItem('drone_aircraft_refresh_sec', String(sec)); } catch (e) {}
+    // Si l'auto-refresh tourne, on relance avec le nouvel intervalle
+    if (aircraftAutoRefresh) scheduleAircraftRefresh();
 }
 
 function toggleAircraftAlert(enabled) {
@@ -7028,7 +7029,7 @@ function scheduleAircraftRefresh() {
     if (!aircraftAutoRefresh) return;
     aircraftRefreshTimer = setTimeout(() => {
         if (STATE.lat != null) fetchAircraft(STATE.lat, STATE.lon);
-    }, 1000);
+    }, (aircraftRefreshSec || 15) * 1000);
 }
 
 function toggleAircraftAuto(enabled) {
@@ -7092,29 +7093,25 @@ function renderAircraft(aircraft, lat, lon) {
             <div class="metric"><div class="v">${aircraft.length}</div><div class="k">Total aéronefs</div></div>
         </div>`;
 
+    const refreshOpts = [1, 5, 10, 15].map(s => `<option value="${s}"${s === aircraftRefreshSec ? ' selected' : ''}>${s} s</option>`).join('');
     const radiusControl = `
-        <div class="no-print" style="display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:10px; padding:8px 10px; background:#f4f6fa; border-radius:6px; font-size:12px;">
-            <span style="font-weight:600; white-space:nowrap;">Rayon : <span id="aircraft-radius-num">${aircraftSearchRadiusKm}</span> km</span>
-            <input type="range" min="10" max="150" step="5" value="${aircraftSearchRadiusKm}"
+        <div class="no-print" style="display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; margin-bottom:10px; padding:8px 10px; background:#f4f6fa; border-radius:6px; font-size:12px;">
+            <span style="font-weight:600; white-space:nowrap; display:flex; align-items:center; gap:6px;">Rayon : <strong><span id="aircraft-radius-num">${aircraftSearchRadiusKm}</span> km</strong></span>
+            <input type="range" min="5" max="150" step="5" value="${aircraftSearchRadiusKm}"
                    oninput="setAircraftRadius(this.value)"
                    onchange="if(STATE.lat) fetchAircraft(STATE.lat, STATE.lon)"
-                   style="flex:1; min-width:120px;">
+                   style="flex:1; min-width:120px;" title="Rayon de recherche ET de déclenchement de l'alerte">
+            <label style="display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap; font-weight:600;" title="Beep d'alerte si un hélicoptère OU tout aéronef à moins de 500 m d'altitude entre dans le rayon">
+                <input type="checkbox" id="aircraft-alert-cb" ${aircraftAlertSound ? 'checked' : ''} onchange="toggleAircraftAlert(this.checked)" style="accent-color:#dc2626;"> 🔔 Alerte
+            </label>
             <label style="display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap;">
                 <input type="checkbox" id="aircraft-auto-cb" ${aircraftAutoRefresh ? 'checked' : ''} onchange="toggleAircraftAuto(this.checked)" style="accent-color:var(--c-primary);"> Auto
             </label>
-        </div>
-        <div class="no-print" style="display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:10px; padding:8px 10px; background:#fef3c7; border:1px solid #fcd34d; border-radius:6px; font-size:12px;">
-            <label style="display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap; font-weight:600;" title="Beep d'alerte si un hélicoptère OU tout aéronef à moins de 500 m d'altitude est détecté dans le rayon">
-                <input type="checkbox" id="aircraft-alert-cb" ${aircraftAlertSound ? 'checked' : ''} onchange="toggleAircraftAlert(this.checked)" style="accent-color:#dc2626;"> 🔔 Alerte
+            <label style="display:flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap;">Refresh :
+                <select id="aircraft-refresh-sel" onchange="setAircraftRefreshSec(this.value)" style="font-size:12px; padding:2px 4px; border:1px solid #cdd9ee; border-radius:4px;">${refreshOpts}</select>
             </label>
-            <span style="white-space:nowrap;">rayon : <strong><span id="aircraft-alert-radius-num">${aircraftAlertRadiusKm}</span> km</strong></span>
-            <input type="range" min="1" max="50" step="1" value="${aircraftAlertRadiusKm}"
-                   oninput="setAlertRadius(this.value)"
-                   style="flex:1; min-width:120px;">
             <button type="button" onclick="testAircraftAlert()" title="Tester le son d'alerte (active la préférence si désactivée)"
-                    style="background:#dc2626; color:#fff; border:0; border-radius:6px; padding:4px 11px; font-size:12px; font-weight:700; cursor:pointer;">
-                🔊 Test
-            </button>
+                    style="background:#dc2626; color:#fff; border:0; border-radius:6px; padding:4px 11px; font-size:12px; font-weight:700; cursor:pointer;">🔊 Test</button>
         </div>`;
 
     const rows = _renderAircraftRows(aircraft);
@@ -7127,7 +7124,7 @@ function renderAircraft(aircraft, lat, lon) {
             <thead><tr><th>Type</th><th>Callsign / Modèle</th><th>Altitude</th><th>Vitesse</th><th style="text-align:right;">Distance</th></tr></thead>
             <tbody>${rows}</tbody>
         </table>
-        <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source : <strong>${STATE.aircraftSource || 'ADS-B public'}</strong> (cascade ADSB.lol → airplanes.live → OpenSky) · rafraîchissement 1 s · top 15 affichés. Détection SAMU / Sécurité Civile par callsign (SAMU*, DRAGON*, HEMS*, FAGN*) · hélicoptère par modèle ICAO.</div>
+        <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source : <strong>${STATE.aircraftSource || 'ADS-B public'}</strong> (cascade ADSB.lol → airplanes.live → OpenSky) · ${aircraftAutoRefresh ? 'auto-refresh ' + aircraftRefreshSec + ' s' : 'auto-refresh désactivé'} · top 15 affichés. Détection SAMU / Sécurité Civile par callsign (SAMU*, DRAGON*, HEMS*, FAGN*) · hélicoptère par modèle ICAO. Le rayon sert à la fois à la recherche et au déclenchement de l'alerte.</div>
     `;
 
     setTimeout(() => initAircraftMap(aircraft, lat, lon), 50);
