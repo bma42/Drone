@@ -6051,7 +6051,24 @@ async function fetchElevation(lat, lon, radius) {
         _elevPreviewAxisName = null;  // nouveau jeu de données → l'aperçu §1 re-tirera un axe
         // Garantit un minimum de 2 s d'affichage du loader (animation du drone + tracé fake)
         const wait = Math.max(0, ELEV_LOADER_MIN_MS - (Date.now() - _elevLoaderStart));
-        setTimeout(() => { try { renderElevation(j.elevation, radius); } catch (e) { console.warn(e); } }, wait);
+        setTimeout(() => {
+            try { renderElevation(j.elevation, radius); } catch (e) { console.warn('[renderElevation]', e); }
+            // Filet de sauvetage : si pour une raison quelconque le loader §1 est
+            // encore là (renderElevPreview a échoué), on force son remplacement
+            // pour ne jamais laisser l'utilisateur bloqué sur le loader.
+            setTimeout(() => {
+                const prev = document.getElementById('elev-preview');
+                if (prev && prev.querySelector('.elev-loader')) {
+                    if (STATE.elev && STATE.elev.series) {
+                        try { renderElevPreview(STATE.elev.series, STATE.elev.radius); } catch (e) {
+                            prev.innerHTML = '<div class="empty-state" style="font-size:11px;">Profil chargé — aperçu indisponible.</div>';
+                        }
+                    } else {
+                        prev.innerHTML = '<div class="empty-state" style="font-size:11px;">Profil chargé — aperçu indisponible.</div>';
+                    }
+                }
+            }, 150);
+        }, wait);
         return j;
     } catch (e) {
         const isLimit = String(e.message || e).includes('429');
@@ -6337,7 +6354,8 @@ function renderElevation(elevs, radius) {
     setTimeout(() => initElevSatMap(STATE.lat, STATE.lon, radius, series), 50);
     setStatus('elev', range > 100 ? 'warn' : 'ok', `Δ ${range.toFixed(0)} m`);
     STATE.elev = { min, max, avg, range, center, series, elevs, radius };
-    renderElevPreview(series, radius);
+    // Try/catch pour ne pas bloquer le loader §1 si renderElevPreview throw
+    try { renderElevPreview(series, radius); } catch (e) { console.warn('[renderElevPreview]', e); }
     // Animation tracé des courbes §19 (déclenchée après insertion DOM)
     setTimeout(() => _animateElevPaths(document.getElementById('elev-body'), 1500), 30);
 }
@@ -6408,7 +6426,9 @@ function renderElevPreview(series, radius) {
     };
 
     // Fill descend jusqu'au bas du SVG (gradient dégressif)
-    const fillPathDown = `M ${P},${H - 2} L ${path.replace(/^M /, '')} L ${(W-P).toFixed(1)},${(H - 2).toFixed(1)} Z`;
+    // Le path commence par 'M' (sans espace). On le remplace par 'L' pour le raccorder
+    // au coin bas-gauche de la zone de fill (sinon SVG crée deux sub-paths invalides).
+    const fillPathDown = `M ${P},${H - 2} ${path.replace(/^M/, 'L')} L ${(W-P).toFixed(1)},${(H - 2).toFixed(1)} Z`;
 
     el.innerHTML = `
         <div style="background:linear-gradient(135deg,#0b3d91 0%,#082f70 50%,#1a8754 100%); border-radius:8px; padding:8px 10px 6px; box-shadow:0 1px 6px rgba(0,0,0,0.18);">
