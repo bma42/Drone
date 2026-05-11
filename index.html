@@ -136,6 +136,20 @@
         .map-loader-label { color: rgba(255,255,255,0.92); font-size: 11px; font-weight: 600; margin-top: 12px; letter-spacing: .8px; text-transform: uppercase; }
         .map-loader-out { animation: map-loader-out .28s ease-in forwards; }
         @keyframes drone-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.92); } }
+        /* Verrou d'interaction des cartes : couche transparente qui capture le 1er clic */
+        .map-interact-lock {
+            position: absolute; inset: 0; z-index: 6; cursor: pointer;
+            background: rgba(11,61,145,0.14); border-radius: inherit;
+            display: flex; align-items: flex-end; justify-content: center;
+            padding-bottom: 14px; transition: opacity .25s;
+        }
+        .map-interact-lock span {
+            background: rgba(11,61,145,0.92); color: #fff;
+            padding: 7px 15px; border-radius: 20px; pointer-events: none;
+            font-size: 12px; font-weight: 700; letter-spacing: .3px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        @media print { .map-interact-lock { display: none !important; } }
         /* Loader spécifique aux modules altimétriques (§1 preview & §19 cartes) */
         .elev-loader {
             background: linear-gradient(135deg, #0b3d91 0%, #082f70 45%, #1a8754 100%);
@@ -4215,6 +4229,40 @@ function initIghMap(items, allFeatures, lat, lon) {
     ighMap.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
     ighMap.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 100 }), 'bottom-left');
     try { ighMap.addControl(new maplibregl.FullscreenControl(), 'top-right'); } catch (e) {}
+
+    // --- Verrou d'interaction : bloque pan/zoom/rotation tant qu'on n'a pas touché la carte
+    //     (évite de décentrer la vue 3D en scrollant la page) ---
+    const _IGH_HANDLERS = ['scrollZoom', 'dragPan', 'dragRotate', 'touchZoomRotate', 'doubleClickZoom', 'keyboard', 'touchPitch'];
+    function _setIghLocked(locked) {
+        _IGH_HANDLERS.forEach(h => {
+            const hd = ighMap && ighMap[h];
+            if (hd) { try { locked ? hd.disable() : hd.enable(); } catch (e) {} }
+        });
+        const ov = el.querySelector(':scope > .map-interact-lock');
+        if (ov) {
+            ov.style.opacity = locked ? '1' : '0';
+            ov.style.pointerEvents = locked ? 'auto' : 'none';
+        }
+    }
+    el.style.position = 'relative';
+    let lockOv = el.querySelector(':scope > .map-interact-lock');
+    if (!lockOv) {
+        lockOv = document.createElement('div');
+        lockOv.className = 'map-interact-lock no-print';
+        lockOv.innerHTML = '<span>👆 Touchez la carte pour interagir</span>';
+        el.appendChild(lockOv);
+        lockOv.addEventListener('click', () => _setIghLocked(false));
+        lockOv.addEventListener('touchstart', () => _setIghLocked(false), { passive: true });
+    }
+    _setIghLocked(true);
+    // Clic ailleurs sur la page → re-verrouille la carte (anti-scroll accidentel)
+    if (window._ighOutsideClickHandler) document.removeEventListener('pointerdown', window._ighOutsideClickHandler, true);
+    window._ighOutsideClickHandler = (e) => {
+        if (!document.body.contains(el)) { document.removeEventListener('pointerdown', window._ighOutsideClickHandler, true); return; }
+        const ov = el.querySelector(':scope > .map-interact-lock');
+        if (ov && ov.style.pointerEvents === 'none' && !el.contains(e.target)) _setIghLocked(true);
+    };
+    document.addEventListener('pointerdown', window._ighOutsideClickHandler, true);
 
     ighMap.on('load', () => {
         if (!ighMap) return;
