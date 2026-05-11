@@ -5810,13 +5810,28 @@ function _fmtWindCompact(dir, kts, gustKts) {
 }
 
 // ---- Source NOAA ----
+// Fetch JSON avec fallback proxy CORS si l'accès direct échoue (réseau filtrant / pas de CORS).
+async function _fetchJsonCorsTolerant(url, timeoutMs) {
+    timeoutMs = timeoutMs || 12000;
+    // 1. Accès direct
+    try {
+        const r = await fetchWithTimeout(url, { headers: { 'Accept': 'application/json' } }, timeoutMs);
+        if (r.ok) return await r.json();
+        throw new Error('HTTP ' + r.status);
+    } catch (e) {
+        // 2. Via proxy CORS public (allorigins) — relaie la réponse avec les bons en-têtes
+        const proxied = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+        const r2 = await fetchWithTimeout(proxied, { headers: { 'Accept': 'application/json' } }, timeoutMs + 4000);
+        if (!r2.ok) throw new Error('proxy HTTP ' + r2.status);
+        return await r2.json();
+    }
+}
+
 async function _fetchMetarTafNoaa(lat, lon) {
     const dLat = 110 / 111;
     const dLon = 110 / (111 * Math.cos(lat * Math.PI / 180));
     const bbox = `${(lat - dLat).toFixed(3)},${(lon - dLon).toFixed(3)},${(lat + dLat).toFixed(3)},${(lon + dLon).toFixed(3)}`;
-    const rM = await fetchWithTimeout(`https://aviationweather.gov/api/data/metar?bbox=${bbox}&format=json`, {}, 12000);
-    if (!rM.ok) throw new Error('NOAA metar HTTP ' + rM.status);
-    let metars = await rM.json();
+    let metars = await _fetchJsonCorsTolerant(`https://aviationweather.gov/api/data/metar?bbox=${bbox}&format=json`, 12000);
     if (!Array.isArray(metars)) metars = [];
     metars = metars.filter(m => m && typeof m.lat === 'number' && typeof m.lon === 'number' && /^[A-Z0-9]{4}$/.test(m.icaoId || ''));
     if (metars.length === 0) return [];
@@ -5825,8 +5840,8 @@ async function _fetchMetarTafNoaa(lat, lon) {
     const ids = near.map(m => m.icaoId).join(',');
     let tafs = [];
     try {
-        const rT = await fetchWithTimeout(`https://aviationweather.gov/api/data/taf?ids=${ids}&format=json`, {}, 12000);
-        if (rT.ok) { const j = await rT.json(); if (Array.isArray(j)) tafs = j; }
+        const j = await _fetchJsonCorsTolerant(`https://aviationweather.gov/api/data/taf?ids=${encodeURIComponent(ids)}&format=json`, 12000);
+        if (Array.isArray(j)) tafs = j;
     } catch (e) { /* TAF optionnel */ }
     const tafById = new Map(tafs.map(t => [t.icaoId, t]));
     return near.map(m => _normalizeNoaaStation(m, tafById.get(m.icaoId)));
