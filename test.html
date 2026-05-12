@@ -42,8 +42,33 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 let selectedPoints = [];
 let polyline = null;
+let firstStreetName = null;
 
-let timer = null;
+async function fetchIntersections(lat, lon) {
+
+    const query = `
+[out:json][timeout:10];
+way(around:80,${lat},${lon})["highway"]["name"];
+out tags;
+`;
+
+    const res = await fetch("https://overpass-api.de/api/interpreter", {
+        method: "POST",
+        body: query
+    });
+
+    const data = await res.json();
+
+    const names = new Set();
+
+    data.elements.forEach(el => {
+        if (el.tags && el.tags.name) {
+            names.add(el.tags.name);
+        }
+    });
+
+    return Array.from(names);
+}
 
 input.addEventListener("input", () => {
 
@@ -85,7 +110,7 @@ input.addEventListener("input", () => {
 
                 (p.city ? " - " + p.city : "");
 
-            div.onclick = () => {
+            div.onclick = async () => {
 
                 input.value = p.name || "";
                 results.innerHTML = "";
@@ -101,6 +126,29 @@ input.addEventListener("input", () => {
 
                     map.setView([lat, lon], 15);
 
+                    if (selectedPoints.length === 1) {
+
+                        firstStreetName = p.name || "";
+
+                        const intersections = await fetchIntersections(lat, lon);
+
+                        results.innerHTML = "";
+
+                        intersections.forEach(name => {
+
+                            const div2 = document.createElement("div");
+                            div2.className = "item";
+                            div2.textContent = name;
+
+                            div2.onclick = () => {
+                                input.value = name;
+                                results.innerHTML = "";
+                            };
+
+                            results.appendChild(div2);
+                        });
+                    }
+
                     if (selectedPoints.length === 2) {
 
                         if (polyline) {
@@ -110,6 +158,7 @@ input.addEventListener("input", () => {
                         polyline = L.polyline(selectedPoints, {color: 'blue'}).addTo(map);
 
                         selectedPoints = [];
+                        firstStreetName = null;
                     }
                 }
 
