@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Étude de faisabilité — Mission drone</title>
+    <title>Drone mission</title>
 
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700&display=swap" rel="stylesheet">
@@ -195,6 +195,8 @@
             .maplibregl-ctrl-top-left, .maplibregl-ctrl-top-right,
             .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right { opacity: 1 !important; }
             .map-loader { display: none !important; }
+            /* Exclus de l'archivage PDF : module §18 Trafic aérien LIVE, radar météo §4 */
+            .module-no-export, .radar-no-export { display: none !important; }
         }
         @media print { .drone-logo, .drone-logo .prop { animation: none !important; transform: none !important; } }
         @keyframes fastfly-pulse {
@@ -280,27 +282,30 @@
 
         /* document header (visible in PDF) */
         .doc-header {
-            background: #fff; border-radius: var(--radius); padding: 20px 28px;
-            box-shadow: var(--shadow-sm); border: 1px solid var(--c-border);
+            background: linear-gradient(135deg, #0b3d91 0%, #082f70 45%, #1a8754 100%);
+            color: #fff;
+            -webkit-print-color-adjust: exact; print-color-adjust: exact;
+            border-radius: var(--radius); padding: 20px 28px;
+            box-shadow: var(--shadow-sm);
             margin-bottom: 18px;
             display: grid; grid-template-columns: auto 1fr auto; gap: 18px; align-items: center;
         }
         .doc-header-emblem {
             width: 56px; height: 56px; border-radius: 50%;
-            background: var(--c-primary); color: #fff;
+            background: rgba(255,255,255,0.16); color: #fff;
             display: flex; align-items: center; justify-content: center;
         }
         .doc-header-emblem svg { width: 32px; height: 32px; }
         .doc-header-title h1 {
-            margin: 0; font-size: 20px; font-weight: 700; color: var(--c-primary);
+            margin: 0; font-size: 20px; font-weight: 700; color: #fff;
             letter-spacing: .3px; text-transform: uppercase;
         }
         .doc-header-title .sub {
-            margin: 3px 0 0; font-size: 12px; color: var(--c-muted); font-weight: 500;
+            margin: 3px 0 0; font-size: 12px; color: rgba(255,255,255,0.8); font-weight: 500;
             letter-spacing: 1.2px; text-transform: uppercase;
         }
-        .doc-header-meta { text-align: right; font-size: 11px; color: var(--c-muted); line-height: 1.5; }
-        .doc-header-meta strong { color: var(--c-text); display: block; font-size: 13px; }
+        .doc-header-meta { text-align: right; font-size: 11px; color: rgba(255,255,255,0.82); line-height: 1.5; }
+        .doc-header-meta strong { color: #fff; display: block; font-size: 13px; }
 
         /* ---------- Cards / sections ---------- */
         .card {
@@ -867,7 +872,7 @@
             const headerName = document.getElementById('doc-redac-name');
             if (headerName) {
                 headerName.textContent = info.name;
-                headerName.style.color = 'var(--c-text)';
+                headerName.style.color = '#fff';
                 headerName.style.fontWeight = '700';
             }
         }
@@ -1072,7 +1077,7 @@
                 <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/>
             </svg>
             <div>
-                <span class="topbar-brand-text">Étude de faisabilité&nbsp;·&nbsp;Mission drone</span>
+                <span class="topbar-brand-text">Drone mission</span>
                 <div class="topbar-brand-sub">Génération automatisée de dossier opérationnel</div>
             </div>
         </div>
@@ -1141,15 +1146,15 @@
                 </svg>
             </div>
             <div class="doc-header-title">
-                <h1>Préparation de mission drone</h1>
+                <h1>Drone mission</h1>
                 <p class="sub">Étude de faisabilité opérationnelle</p>
-                <p style="margin:8px 0 0; font-size:16px; color:var(--c-danger); font-weight:800; letter-spacing:1.5px; text-transform:uppercase;">⚠ Diffusion restreinte</p>
-                <p id="doc-mission-name" style="margin:6px 0 0; font-size:14px; color:var(--c-text); font-weight:600;"></p>
+                <p style="margin:8px 0 0; font-size:14px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase;"><span style="background:#dc2626; color:#fff; padding:2px 9px; border-radius:6px;">⚠ Diffusion restreinte</span></p>
+                <p id="doc-mission-name" style="margin:6px 0 0; font-size:14px; color:#fff; font-weight:600;"></p>
             </div>
             <div class="doc-header-meta">
                 <strong id="doc-ref">BMA42-—</strong>
                 <span id="doc-date-disp">—</span>
-                <div id="doc-redac" style="margin-top:4px; font-weight:600; color:var(--c-text);">Rédigé par&nbsp;: <span id="doc-redac-name" style="color:var(--c-muted); font-weight:500;">—</span></div>
+                <div id="doc-redac" style="margin-top:4px; font-weight:600; color:rgba(255,255,255,0.92);">Rédigé par&nbsp;: <span id="doc-redac-name" style="color:rgba(255,255,255,0.75); font-weight:500;">—</span></div>
             </div>
         </div>
 
@@ -1748,8 +1753,8 @@
             </div>
         </section>
 
-        <!-- §18 Trafic aérien LIVE (ADSB.lol) -->
-        <section class="card">
+        <!-- §18 Trafic aérien LIVE (ADSB.lol) — exclu de l'export PDF -->
+        <section class="card module-no-export">
             <div class="card-head">
                 <div class="card-num" style="background:#dc2626;">18</div>
                 <div class="card-title">Trafic aérien LIVE — Hélicoptères &amp; basse altitude<span class="sub">ADSB.lol · ADS-B + MLAT temps réel · accent SAMU / Sécurité Civile (Dragon) · rayon configurable</span></div>
@@ -1905,7 +1910,7 @@
                         <li><strong style="color:var(--c-text);">Sylvain MOTTER</strong></li>
                         <li>Brigadier-Chef</li>
                         <li style="margin-top:6px; color:var(--c-muted);">Outil interne d'aide à la décision opérationnelle</li>
-                        <li style="color:var(--c-muted);">Étude de faisabilité — Mission drone</li>
+                        <li style="color:var(--c-muted);">Drone mission</li>
                     </ul>
                 </div>
             </div>
@@ -2091,7 +2096,7 @@ else _initCardsCollapse();
         document.head.appendChild(appleLink);
         // Manifest PWA (Android Chrome)
         const manifest = {
-            name: "Étude de faisabilité — Mission drone",
+            name: "Drone mission",
             short_name: "Drone",
             display: "standalone",
             start_url: location.pathname,
@@ -2199,18 +2204,18 @@ STATE.layers.heliports = L.layerGroup().addTo(map);
 STATE.layers.towers    = L.layerGroup().addTo(map);
 STATE.layers.lines     = L.layerGroup().addTo(map);
 STATE.layers.buildings = L.layerGroup().addTo(map);
-STATE.layers.wind      = L.layerGroup().addTo(map);
 STATE.layers.roads     = L.layerGroup().addTo(map);
 STATE.layers.elevAxis  = L.layerGroup().addTo(map);
+STATE.layers.captation = L.layerGroup();   // zone de captation de l'arrêté préfectoral (off par défaut)
 
 L.control.layers(null, {
     "Aérodromes / héliports": STATE.layers.heliports,
     "Antennes / mâts": STATE.layers.towers,
     "Lignes HT": STATE.layers.lines,
-    "Éoliennes": STATE.layers.wind,
     "Bâtiments hauts": STATE.layers.buildings,
     "Autoroutes / RN": STATE.layers.roads,
     "Coupe altimétrique": STATE.layers.elevAxis,
+    "Zone de captation (arrêté préf.)": STATE.layers.captation,
 }, { collapsed: true }).addTo(map);
 
 // Bouton plein écran pour la carte (toggle natif Fullscreen API)
@@ -2554,11 +2559,11 @@ function updateRedacteur() {
     if (nameEl) {
         if (name) {
             nameEl.textContent = name;
-            nameEl.style.color = 'var(--c-text)';
+            nameEl.style.color = '#fff';
             nameEl.style.fontWeight = '700';
         } else {
             nameEl.textContent = '—';
-            nameEl.style.color = 'var(--c-muted)';
+            nameEl.style.color = 'rgba(255,255,255,0.75)';
             nameEl.style.fontWeight = '500';
         }
     }
@@ -2723,6 +2728,7 @@ function showFastFlyProgress() {
         { key: 'zicad',    label: 'ZICAD' },
         { key: 'airspace', label: 'Espaces aériens' },
         { key: 'metar',    label: 'METAR/TAF' },
+        { key: 'aircraft', label: 'Trafic aérien' },
         { key: 'elev',     label: 'Altimétrie' },
         { key: 'kp',       label: 'Kp' }
     ];
@@ -2829,7 +2835,7 @@ function selectAddr(label, lat, lon, dept) {
         showMapLoader(_mapEl, 'Chargement de la zone');
         setTimeout(() => hideMapLoader(_mapEl), 900);
     }
-    map.setView([lat, lon], 14);
+    map.setView([lat, lon], 13);   // léger dézoom pour englober les repères cardinaux N/S/E/O
     marker.setLatLng([lat, lon]);
     rangeCircle.setLatLng([lat, lon]);
     if (satMarker) satMarker.setLatLng([lat, lon]);
@@ -3111,8 +3117,8 @@ function renderWeather(j, dateISO) {
 
         <div style="font-size:11px; color:var(--c-muted); margin-top:8px;">Pression moyenne sur la fenêtre&nbsp;: <strong>${press.toFixed(0)} hPa</strong> · humidité&nbsp;: <strong>${rh}%</strong>.</div>
 
-        <!-- Radar pluie LIVE (RainViewer) -->
-        <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--c-border);">
+        <!-- Radar pluie LIVE (RainViewer) — exclu de l'export PDF -->
+        <div class="radar-no-export" style="margin-top:18px; padding-top:14px; border-top:1px solid var(--c-border);">
             <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
                 <div style="font-weight:600; font-size:13px;">🌧 Radar pluie temps réel</div>
                 <div class="no-print" style="display:flex; align-items:center; gap:8px; margin-left:auto;">
@@ -8294,13 +8300,34 @@ async function waitMapReady() {
     });
 }
 
+// Renumérote les cartes visibles pour le PDF (saute les modules exclus : .module-no-export)
+function _renumberCardsForPrint() {
+    let n = 1;
+    document.querySelectorAll('section.card').forEach(card => {
+        const numEl = card.querySelector('.card-num');
+        if (!numEl) return;
+        if (card.classList.contains('module-no-export')) return;   // exclu du PDF → pas de numéro
+        if (numEl.dataset.origNum == null) numEl.dataset.origNum = numEl.textContent;
+        numEl.textContent = String(n++);
+    });
+}
+function _restoreCardNumbers() {
+    document.querySelectorAll('section.card .card-num[data-orig-num]').forEach(el => {
+        el.textContent = el.dataset.origNum;
+        delete el.dataset.origNum;
+    });
+}
+window.addEventListener('beforeprint', _renumberCardsForPrint);
+window.addEventListener('afterprint', _restoreCardNumbers);
+
 // Impression / sauvegarde PDF native du navigateur — pagination correcte, pas de coupure
 function exportPDF() {
     waitMapReady().then(() => {
         document.title = pdfFilename();
+        _renumberCardsForPrint();   // backup si beforeprint ne se déclenche pas (Safari iOS)
         setTimeout(() => {
             window.print();
-            setTimeout(() => { document.title = 'Étude de faisabilité — Mission drone'; }, 1500);
+            setTimeout(() => { document.title = 'Drone mission'; _restoreCardNumbers(); }, 1500);
         }, 200);
     });
 }
