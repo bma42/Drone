@@ -2559,16 +2559,24 @@ function searchCaptationStreet(q) {
     }, 250);
 }
 
+// Récupère TOUTES les ways d'une rue nommée dans un large rayon (pour avoir la rue entière,
+// pas juste le tronçon proche d'un point → indispensable pour trouver toutes ses intersections).
+async function _fetchFullStreet(name, lat, lon) {
+    const esc = name.replace(/"/g, '\\"');
+    const elems = await _overpass(`[out:json][timeout:25];way["highway"]["name"="${esc}"](around:3000,${lat},${lon});out geom;`);
+    const ways = elems.filter(e => e.type === 'way' && Array.isArray(e.geometry) && Array.isArray(e.nodes)).map(e => ({ id: e.id, nodes: e.nodes, geometry: e.geometry }));
+    if (ways.length === 0) return null;
+    const nodeSet = new Set(); ways.forEach(w => w.nodes.forEach(n => nodeSet.add(n)));
+    return { name, ways, nodeSet };
+}
+
 async function addCaptationFirstStreet(name, lat, lon, city) {
     const inp = document.getElementById('captation-street-input'); if (inp) inp.value = '';
     _setCaptationList('<div style="padding:6px 9px; font-size:12px; color:var(--c-muted);">⏳ Récupération de la rue dans OSM…</div>');
     try {
-        const esc = name.replace(/"/g, '\\"');
-        const elems = await _overpass(`[out:json][timeout:25];way["highway"]["name"="${esc}"](around:500,${lat},${lon});out geom;`);
-        const ways = elems.filter(e => e.type === 'way' && Array.isArray(e.geometry) && Array.isArray(e.nodes)).map(e => ({ id: e.id, nodes: e.nodes, geometry: e.geometry }));
-        if (ways.length === 0) { _setCaptationList('<div style="padding:6px 9px; font-size:12px; color:var(--c-danger);">Rue introuvable dans OSM autour de ce point.</div>'); return; }
-        const nodeSet = new Set(); ways.forEach(w => w.nodes.forEach(n => nodeSet.add(n)));
-        _captationChain = [{ name, ways, nodeSet }];
+        const street = await _fetchFullStreet(name, lat, lon);
+        if (!street) { _setCaptationList('<div style="padding:6px 9px; font-size:12px; color:var(--c-danger);">Rue introuvable dans OSM autour de ce point.</div>'); return; }
+        _captationChain = [street];
         _captationClosed = false;
         STATE.captation.polygon = null;
         _renderCaptationChain();
@@ -2583,6 +2591,8 @@ async function _showIntersectingStreets() {
     const cur = chain[chain.length - 1];
     const wayIds = cur.ways.map(w => w.id).join(',');
     try {
+        // Toutes les ways highway+name qui partagent un noeud avec UN DES tronçons de la rue courante
+        // (donc des deux côtés / sur toute sa longueur, puisque cur.ways = la rue entière)
         const elems = await _overpass(`[out:json][timeout:25];way(id:${wayIds})->.c;node(w.c)->.cn;way(bn.cn)["highway"]["name"];out geom;`);
         const byName = {};
         elems.filter(e => e.type === 'way' && Array.isArray(e.geometry) && Array.isArray(e.nodes) && e.tags && e.tags.name).forEach(w => {
@@ -2611,7 +2621,7 @@ async function _showIntersectingStreets() {
     } catch (e) { console.warn('[captation intersect]', e); _setCaptationList('<div style="padding:6px 9px; font-size:12px; color:var(--c-danger);">Overpass indisponible — <a href="#" onclick="_showIntersectingStreets();return false;">réessayer</a></div>'); }
 }
 
-function pickCaptationStreet(name) {
+async function pickCaptationStreet(name) {
     const cand = _captationCandidates[name];
     if (!cand) return;
     const isClosing = _captationChain.length >= 3 && name === _captationChain[0].name;
@@ -2622,7 +2632,18 @@ function pickCaptationStreet(name) {
         _setCaptationList('<div style="padding:6px 9px; font-size:12px; color:#15803d; font-weight:600;">✓ Polygone bouclé sur ' + name + ' — cliquez « Valider le polygone ».</div>');
         return;
     }
-    _captationChain.push({ name, ways: cand.ways, nodeSet: cand.nodeSet });
+    // Re-charge la rue COMPLÈTE (toutes ses ways) près du point d'intersection → ses propres
+    // intersections seront ensuite trouvées des deux côtés / sur toute sa longueur.
+    const interPt = _nodeLatLng({ ways: cand.ways }, cand.intersectionNode);
+    _setCaptationList('<div style="padding:6px 9px; font-size:12px; color:var(--c-muted);">⏳ Chargement complet de ' + name + '…</div>');
+    let street = null;
+    try { if (interPt) street = await _fetchFullStreet(name, interPt[0], interPt[1]); } catch (e) {}
+    if (!street) street = { name, ways: cand.ways, nodeSet: cand.nodeSet };  // fallback : version partielle
+    // Garde-fou : le noeud d'intersection doit être dans la rue chargée
+    if (!street.nodeSet.has(cand.intersectionNode)) {
+        cand.ways.forEach(w => { if (w.nodes.includes(cand.intersectionNode)) { street.ways.push(w); w.nodes.forEach(n => street.nodeSet.add(n)); } });
+    }
+    _captationChain.push(street);
     _captationClosed = false;
     _renderCaptationChain();
     _redrawCaptationPolygon();
