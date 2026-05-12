@@ -61,8 +61,9 @@
         /* ---------- Top bar ---------- */
         .topbar {
             position: sticky; top: 12px; z-index: 2000;
-            background: linear-gradient(180deg, #0b3d91 0%, #082f70 100%);
+            background: linear-gradient(135deg, #0b3d91 0%, #082f70 45%, #1a8754 100%);
             color: #fff;
+            -webkit-print-color-adjust: exact; print-color-adjust: exact;
             border-radius: var(--radius);
             padding: 12px 16px;
             display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
@@ -2436,6 +2437,7 @@ function initCaptationMap() {
     const el = document.getElementById('captation-map');
     if (!el) return;
     if (captationMap) { try { captationMap.invalidateSize(); } catch (e) {} return; }   // déjà créée
+    if (typeof showMapLoader === 'function') showMapLoader(el, 'Carte plan · zone de captation');
     const c = (STATE.lat != null) ? [STATE.lat, STATE.lon] : [46.6, 2.4];
     captationMap = L.map(el, { scrollWheelZoom: false }).setView(c, STATE.lat != null ? 14 : 6);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', subdomains: 'abcd', maxZoom: 19, crossOrigin: true }).addTo(captationMap);
@@ -2451,6 +2453,11 @@ function initCaptationMap() {
 // Recentre la carte captation sur le point de mission quand une adresse est choisie en §1
 function recenterCaptationMap() {
     if (!captationMap || STATE.lat == null) return;
+    const el = document.getElementById('captation-map');
+    if (el && typeof showMapLoader === 'function') {
+        showMapLoader(el, 'Carte plan · zone de captation');
+        setTimeout(() => hideMapLoader(el), 900);
+    }
     captationMap.setView([STATE.lat, STATE.lon], 14);
 }
 
