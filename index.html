@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Étude de faisabilité — Mission drone</title>
+    <title>Drone mission</title>
 
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700&display=swap" rel="stylesheet">
@@ -195,6 +195,8 @@
             .maplibregl-ctrl-top-left, .maplibregl-ctrl-top-right,
             .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right { opacity: 1 !important; }
             .map-loader { display: none !important; }
+            /* Exclus de l'archivage PDF : module §18 Trafic aérien LIVE, radar météo §4 */
+            .module-no-export, .radar-no-export { display: none !important; }
         }
         @media print { .drone-logo, .drone-logo .prop { animation: none !important; transform: none !important; } }
         @keyframes fastfly-pulse {
@@ -280,27 +282,30 @@
 
         /* document header (visible in PDF) */
         .doc-header {
-            background: #fff; border-radius: var(--radius); padding: 20px 28px;
-            box-shadow: var(--shadow-sm); border: 1px solid var(--c-border);
+            background: linear-gradient(135deg, #0b3d91 0%, #082f70 45%, #1a8754 100%);
+            color: #fff;
+            -webkit-print-color-adjust: exact; print-color-adjust: exact;
+            border-radius: var(--radius); padding: 20px 28px;
+            box-shadow: var(--shadow-sm);
             margin-bottom: 18px;
             display: grid; grid-template-columns: auto 1fr auto; gap: 18px; align-items: center;
         }
         .doc-header-emblem {
             width: 56px; height: 56px; border-radius: 50%;
-            background: var(--c-primary); color: #fff;
+            background: rgba(255,255,255,0.16); color: #fff;
             display: flex; align-items: center; justify-content: center;
         }
         .doc-header-emblem svg { width: 32px; height: 32px; }
         .doc-header-title h1 {
-            margin: 0; font-size: 20px; font-weight: 700; color: var(--c-primary);
+            margin: 0; font-size: 20px; font-weight: 700; color: #fff;
             letter-spacing: .3px; text-transform: uppercase;
         }
         .doc-header-title .sub {
-            margin: 3px 0 0; font-size: 12px; color: var(--c-muted); font-weight: 500;
+            margin: 3px 0 0; font-size: 12px; color: rgba(255,255,255,0.8); font-weight: 500;
             letter-spacing: 1.2px; text-transform: uppercase;
         }
-        .doc-header-meta { text-align: right; font-size: 11px; color: var(--c-muted); line-height: 1.5; }
-        .doc-header-meta strong { color: var(--c-text); display: block; font-size: 13px; }
+        .doc-header-meta { text-align: right; font-size: 11px; color: rgba(255,255,255,0.82); line-height: 1.5; }
+        .doc-header-meta strong { color: #fff; display: block; font-size: 13px; }
 
         /* ---------- Cards / sections ---------- */
         .card {
@@ -867,7 +872,7 @@
             const headerName = document.getElementById('doc-redac-name');
             if (headerName) {
                 headerName.textContent = info.name;
-                headerName.style.color = 'var(--c-text)';
+                headerName.style.color = '#fff';
                 headerName.style.fontWeight = '700';
             }
         }
@@ -1072,7 +1077,7 @@
                 <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/>
             </svg>
             <div>
-                <span class="topbar-brand-text">Étude de faisabilité&nbsp;·&nbsp;Mission drone</span>
+                <span class="topbar-brand-text">Drone mission</span>
                 <div class="topbar-brand-sub">Génération automatisée de dossier opérationnel</div>
             </div>
         </div>
@@ -1141,15 +1146,15 @@
                 </svg>
             </div>
             <div class="doc-header-title">
-                <h1>Préparation de mission drone</h1>
+                <h1>Drone mission</h1>
                 <p class="sub">Étude de faisabilité opérationnelle</p>
-                <p style="margin:8px 0 0; font-size:16px; color:var(--c-danger); font-weight:800; letter-spacing:1.5px; text-transform:uppercase;">⚠ Diffusion restreinte</p>
-                <p id="doc-mission-name" style="margin:6px 0 0; font-size:14px; color:var(--c-text); font-weight:600;"></p>
+                <p style="margin:8px 0 0; font-size:14px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase;"><span style="background:#dc2626; color:#fff; padding:2px 9px; border-radius:6px;">⚠ Diffusion restreinte</span></p>
+                <p id="doc-mission-name" style="margin:6px 0 0; font-size:14px; color:#fff; font-weight:600;"></p>
             </div>
             <div class="doc-header-meta">
                 <strong id="doc-ref">BMA42-—</strong>
                 <span id="doc-date-disp">—</span>
-                <div id="doc-redac" style="margin-top:4px; font-weight:600; color:var(--c-text);">Rédigé par&nbsp;: <span id="doc-redac-name" style="color:var(--c-muted); font-weight:500;">—</span></div>
+                <div id="doc-redac" style="margin-top:4px; font-weight:600; color:rgba(255,255,255,0.92);">Rédigé par&nbsp;: <span id="doc-redac-name" style="color:rgba(255,255,255,0.75); font-weight:500;">—</span></div>
             </div>
         </div>
 
@@ -1400,6 +1405,29 @@
                         <input type="text" placeholder="Numéro de l'arrêté…">
                         <input type="date" id="arrete-pref-date">
                     </div>
+                </div>
+                <div id="captation-box" style="display:none;" class="field-group">
+                    <label class="lbl">Zone de captation autorisée (arrêté préfectoral)</label>
+                    <div class="no-print" style="display:flex; gap:14px; margin-bottom:8px; font-size:12px;">
+                        <label style="cursor:pointer;"><input type="radio" name="captation-mode" value="cercle" checked onchange="setCaptationMode('cercle')" style="accent-color:var(--c-primary);"> Cercle (point + périmètre)</label>
+                        <label style="cursor:pointer;"><input type="radio" name="captation-mode" value="polygone" onchange="setCaptationMode('polygone')" style="accent-color:var(--c-primary);"> Polygone de rues</label>
+                    </div>
+                    <div id="captation-circle-controls" class="no-print" style="display:flex; align-items:center; gap:10px; margin-bottom:8px; font-size:12px; flex-wrap:wrap;">
+                        <span style="white-space:nowrap;">Périmètre : <strong><span id="captation-radius-num">500</span> m</strong></span>
+                        <input type="range" id="captation-radius" min="50" max="5000" step="50" value="500" oninput="setCaptationRadius(this.value)" style="flex:1; min-width:140px;">
+                        <button type="button" onclick="clearCaptation()" style="background:#fef3c7; color:#92400e; border:1px solid #fcd34d; border-radius:5px; padding:4px 10px; font-size:12px; font-weight:600; cursor:pointer;">Effacer</button>
+                    </div>
+                    <div id="captation-polygon-controls" class="no-print" style="display:none; margin-bottom:8px;">
+                        <input type="text" id="captation-street-input" placeholder="Saisir la première rue (autocomplétion)…" autocomplete="off" oninput="searchCaptationStreet(this.value)" style="font-size:13px;">
+                        <div id="captation-street-list" style="margin-top:4px;"></div>
+                        <div id="captation-polygon-chain" style="margin-top:6px; font-size:11px; color:var(--c-text-soft);"></div>
+                        <div style="display:flex; gap:8px; margin-top:8px;">
+                            <button type="button" onclick="validateCaptationPolygon()" style="flex:1; background:#dcfce7; color:#15803d; border:1px solid #86efac; border-radius:5px; padding:6px 10px; font-size:12px; font-weight:700; cursor:pointer;">✓ Valider le polygone</button>
+                            <button type="button" onclick="clearCaptation()" style="flex:1; background:#fef3c7; color:#92400e; border:1px solid #fcd34d; border-radius:5px; padding:6px 10px; font-size:12px; font-weight:600; cursor:pointer;">Effacer</button>
+                        </div>
+                    </div>
+                    <div id="captation-map" style="height:300px; width:100%; border-radius:6px; border:1px solid var(--c-border); overflow:hidden; cursor:crosshair;"></div>
+                    <div class="hint" id="captation-hint" style="margin-top:4px;">Cliquez sur la carte pour placer le centre de la zone de captation, puis ajustez le périmètre.</div>
                 </div>
                 <div id="finalite-box" style="display:none;" class="field-group">
                     <label class="lbl">Finalité(s) de la mission (cadre administratif)</label>
@@ -1748,8 +1776,8 @@
             </div>
         </section>
 
-        <!-- §18 Trafic aérien LIVE (ADSB.lol) -->
-        <section class="card">
+        <!-- §18 Trafic aérien LIVE (ADSB.lol) — exclu de l'export PDF -->
+        <section class="card module-no-export">
             <div class="card-head">
                 <div class="card-num" style="background:#dc2626;">18</div>
                 <div class="card-title">Trafic aérien LIVE — Hélicoptères &amp; basse altitude<span class="sub">ADSB.lol · ADS-B + MLAT temps réel · accent SAMU / Sécurité Civile (Dragon) · rayon configurable</span></div>
@@ -1905,7 +1933,7 @@
                         <li><strong style="color:var(--c-text);">Sylvain MOTTER</strong></li>
                         <li>Brigadier-Chef</li>
                         <li style="margin-top:6px; color:var(--c-muted);">Outil interne d'aide à la décision opérationnelle</li>
-                        <li style="color:var(--c-muted);">Étude de faisabilité — Mission drone</li>
+                        <li style="color:var(--c-muted);">Drone mission</li>
                     </ul>
                 </div>
             </div>
@@ -2091,7 +2119,7 @@ else _initCardsCollapse();
         document.head.appendChild(appleLink);
         // Manifest PWA (Android Chrome)
         const manifest = {
-            name: "Étude de faisabilité — Mission drone",
+            name: "Drone mission",
             short_name: "Drone",
             display: "standalone",
             start_url: location.pathname,
@@ -2199,18 +2227,18 @@ STATE.layers.heliports = L.layerGroup().addTo(map);
 STATE.layers.towers    = L.layerGroup().addTo(map);
 STATE.layers.lines     = L.layerGroup().addTo(map);
 STATE.layers.buildings = L.layerGroup().addTo(map);
-STATE.layers.wind      = L.layerGroup().addTo(map);
 STATE.layers.roads     = L.layerGroup().addTo(map);
 STATE.layers.elevAxis  = L.layerGroup().addTo(map);
+STATE.layers.captation = L.layerGroup();   // zone de captation de l'arrêté préfectoral (off par défaut)
 
 L.control.layers(null, {
     "Aérodromes / héliports": STATE.layers.heliports,
     "Antennes / mâts": STATE.layers.towers,
     "Lignes HT": STATE.layers.lines,
-    "Éoliennes": STATE.layers.wind,
     "Bâtiments hauts": STATE.layers.buildings,
     "Autoroutes / RN": STATE.layers.roads,
     "Coupe altimétrique": STATE.layers.elevAxis,
+    "Zone de captation (arrêté préf.)": STATE.layers.captation,
 }, { collapsed: true }).addTo(map);
 
 // Bouton plein écran pour la carte (toggle natif Fullscreen API)
@@ -2381,6 +2409,11 @@ function onVlosChange() {
 function toggleArrete() {
     const isAdmin = document.getElementById('cadre-select').value === "Cadre Administratif";
     document.getElementById('arrete-pref-box').style.display = isAdmin ? "block" : "none";
+    const capBox = document.getElementById('captation-box');
+    if (capBox) {
+        capBox.style.display = isAdmin ? "block" : "none";
+        if (isAdmin) setTimeout(() => initCaptationMap(), 60);   // (ré)initialise la carte quand le bloc devient visible
+    }
     document.getElementById('finalite-box').style.display = isAdmin ? "block" : "none";
     document.getElementById('judiciaire-box').style.display = isAdmin ? "none" : "block";
     if (!isAdmin) {
@@ -2389,6 +2422,181 @@ function toggleArrete() {
     } else {
         document.querySelectorAll('.judiciaire-cb').forEach(cb => cb.checked = false);
         updateJudiciaireText();
+    }
+}
+
+/* ===================================================================
+   §2 — ZONE DE CAPTATION DE L'ARRÊTÉ PRÉFECTORAL (carte plan + cercle / polygone)
+   =================================================================== */
+let captationMap = null;
+let captationCenterMarker = null, captationCircleLayer = null, captationPolygonLayer = null;
+STATE.captation = { mode: 'cercle', center: null, radiusM: 500, polygon: null };
+
+function initCaptationMap() {
+    const el = document.getElementById('captation-map');
+    if (!el) return;
+    if (captationMap) { try { captationMap.invalidateSize(); } catch (e) {} return; }   // déjà créée
+    const c = (STATE.lat != null) ? [STATE.lat, STATE.lon] : [46.6, 2.4];
+    captationMap = L.map(el, { scrollWheelZoom: false }).setView(c, STATE.lat != null ? 14 : 6);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', subdomains: 'abcd', maxZoom: 19, crossOrigin: true }).addTo(captationMap);
+    if (STATE.lat != null) L.circleMarker([STATE.lat, STATE.lon], { radius: 6, color: '#0b3d91', fillColor: '#fff', fillOpacity: 1, weight: 2 }).addTo(captationMap).bindPopup('<b>Point de mission</b>');
+    captationMap.on('click', (e) => {
+        if (STATE.captation.mode !== 'cercle') return;
+        STATE.captation.center = [e.latlng.lat, e.latlng.lng];
+        _drawCaptationCircle();
+        _syncCaptationToMainMap();
+    });
+    setTimeout(() => { try { captationMap.invalidateSize(); } catch (e) {} }, 120);
+}
+// Recentre la carte captation sur le point de mission quand une adresse est choisie en §1
+function recenterCaptationMap() {
+    if (!captationMap || STATE.lat == null) return;
+    captationMap.setView([STATE.lat, STATE.lon], 14);
+}
+
+function setCaptationMode(mode) {
+    STATE.captation.mode = mode;
+    document.getElementById('captation-circle-controls').style.display = (mode === 'cercle') ? 'flex' : 'none';
+    document.getElementById('captation-polygon-controls').style.display = (mode === 'polygone') ? 'block' : 'none';
+    const hint = document.getElementById('captation-hint');
+    if (hint) hint.textContent = (mode === 'cercle')
+        ? 'Cliquez sur la carte pour placer le centre de la zone de captation, puis ajustez le périmètre.'
+        : 'Ajoutez les rues une à une via le champ d\'autocomplétion ci-dessus ; le polygone se trace au fur et à mesure. Validez pour le fermer.';
+    const el = document.getElementById('captation-map');
+    if (el) el.style.cursor = (mode === 'cercle') ? 'crosshair' : 'default';
+}
+
+function setCaptationRadius(m) {
+    STATE.captation.radiusM = Math.max(50, Math.min(5000, parseInt(m, 10) || 500));
+    const num = document.getElementById('captation-radius-num');
+    if (num) num.textContent = STATE.captation.radiusM;
+    _drawCaptationCircle();
+    _syncCaptationToMainMap();
+}
+
+function _drawCaptationCircle() {
+    if (!captationMap) return;
+    if (captationCircleLayer) { try { captationMap.removeLayer(captationCircleLayer); } catch (e) {} captationCircleLayer = null; }
+    if (captationCenterMarker) { try { captationMap.removeLayer(captationCenterMarker); } catch (e) {} captationCenterMarker = null; }
+    if (captationPolygonLayer) { try { captationMap.removeLayer(captationPolygonLayer); } catch (e) {} captationPolygonLayer = null; }
+    const c = STATE.captation.center;
+    if (!c) return;
+    captationCircleLayer = L.circle(c, { radius: STATE.captation.radiusM, color: '#7c3aed', fillColor: '#a78bfa', fillOpacity: 0.18, weight: 2, dashArray: '5,4' })
+        .addTo(captationMap).bindPopup(`<b>Zone de captation autorisée</b><br>Rayon : ${STATE.captation.radiusM} m`);
+    captationCenterMarker = L.circleMarker(c, { radius: 5, color: '#7c3aed', fillColor: '#fff', fillOpacity: 1, weight: 2.5 }).addTo(captationMap).bindPopup('<b>Centre zone captation</b>');
+}
+
+function clearCaptation() {
+    STATE.captation.center = null;
+    STATE.captation.polygon = null;
+    _captationStreetChain = [];
+    const ch = document.getElementById('captation-polygon-chain'); if (ch) ch.textContent = '';
+    const lst = document.getElementById('captation-street-list'); if (lst) lst.innerHTML = '';
+    const inp = document.getElementById('captation-street-input'); if (inp) inp.value = '';
+    if (captationMap) {
+        [captationCircleLayer, captationCenterMarker, captationPolygonLayer].forEach(l => { if (l) { try { captationMap.removeLayer(l); } catch (e) {} } });
+        captationCircleLayer = captationCenterMarker = captationPolygonLayer = null;
+    }
+    _syncCaptationToMainMap();
+}
+
+// ---- Mode polygone de rues : autocomplétion BAN (type=street), on ajoute les rues une à une ----
+let _captationStreetChain = [];   // [{label, lat, lon}]
+let _captationSearchTimer = null;
+function searchCaptationStreet(q) {
+    clearTimeout(_captationSearchTimer);
+    const lst = document.getElementById('captation-street-list');
+    if (!q || q.trim().length < 3) { if (lst) lst.innerHTML = ''; return; }
+    _captationSearchTimer = setTimeout(async () => {
+        try {
+            // Biais géographique : autour du dernier point de la chaîne (sinon du point de mission)
+            const last = _captationStreetChain.length ? _captationStreetChain[_captationStreetChain.length - 1] : (STATE.lat != null ? { lat: STATE.lat, lon: STATE.lon } : null);
+            const bias = last ? `&lat=${last.lat}&lon=${last.lon}` : '';
+            const r = await fetchWithTimeout(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&type=street&limit=6${bias}`, {}, 8000);
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const j = await r.json();
+            const feats = (j.features || []);
+            if (!lst) return;
+            lst.innerHTML = feats.map(f => {
+                const p = f.properties || {};
+                const co = f.geometry && f.geometry.coordinates;
+                const lon = co ? co[0] : 0, lat = co ? co[1] : 0;
+                const label = (p.name || p.label || '').replace(/'/g, '\\\'');
+                return `<div class="captation-street-item" onclick="addCaptationStreet('${label}', ${lat}, ${lon})" style="padding:6px 9px; font-size:12px; cursor:pointer; border-bottom:1px solid var(--c-border); background:#f7f9fc;">📍 ${p.name || p.label}<span style="color:var(--c-muted);"> · ${p.city || p.context || ''}</span></div>`;
+            }).join('') || '<div style="padding:6px 9px; font-size:12px; color:var(--c-muted);">Aucune rue trouvée</div>';
+        } catch (e) { console.warn('[captation street]', e); if (lst) lst.innerHTML = '<div style="padding:6px 9px; font-size:12px; color:var(--c-danger);">Recherche indisponible</div>'; }
+    }, 250);
+}
+function addCaptationStreet(label, lat, lon) {
+    _captationStreetChain.push({ label, lat, lon });
+    const inp = document.getElementById('captation-street-input'); if (inp) inp.value = '';
+    const lst = document.getElementById('captation-street-list'); if (lst) lst.innerHTML = '';
+    _renderCaptationChain();
+    _drawCaptationPolygon(false);   // tracé provisoire (non fermé)
+}
+function _renderCaptationChain() {
+    const ch = document.getElementById('captation-polygon-chain');
+    if (!ch) return;
+    if (!_captationStreetChain.length) { ch.textContent = ''; return; }
+    ch.innerHTML = 'Chaîne : ' + _captationStreetChain.map((s, i) =>
+        `<span style="background:#ede9fe; color:#6d28d9; padding:1px 6px; border-radius:4px; margin:1px;">${i + 1}. ${s.label}</span>`).join(' → ')
+        + ` <button type="button" onclick="_captationStreetChain.pop(); _renderCaptationChain(); _drawCaptationPolygon(false);" style="background:transparent;border:0;color:var(--c-danger);cursor:pointer;font-size:12px;">↩ retirer le dernier</button>`;
+}
+function _drawCaptationPolygon(closed) {
+    if (!captationMap) return;
+    [captationCircleLayer, captationCenterMarker, captationPolygonLayer].forEach(l => { if (l) { try { captationMap.removeLayer(l); } catch (e) {} } });
+    captationCircleLayer = captationCenterMarker = captationPolygonLayer = null;
+    const pts = _captationStreetChain.map(s => [s.lat, s.lon]);
+    if (pts.length === 0) return;
+    if (pts.length === 1) {
+        captationCenterMarker = L.circleMarker(pts[0], { radius: 5, color: '#7c3aed', fillColor: '#fff', fillOpacity: 1, weight: 2.5 }).addTo(captationMap);
+        return;
+    }
+    if (closed && pts.length >= 3) {
+        captationPolygonLayer = L.polygon(pts, { color: '#7c3aed', fillColor: '#a78bfa', fillOpacity: 0.18, weight: 2.5 }).addTo(captationMap).bindPopup('<b>Polygone de captation</b><br>' + pts.length + ' sommets');
+        STATE.captation.polygon = pts;
+    } else {
+        captationPolygonLayer = L.polyline(pts, { color: '#7c3aed', weight: 2.5, dashArray: '5,4' }).addTo(captationMap);
+        pts.forEach(p => L.circleMarker(p, { radius: 4, color: '#7c3aed', fillColor: '#fff', fillOpacity: 1, weight: 2 }).addTo(captationMap));
+    }
+    try { captationMap.fitBounds(L.latLngBounds(pts).pad(0.2)); } catch (e) {}
+}
+function validateCaptationPolygon() {
+    if (_captationStreetChain.length < 3) { alert('Ajoutez au moins 3 rues pour fermer un polygone.'); return; }
+    STATE.captation.center = null;   // mode polygone : pas de centre
+    _drawCaptationPolygon(true);
+    _syncCaptationToMainMap();
+}
+
+// ---- Synchronisation vers la carte §1 (calque "Zone de captation"), avec mise en évidence
+//      rouge de la part de la zone de captation hors de l'élongation de vol ----
+function _syncCaptationToMainMap() {
+    const lay = STATE.layers && STATE.layers.captation;
+    if (!lay) return;
+    lay.clearLayers();
+    const flightR = STATE.radius || 0;
+    const flightC = (STATE.lat != null) ? [STATE.lat, STATE.lon] : null;
+    if (STATE.captation.mode === 'cercle' && STATE.captation.center) {
+        const c = STATE.captation.center, r = STATE.captation.radiusM;
+        // 1) Zone de captation : fond rouge clair (toute la zone). La partie DANS l'élongation
+        //    de vol sera recouverte ensuite par le cercle d'élongation (orange) déjà présent
+        //    sur la carte → seule la part HORS élongation reste visible en rouge ⇒ "hachure" visuelle.
+        L.circle(c, { radius: r, color: '#dc2626', fillColor: '#dc2626', fillOpacity: 0.16, weight: 2, dashArray: '6,4' })
+            .bindPopup(`<b>Zone de captation autorisée</b><br>Rayon : ${r} m${flightC ? '<br><span style="color:#dc2626;">Partie en rouge = hors zone d\'évolution drone</span>' : ''}`).addTo(lay);
+        // 2) Re-dessine l'élongation de vol PAR-DESSUS (vert/orange clair) pour "masquer" la part
+        //    de captation incluse → ne reste en rouge que l'excédent.
+        if (flightC && flightR > 0) {
+            L.circle(flightC, { radius: flightR, color: '#16a34a', fillColor: '#86efac', fillOpacity: 0.5, weight: 2 })
+                .bindPopup(`<b>Zone d'évolution drone</b><br>${flightR} m`).addTo(lay);
+        }
+        L.circleMarker(c, { radius: 5, color: '#dc2626', fillColor: '#fff', fillOpacity: 1, weight: 2 }).bindPopup('<b>Centre zone captation</b>').addTo(lay);
+    } else if (STATE.captation.mode === 'polygone' && Array.isArray(STATE.captation.polygon) && STATE.captation.polygon.length >= 3) {
+        L.polygon(STATE.captation.polygon, { color: '#dc2626', fillColor: '#dc2626', fillOpacity: 0.16, weight: 2.5 })
+            .bindPopup('<b>Polygone de captation autorisée</b>').addTo(lay);
+        if (flightC && flightR > 0) {
+            L.circle(flightC, { radius: flightR, color: '#16a34a', fillColor: '#86efac', fillOpacity: 0.5, weight: 2 })
+                .bindPopup(`<b>Zone d'évolution drone</b><br>${flightR} m`).addTo(lay);
+        }
     }
 }
 
@@ -2447,6 +2655,7 @@ function updateElongation(val) {
     if (ighElongationCircle) ighElongationCircle.setRadius(STATE.radius);
     if (typeof ighMap3DUpdateElongation === 'function') { try { ighMap3DUpdateElongation(); } catch (e) {} }
     if (aircraftElongationCircle) aircraftElongationCircle.setRadius(STATE.radius);
+    if (typeof _syncCaptationToMainMap === 'function') { try { _syncCaptationToMainMap(); } catch (e) {} }   // re-calque la zone de captation vs nouvelle élongation
     if (airspaceElongationCircle) airspaceElongationCircle.setRadius(STATE.radius);
     if (railElongationCircle) railElongationCircle.setRadius(STATE.radius);
     if (naturalElongationCircle) naturalElongationCircle.setRadius(STATE.radius);
@@ -2554,11 +2763,11 @@ function updateRedacteur() {
     if (nameEl) {
         if (name) {
             nameEl.textContent = name;
-            nameEl.style.color = 'var(--c-text)';
+            nameEl.style.color = '#fff';
             nameEl.style.fontWeight = '700';
         } else {
             nameEl.textContent = '—';
-            nameEl.style.color = 'var(--c-muted)';
+            nameEl.style.color = 'rgba(255,255,255,0.75)';
             nameEl.style.fontWeight = '500';
         }
     }
@@ -2723,6 +2932,7 @@ function showFastFlyProgress() {
         { key: 'zicad',    label: 'ZICAD' },
         { key: 'airspace', label: 'Espaces aériens' },
         { key: 'metar',    label: 'METAR/TAF' },
+        { key: 'aircraft', label: 'Trafic aérien' },
         { key: 'elev',     label: 'Altimétrie' },
         { key: 'kp',       label: 'Kp' }
     ];
@@ -2829,7 +3039,7 @@ function selectAddr(label, lat, lon, dept) {
         showMapLoader(_mapEl, 'Chargement de la zone');
         setTimeout(() => hideMapLoader(_mapEl), 900);
     }
-    map.setView([lat, lon], 14);
+    map.setView([lat, lon], 13);   // léger dézoom pour englober les repères cardinaux N/S/E/O
     marker.setLatLng([lat, lon]);
     rangeCircle.setLatLng([lat, lon]);
     if (satMarker) satMarker.setLatLng([lat, lon]);
@@ -2841,6 +3051,7 @@ function selectAddr(label, lat, lon, dept) {
     // immédiatement → sinon on aurait 2 fetch = courbe §1 tracée 2 fois.
     clearTimeout(_elevDebounce); _elevDebounce = null;
     setTimeout(() => map.invalidateSize(), 200);
+    if (typeof recenterCaptationMap === 'function') setTimeout(recenterCaptationMap, 250);
     refreshAuto();
 }
 
@@ -3111,8 +3322,8 @@ function renderWeather(j, dateISO) {
 
         <div style="font-size:11px; color:var(--c-muted); margin-top:8px;">Pression moyenne sur la fenêtre&nbsp;: <strong>${press.toFixed(0)} hPa</strong> · humidité&nbsp;: <strong>${rh}%</strong>.</div>
 
-        <!-- Radar pluie LIVE (RainViewer) -->
-        <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--c-border);">
+        <!-- Radar pluie LIVE (RainViewer) — exclu de l'export PDF -->
+        <div class="radar-no-export" style="margin-top:18px; padding-top:14px; border-top:1px solid var(--c-border);">
             <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
                 <div style="font-weight:600; font-size:13px;">🌧 Radar pluie temps réel</div>
                 <div class="no-print" style="display:flex; align-items:center; gap:8px; margin-left:auto;">
@@ -8286,21 +8497,42 @@ async function waitMapReady() {
         marker.setLatLng([STATE.lat, STATE.lon]);
         rangeCircle.setLatLng([STATE.lat, STATE.lon]);
         map.setView([STATE.lat, STATE.lon], map.getZoom(), { animate: false });
-        [map, linesMap, antennasMap, ighMap, sevesoMap, uasMap, airspaceMap, railMap, naturalMap, aircraftMap, rainMap].forEach(m => { try { if (m) { if (m.invalidateSize) m.invalidateSize(false); else if (m.resize) m.resize(); } } catch (e) {} });
+        [map, linesMap, antennasMap, ighMap, sevesoMap, uasMap, airspaceMap, railMap, naturalMap, aircraftMap, rainMap, captationMap].forEach(m => { try { if (m) { if (m.invalidateSize) m.invalidateSize(false); else if (m.resize) m.resize(); } } catch (e) {} });
         setTimeout(() => {
-            [map, linesMap, antennasMap, ighMap, sevesoMap, uasMap, airspaceMap, railMap, naturalMap, aircraftMap, rainMap].forEach(m => { try { if (m) { if (m.invalidateSize) m.invalidateSize(false); else if (m.resize) m.resize(); } } catch (e) {} });
+            [map, linesMap, antennasMap, ighMap, sevesoMap, uasMap, airspaceMap, railMap, naturalMap, aircraftMap, rainMap, captationMap].forEach(m => { try { if (m) { if (m.invalidateSize) m.invalidateSize(false); else if (m.resize) m.resize(); } } catch (e) {} });
             setTimeout(resolve, 700);
         }, 300);
     });
 }
 
+// Renumérote les cartes visibles pour le PDF (saute les modules exclus : .module-no-export)
+function _renumberCardsForPrint() {
+    let n = 1;
+    document.querySelectorAll('section.card').forEach(card => {
+        const numEl = card.querySelector('.card-num');
+        if (!numEl) return;
+        if (card.classList.contains('module-no-export')) return;   // exclu du PDF → pas de numéro
+        if (numEl.dataset.origNum == null) numEl.dataset.origNum = numEl.textContent;
+        numEl.textContent = String(n++);
+    });
+}
+function _restoreCardNumbers() {
+    document.querySelectorAll('section.card .card-num[data-orig-num]').forEach(el => {
+        el.textContent = el.dataset.origNum;
+        delete el.dataset.origNum;
+    });
+}
+window.addEventListener('beforeprint', _renumberCardsForPrint);
+window.addEventListener('afterprint', _restoreCardNumbers);
+
 // Impression / sauvegarde PDF native du navigateur — pagination correcte, pas de coupure
 function exportPDF() {
     waitMapReady().then(() => {
         document.title = pdfFilename();
+        _renumberCardsForPrint();   // backup si beforeprint ne se déclenche pas (Safari iOS)
         setTimeout(() => {
             window.print();
-            setTimeout(() => { document.title = 'Étude de faisabilité — Mission drone'; }, 1500);
+            setTimeout(() => { document.title = 'Drone mission'; _restoreCardNumbers(); }, 1500);
         }, 200);
     });
 }
