@@ -8314,23 +8314,23 @@ function populateRiskTable() {
     // Risques liés à la météo
     if (STATE.weather) {
         if (STATE.weather.verdict === 'no')
-            rows.push(['Conditions météo défavorables (vent / visibilité / pluie)', 'Élevée', 'Élevée', 'Reporter la mission ou attendre fenêtre favorable']);
+            rows.push(['Conditions météo défavorables (vent / visibilité / pluie)', 'Élevée', 'Élevée', "Avant la mission, les conditions météorologiques sont analysées en confrontant plusieurs sources (Météo-France, modèle ICON / Open-Meteo, observations ATIS de l'aérodrome de référence si disponible) afin de garantir la fiabilité du verdict. Lorsque celui-ci est défavorable, la mission est reportée et un créneau de substitution est recherché dans la même journée si une fenêtre favorable apparaît. Si un report n'est pas possible, le vol n'est engagé qu'avec l'accord explicite du chef de mission, sous surveillance renforcée en temps réel des paramètres critiques (vent moyen, rafales, visibilité, plafond, précipitations), et la capacité d'interrompre immédiatement le vol au premier signe d'aggravation est conservée. Aucune captation n'est effectuée au-delà des limites constructeur de l'aéronef ni en conditions IFR du télépilote."]);
         else if (STATE.weather.verdict === 'warn')
-            rows.push(['Conditions météo dégradées', 'Modérée', 'Modérée', 'Vol sous surveillance accrue · prévoir retour rapide']);
+            rows.push(['Conditions météo dégradées', 'Modérée', 'Modérée', "Les conditions météorologiques se situent à la limite de l'opérabilité opérationnelle : le vol n'est maintenu que si le télépilote estime la mission compatible avec la marge de sécurité résiduelle, en accord avec le chef de mission. La mission est conduite sous surveillance accrue, avec lectures fréquentes des indicateurs de vent moyen, de rafales et de précipitations, et un retour anticipé au point de décollage est planifié à la moitié du temps de vol théorique. Le drone reste évolutif à proximité immédiate du télépilote et un atterrissage de précaution est préparé en permanence. Toute dégradation supplémentaire — rafale dépassant la limite constructeur, baisse de visibilité, apparition de précipitations — déclenche l'interruption immédiate du vol et le retour au point de décollage."]);
     }
 
     // Risque pluie (drones non IPxx → court-circuit moteurs / ESC, optiques embuées, perte de portance)
     if (STATE.weather && STATE.weather.maxPrecipHourly != null) {
         const p = STATE.weather.maxPrecipHourly;
         if (p > 0.1)
-            rows.push([`Précipitations ${p.toFixed(2)} mm/h pendant la mission`, 'Élevée', 'Élevée', "Vol interdit — drones non étanches (IPxx) · risque court-circuit moteurs/ESC · optiques inutilisables · reporter ou attendre fin de l'épisode pluvieux"]);
+            rows.push([`Précipitations ${p.toFixed(2)} mm/h pendant la mission`, 'Élevée', 'Élevée', "Le vol est interdit dès que les précipitations annoncées dépassent 0,1 mm/h pendant la fenêtre de mission. Les drones civils ne disposent pas d'un indice d'étanchéité (IPxx) suffisant : l'eau infiltrée expose les moteurs et les contrôleurs de vitesse (ESC) à un risque de court-circuit immédiat, embue les optiques de captation au point de les rendre inutilisables, dégrade l'aérodynamique et alourdit la cellule. La mission est reportée jusqu'à confirmation par bulletin météo de la fin de l'épisode pluvieux et de l'assèchement complet de la zone de décollage. Si la pluie survient en cours de vol, le retour au point de décollage est déclenché sans délai et le matériel est mis sous abri pour séchage et inspection (hélices, antennes, connecteurs, batteries) avant tout vol ultérieur."]);
         else if (p > 0)
-            rows.push([`Précipitations légères ${p.toFixed(2)} mm/h prévues`, 'Modérée', 'Modérée', "Surveillance précipitations · prévoir capot/protection · interruption au premier signe d'aggravation"]);
+            rows.push([`Précipitations légères ${p.toFixed(2)} mm/h prévues`, 'Modérée', 'Modérée', "Des précipitations très légères sont annoncées pendant la fenêtre de mission. Le vol peut être maintenu sous réserve d'une surveillance continue des conditions et de l'absence d'évolution vers une intensité supérieure. Un capot ou une protection sommaire des optiques est mis en place lorsque l'aéronef le permet, et le matériel est essuyé entre chaque vol pour éviter toute infiltration. Le télépilote interrompt immédiatement le vol au premier signe d'aggravation — gouttes visibles à l'œil sur la verrière, intensité radar en hausse, dégradation du retour vidéo. Le retour au point de décollage doit pouvoir être effectué à tout moment sans traverser une zone d'averse plus intense, ce qui conditionne la trajectoire et le rayon d'évolution autorisé."]);
     }
 
     // Risques liés à l'indice Kp / GNSS
     if (STATE.kp != null && STATE.kp >= 4)
-        rows.push([`Perturbations électromagnétiques (Kp ${STATE.kp.toFixed(1)})`, 'Modérée', STATE.kp >= 5 ? 'Élevée' : 'Modérée', 'Calibrer la boussole · privilégier mode ATTI · surveiller la dérive GPS']);
+        rows.push([`Perturbations électromagnétiques (Kp ${STATE.kp.toFixed(1)})`, 'Modérée', STATE.kp >= 5 ? 'Élevée' : 'Modérée', "L'indice géomagnétique Kp annonce une activité solaire perturbée susceptible de dégrader la qualité du positionnement GNSS et de fausser la lecture du magnétomètre embarqué. Avant le décollage, une calibration complète de la boussole est effectuée à l'écart de toute source ferromagnétique (véhicule, mobilier urbain métallique, ferrailles enterrées). Le télépilote configure le drone pour basculer rapidement en mode de stabilisation par centrale inertielle (mode ATTI ou équivalent) en cas de perte du verrouillage satellite. La dérive GPS est surveillée en continu sur le retour vidéo et le HUD de pilotage, le seuil critique de satellites verrouillés est noté avant décollage, et un retour au point de décollage en pilotage manuel est planifié si le drone refuse l'engagement automatique de la procédure Return-to-Home."]);
 
     // Risques liés aux plateformes aéronautiques (nouvelle structure §5)
     if (STATE.env && Array.isArray(STATE.env.platforms) && STATE.env.platforms.length > 0) {
@@ -8343,14 +8343,14 @@ function populateRiskTable() {
         rows.push([
             `${label} ${closest.name ? '« ' + closest.name + ' »' : ''} à ${fmtDist(dist)}`,
             prob, sev,
-            'Coordination préalable · veille radio · plafond bas · prêt à interrompre',
+            "La présence d'une plateforme aéronautique à proximité de la zone d'évolution impose une coordination préalable avec la tour de contrôle, l'AFIS ou le gestionnaire de la plateforme. Le télépilote vérifie l'activité au moment du vol (consultation NOTAM, écoute fréquence ATIS si disponible) et obtient une autorisation explicite ou un créneau négocié. Le plafond de vol est volontairement maintenu bas (privilégier moins de 30 m AGL si l'arrivée d'un trafic est probable) afin de céder immédiatement le passage à un aéronef habité. Une veille radio sur la fréquence de la plateforme et une veille visuelle sur les axes d'approche / décollage sont maintenues pendant toute la mission. L'interruption du vol est immédiate dès qu'un aéronef habité est détecté en approche ou que la tour le demande.",
             { lat: closest.lat, lon: closest.lon }
         ]);
     }
 
     // Risques liés au dénivelé
     if (STATE.elev && STATE.elev.range > 100)
-        rows.push([`Dénivelé important (${STATE.elev.range.toFixed(0)} m)`, 'Modérée', 'Modérée', "Référence d'altitude par rapport au point de décollage · vigilance pendant la translation"]);
+        rows.push([`Dénivelé important (${STATE.elev.range.toFixed(0)} m)`, 'Modérée', 'Modérée', "Le relief de la zone présente un dénivelé significatif (plus de 100 m d'amplitude). Le télépilote effectue une reconnaissance préalable de la topographie afin d'identifier les points hauts, les obstacles naturels et les zones susceptibles de masquer la liaison radio. L'altitude de référence du drone est calée sur le point de décollage : toute manœuvre vers une partie plus basse du terrain augmente la hauteur réelle vol/sol et peut entraîner un dépassement de la limite réglementaire AGL si le drone est suivi à altitude constante. Le télépilote conserve donc une marge de sécurité en hauteur, surveille en continu la lecture barométrique et GNSS pendant la translation, et adapte la trajectoire en privilégiant un suivi de terrain plutôt qu'un suivi d'altitude absolue lors des transitions de relief."]);
 
     // Risque réglementaire : espace aérien contrôlé (CTR/TMA/P/R/D OpenAIP)
     if (Array.isArray(STATE.airspaces) && STATE.lat != null) {
@@ -8359,9 +8359,9 @@ function populateRiskTable() {
         const restricted = inside.find(z => z.type === 1 || z.type === 2);
         const ctr = inside.find(z => z.type === 4);
         const zoneCenter = z => { const c = naturalCenter(z.geometry); return c ? { lat: c.lat, lon: c.lon } : null; };
-        if (prohibited) rows.push([`Zone interdite (P) « ${(prohibited.name||'').slice(0,30)} »`, 'Élevée', 'Élevée', 'Vol non autorisé sans dérogation préfectorale', zoneCenter(prohibited)]);
-        else if (restricted) rows.push([`Zone réglementée/dangereuse « ${(restricted.name||'').slice(0,30)} »`, 'Modérée', 'Élevée', 'Vérifier statut activation NOTAM · coordination préalable', zoneCenter(restricted)]);
-        else if (ctr) rows.push([`Espace contrôlé CTR « ${(ctr.name||'').slice(0,30)} »`, 'Modérée', 'Modérée', 'Coordination tour de contrôle obligatoire avant décollage', zoneCenter(ctr)]);
+        if (prohibited) rows.push([`Zone interdite (P) « ${(prohibited.name||'').slice(0,30)} »`, 'Élevée', 'Élevée', "Le point de mission ou la zone d'évolution est situé dans une zone d'interdiction de vol (zone P). Aucun vol n'est autorisé sans dérogation préfectorale ou autorisation expresse de l'autorité compétente. La demande de dérogation est formalisée par écrit auprès de la préfecture concernée, accompagnée du plan de vol détaillé, des éléments d'identification du télépilote et de l'opérateur, et des justificatifs opérationnels nécessaires. En l'absence de réponse écrite favorable, la mission est annulée. Si la mission revêt un caractère opérationnel urgent (secours, sûreté), elle ne peut être exécutée qu'après accord verbal explicite d'un officier de l'autorité compétente, lequel est immédiatement consigné dans le compte-rendu de mission avec l'heure, l'identité et la fonction du donneur d'ordre.", zoneCenter(prohibited)]);
+        else if (restricted) rows.push([`Zone réglementée/dangereuse « ${(restricted.name||'').slice(0,30)} »`, 'Modérée', 'Élevée', "La zone d'évolution recoupe une zone réglementée (R) ou dangereuse (D). Avant le décollage, le télépilote consulte les NOTAM en vigueur pour vérifier le statut d'activation de la zone au créneau de la mission. Si la zone est active, une coordination préalable est engagée avec l'organisme gestionnaire (SIA, autorité militaire, exploitant industriel) afin d'obtenir un avis ou une autorisation. Si la zone est inactive au moment du vol, la mission peut être conduite, mais une vérification du statut est répétée en début de vol et un retour anticipé est planifié si une activation est susceptible d'intervenir pendant la mission. En cas d'apparition d'un trafic ou d'une activité non prévue, le vol est interrompu sans délai et l'événement est consigné.", zoneCenter(restricted)]);
+        else if (ctr) rows.push([`Espace contrôlé CTR « ${(ctr.name||'').slice(0,30)} »`, 'Modérée', 'Modérée', "La zone d'évolution est située dans un espace aérien contrôlé d'aérodrome (CTR). Une coordination préalable avec la tour de contrôle compétente est obligatoire avant tout décollage : le télépilote obtient une autorisation explicite (clearance) précisant le créneau, le plafond et les limites latérales accordés. Une veille radio sur la fréquence tour est maintenue pendant toute la mission, et le drone reste en permanence sous le plafond négocié, avec une marge de 10 m pour absorber les imprécisions barométriques. Tout changement de trajectoire significatif ou prolongation de la mission au-delà du créneau alloué doit faire l'objet d'une nouvelle coordination. En cas d'instruction de la tour, le vol est interrompu sans délai et le drone est ramené au point de décollage.", zoneCenter(ctr)]);
     }
 
     // Risque réglementaire : zone de restriction drone
@@ -8370,10 +8370,10 @@ function populateRiskTable() {
         const interdit = inside.find(z => classifyUasLimit(z.properties.limite).level === 'interdit');
         const limited = inside.find(z => classifyUasLimit(z.properties.limite).level === 'limited');
         const uasCenter = z => { const c = naturalCenter(z.geometry); return c ? { lat: c.lat, lon: c.lon } : null; };
-        if (interdit) rows.push(['Point de mission en zone interdite drone', 'Élevée', 'Élevée', "Vol non autorisé sans dérogation préfectorale · contacter SIA et autorité préfectorale", uasCenter(interdit)]);
+        if (interdit) rows.push(['Point de mission en zone interdite drone', 'Élevée', 'Élevée', "Le point de mission est situé dans une zone d'interdiction de survol par aéronef sans équipage à bord, identifiée au registre des restrictions UAS (SIA). Aucun vol n'est autorisé en l'état : la mission est conditionnée à l'obtention d'une dérogation préfectorale écrite ou d'une autorisation émise par l'autorité compétente. Le télépilote contacte préalablement le SIA et la préfecture concernée pour formaliser la demande, en joignant le plan de vol, les justifications opérationnelles et l'identification de l'opérateur. En l'absence d'accord écrit, la mission est annulée. En cas d'urgence opérationnelle (mission de secours, sûreté), elle ne peut être conduite qu'après accord verbal d'un officier de l'autorité compétente, consigné au compte-rendu avec l'heure, l'identité et la fonction du donneur d'ordre.", uasCenter(interdit)]);
         else if (limited) {
             const cls = classifyUasLimit(limited.properties.limite);
-            rows.push([`Zone à hauteur limitée (max ${cls.height || '?'} m)`, 'Élevée', 'Modérée', `Respecter la hauteur max ${cls.height || ''} m AGL · ${limited.properties.remarque || ''}`, uasCenter(limited)]);
+            rows.push([`Zone à hauteur limitée (max ${cls.height || '?'} m)`, 'Élevée', 'Modérée', `La zone d'évolution est soumise à une restriction de hauteur stricte (${cls.height || '?'} m AGL maximum). Le télépilote vérifie en continu la lecture barométrique et GNSS du drone et conserve une marge de sécurité de 10 m sous le plafond afin d'absorber les imprécisions barométriques, les rafales de vent ascendantes et la dérive verticale du modèle. Tout dépassement involontaire entraîne un retour immédiat à la hauteur autorisée et est journalisé dans le compte-rendu de mission avec l'heure et la valeur maximale relevée. Les motifs particuliers de la limitation (${limited.properties.remarque ? String(limited.properties.remarque).replace(/"/g, "'") : 'non précisés par le SIA'}) sont rappelés au briefing pour adapter la trajectoire et anticiper les contraintes opérationnelles spécifiques à cette zone.`, uasCenter(limited)]);
         }
     }
 
@@ -8393,14 +8393,14 @@ function populateRiskTable() {
             rows.push([
                 `Point de mission en ZICAD « ${zIn.name.slice(0, 40)} »`,
                 'Élevée', 'Élevée',
-                "Captation interdite par l'arrêté du 10/04/2017 (CT L. 6224-1) · autorisation préfectorale écrite obligatoire avant tout vol avec captation",
+                "Le point de mission est situé dans une Zone Interdite à la Captation Aérienne de Données (ZICAD), au sens de l'arrêté du 10 avril 2017 pris en application de l'article L. 6224-1 du code des transports. Toute captation aérienne (vidéo, photographie, donnée géographique) est interdite sans autorisation écrite préalable du préfet de département. La demande d'autorisation est déposée suffisamment en amont auprès des services préfectoraux, accompagnée du plan de vol, de l'identification de l'opérateur et de la finalité opérationnelle de la mission. Si l'autorisation n'a pas été obtenue, le vol peut éventuellement avoir lieu sans captation effective (mode pilotage sec, caméra obturée et journalisée comme telle dans le compte-rendu), mais aucune donnée ne doit être enregistrée — y compris en tampon mémoire interne du gimbal.",
                 { lat: zIn.center.lat, lon: zIn.center.lon }
             ]);
         } else if (zNear) {
             rows.push([
                 `ZICAD « ${zNear.name.slice(0, 40)} » dans la zone d'évolution (à ${fmtDist(zNear.dist)})`,
                 'Élevée', 'Élevée',
-                "Risque de pénétration en ZICAD pendant le vol · autorisation préfectorale préalable · cadrer le plan de vol pour éviter le périmètre",
+                "Une zone interdite à la captation aérienne de données (ZICAD) recoupe la zone d'évolution prévue. Le télépilote redéfinit le plan de vol de manière à exclure le périmètre ZICAD de l'enveloppe de captation, et matérialise la limite dans le briefing de mission. Une autorisation préfectorale préalable est demandée si une captation, même partielle, du périmètre s'avère opérationnellement nécessaire. Le télépilote surveille la position du drone en continu et déclenche l'arrêt de l'enregistrement vidéo ainsi que la rotation du gimbal à l'écart dès qu'une dérive vers la ZICAD est observée. Tout enregistrement involontaire est purgé immédiatement après le vol et journalisé au compte-rendu de mission.",
                 { lat: zNear.center.lat, lon: zNear.center.lon }
             ]);
         } else if (zicadList[0] && zicadList[0].dist < 2000) {
@@ -8408,7 +8408,7 @@ function populateRiskTable() {
             rows.push([
                 `ZICAD « ${z.name.slice(0, 40)} » à proximité (${fmtDist(z.dist)})`,
                 'Modérée', 'Élevée',
-                "Vigilance dérive · pas de captation au-dessus du périmètre · vérifier autorisation préfectorale si extension de la zone d'évolution",
+                "Une zone interdite à la captation aérienne de données (ZICAD) est située à proximité immédiate de la zone d'évolution. Le télépilote conserve une marge de sécurité latérale par rapport au périmètre afin d'absorber d'éventuelles dérives GPS, rafales de vent ou fausses manœuvres. Aucune captation directe au-dessus du périmètre ZICAD n'est autorisée, même fortuite, et l'orientation du gimbal est cadrée pour exclure le périmètre du champ de captation. Si la mission nécessite un élargissement de la zone d'évolution, une autorisation préfectorale préalable est obtenue avant tout vol. Une vérification de la position du drone et du champ de captation est effectuée à intervalle régulier pendant le vol.",
                 { lat: z.center.lat, lon: z.center.lon }
             ]);
         }
@@ -8423,9 +8423,9 @@ function populateRiskTable() {
             .map(x => ({...x, dist: haversine(STATE.lat, STATE.lon, x.latitude, x.longitude)}))
             .sort((a, b) => a.dist - b.dist)[0];
         if (sevHigh && sevHigh.dist < 5000)
-            rows.push([`Site Seveso seuil haut « ${(sevHigh.raisonSociale || '').slice(0, 40)} » à ${fmtDist(sevHigh.dist)}`, sevHigh.dist < 1500 ? 'Élevée' : 'Modérée', 'Élevée', 'Coordination préalable obligatoire avec exploitant · plan POI · pas de survol direct', { lat: sevHigh.latitude, lon: sevHigh.longitude }]);
+            rows.push([`Site Seveso seuil haut « ${(sevHigh.raisonSociale || '').slice(0, 40)} » à ${fmtDist(sevHigh.dist)}`, sevHigh.dist < 1500 ? 'Élevée' : 'Modérée', 'Élevée', "Un site industriel classé Seveso seuil haut est situé dans le rayon d'évolution. Avant la mission, une coordination préalable est obligatoirement engagée avec l'exploitant afin de partager le plan de vol, d'obtenir son accord et d'identifier d'éventuels créneaux de moindre activité (vidange, maintenance, opérations sensibles). Le plan d'opération interne (POI) du site est consulté pour anticiper les zones à exclure absolument du périmètre de captation, ainsi que les conduites à tenir en cas de déclenchement d'alarme. Aucun survol direct des installations n'est effectué : le télépilote conserve une marge latérale suffisante et limite la captation aux abords du site. En cas d'alarme ou d'incident sur le site pendant le vol, le drone est ramené immédiatement et l'exploitant est informé de la position du drone à l'instant du retour.", { lat: sevHigh.latitude, lon: sevHigh.longitude }]);
         else if (sevLow && sevLow.dist < 2000)
-            rows.push([`Site Seveso seuil bas « ${(sevLow.raisonSociale || '').slice(0, 40)} » à ${fmtDist(sevLow.dist)}`, 'Modérée', 'Modérée', 'Information préalable exploitant · pas de survol direct', { lat: sevLow.latitude, lon: sevLow.longitude }]);
+            rows.push([`Site Seveso seuil bas « ${(sevLow.raisonSociale || '').slice(0, 40)} » à ${fmtDist(sevLow.dist)}`, 'Modérée', 'Modérée', "Un site industriel classé Seveso seuil bas est situé dans le rayon d'évolution. Une information préalable de l'exploitant est diffusée au moins 24 heures avant la mission afin de signaler la présence d'un drone à proximité et d'obtenir d'éventuelles consignes particulières (zones sensibles, créneaux à éviter, points de contact). Le télépilote évite tout survol direct des installations et conserve une marge latérale suffisante. La captation est limitée aux abords du site et aucun élément sensible (process industriel, accès, dispositifs de sécurité, dispositifs de surveillance) ne fait l'objet d'un enregistrement intentionnel. En cas d'incident sur le site pendant le vol, le drone est ramené et l'exploitant est immédiatement informé.", { lat: sevLow.latitude, lon: sevLow.longitude }]);
     }
 
     // Risque aviaire (sites Natura 2000, Ramsar, réserves)
@@ -8440,7 +8440,7 @@ function populateRiskTable() {
         }).filter(Boolean).sort((a, b) => (b.prio.level - a.prio.level) || (a.dist - b.dist));
         const high = sites.find(s => s.prio.level === 3);
         if (high && high.dist < 1500)
-            rows.push([`Risque aviaire (${high.prio.label}${high.name ? ' « ' + high.name.slice(0, 30) + ' »' : ''})`, high.inside ? 'Élevée' : high.dist < 500 ? 'Élevée' : 'Modérée', 'Élevée', "Vigilance oiseaux migrateurs/nicheurs · pas de survol pendant nidification · respect distance d'effarouchement", { lat: high.center.lat, lon: high.center.lon }]);
+            rows.push([`Risque aviaire (${high.prio.label}${high.name ? ' « ' + high.name.slice(0, 30) + ' »' : ''})`, high.inside ? 'Élevée' : high.dist < 500 ? 'Élevée' : 'Modérée', 'Élevée', "La zone d'évolution recoupe ou est située à proximité d'un site sensible pour l'avifaune (Natura 2000, Ramsar, réserve naturelle, zone de nidification). Le télépilote consulte en amont les calendriers de nidification et les périodes de migration applicables à la zone, et adapte le créneau de mission pour éviter les phases les plus sensibles. Aucun survol n'est effectué pendant la période de nidification, et une distance d'effarouchement appropriée à l'espèce (généralement 150 à 300 m pour les rapaces et oiseaux migrateurs sensibles) est respectée en tout temps. Si des oiseaux manifestent un comportement de défense ou d'attaque vis-à-vis du drone (poursuite, plongée, vocalisations alarmées), le vol est immédiatement interrompu et le drone est ramené au point de décollage. L'événement est consigné au compte-rendu et signalé au gestionnaire du site si nécessaire.", { lat: high.center.lat, lon: high.center.lon }]);
     }
 
     // Risque densité de population
@@ -8449,9 +8449,9 @@ function populateRiskTable() {
         const d = main.population && main.surface ? main.population / (main.surface / 100) : 0;
         const cls = densityClass(d);
         if (cls.risk === 'Très élevé')
-            rows.push([`Densité de population ultra-dense (${Math.round(d)} hab/km², ${main.nom})`, 'Élevée', 'Élevée', 'Périmètre de sécurité étendu · STS PN 02 minimum · communication renforcée']);
+            rows.push([`Densité de population ultra-dense (${Math.round(d)} hab/km², ${main.nom})`, 'Élevée', 'Élevée', "La zone d'évolution recoupe un secteur urbain ultra-dense. Le périmètre de sécurité au sol est étendu et matérialisé visuellement (rubalises, signalétique, observateurs aux points d'accès) afin d'écarter tout tiers du cône de chute potentiel. Le télépilote opère a minima dans le cadre du scénario standard européen STS-PN 02 (ou catégorie spécifique équivalente) avec un drone certifié, des procédures d'urgence éprouvées et une assurance adaptée. Une communication renforcée est mise en place avec la population présente (panneaux d'information, communiqué préalable, présence policière de soutien si nécessaire). Un retour immédiat au point de décollage est déclenché à la moindre apparition d'un rassemblement imprévu sous la trajectoire, et l'atterrissage de précaution est préparé en permanence sur un terrain non fréquenté."]);
         else if (cls.risk === 'Élevé')
-            rows.push([`Densité urbaine dense (${Math.round(d)} hab/km², ${main.nom})`, 'Modérée', 'Élevée', 'Périmètre de sécurité tiers · briefing population']);
+            rows.push([`Densité urbaine dense (${Math.round(d)} hab/km², ${main.nom})`, 'Modérée', 'Élevée', "Le secteur d'évolution présente une densité de population urbaine dense. Un périmètre de sécurité au sol est mis en place autour du télépilote et des zones de décollage / atterrissage afin d'écarter les tiers non impliqués du cône de chute potentiel. Un briefing sécurité est diffusé à la population présente, expliquant la nature de la mission, l'aéronef utilisé et les conduites à tenir. Le télépilote conserve une visualisation permanente du sol sous la trajectoire et privilégie les couloirs au-dessus de zones moins fréquentées (parkings, espaces verts, voies de circulation peu utilisées). Une interruption immédiate du vol est déclenchée à l'apparition d'un rassemblement non anticipé sous la trajectoire, et un atterrissage de précaution est préparé en permanence sur un terrain identifié au briefing."]);
 
         // Effet Venturi en agglomération : accélération du vent entre bâtiments,
         // turbulences en aval des immeubles. D'autant plus marqué en présence
@@ -8468,7 +8468,7 @@ function populateRiskTable() {
             rows.push([
                 `Effet Venturi en agglomération (${ctx}${wTxt})`,
                 prob, sev,
-                "Vent accéléré entre bâtiments · turbulences en aval des immeubles · maintenir une marge altitude > sommet du bâtiment le plus haut + 15-30 m · éviter les couloirs étroits · vigilance perte de portance soudaine"
+                "L'environnement de mission (tissu urbain dense, présence d'immeubles élevés) génère un effet Venturi : le vent ambiant est accéléré entre les bâtiments et des turbulences importantes apparaissent à l'aval des structures hautes, avec des rabattants pouvant dépasser plusieurs mètres par seconde. Le télépilote anticipe ces zones de cisaillement et trace son plan de vol au-dessus des sommets des bâtiments avec une marge minimale de 15 à 30 m, afin de réduire la pénétration dans les couches turbulentes. Les couloirs étroits entre bâtiments sont évités sauf nécessité opérationnelle, et leur traversée s'effectue à vitesse réduite avec une vigilance accrue sur les variations de portance, l'horizon artificiel et les alarmes vent du drone. Au moindre signe d'instabilité — perte d'altitude soudaine, dérive latérale incontrôlée, alarmes vent récurrentes — le drone est ramené immédiatement au-dessus de la zone de décollage et un atterrissage de précaution est engagé."
             ]);
         }
     }
@@ -8483,7 +8483,7 @@ function populateRiskTable() {
         }).filter(Boolean).sort((a, b) => a.d - b.d);
         const closestElec = tracks.find(t => t.elec);
         if (closestElec && closestElec.d < 500)
-            rows.push([`Voie ferrée électrifiée à ${fmtDist(closestElec.d)}`, closestElec.d < 100 ? 'Élevée' : 'Modérée', 'Élevée', 'Distance de sécurité ≥ 30 m caténaire · pas de survol au-dessus des voies', { lat: closestElec.center.lat, lon: closestElec.center.lon }]);
+            rows.push([`Voie ferrée électrifiée à ${fmtDist(closestElec.d)}`, closestElec.d < 100 ? 'Élevée' : 'Modérée', 'Élevée', "Une voie ferrée électrifiée est située à proximité immédiate de la zone d'évolution. Les caténaires alimentées en 1 500 V continu (réseau classique) ou 25 000 V alternatif (réseau LGV) présentent un risque d'amorçage électrique à distance, d'arc et de perturbation magnétique pour les capteurs du drone. Une distance de sécurité minimale de 30 m est strictement respectée par rapport à toute caténaire, mât-support, isolateur ou installation associée, y compris pendant les phases de translation et de retour. Aucun survol des voies n'est effectué, même en transit. En cas d'incident (chute, perte de contrôle, contact suspecté avec la caténaire), le télépilote alerte sans délai le centre opérationnel SNCF Réseau ou le gestionnaire d'infrastructure compétent et n'engage aucune récupération du matériel avant accord explicite et signalement à l'autorité ferroviaire.", { lat: closestElec.center.lat, lon: closestElec.center.lon }]);
     }
 
     // Risques liés aux voies rapides (autoroutes / routes nationales)
@@ -8498,7 +8498,7 @@ function populateRiskTable() {
             rows.push([
                 `${r.cls.label}${r.numero ? ' ' + r.numero : ''} dans la zone d'évolution (à ${fmtDist(r.dist)})`,
                 'Élevée', 'Élevée',
-                `Pas de survol direct de la chaussée · périmètre latéral aux voies · interruption immédiate en cas d'incident · coordination ${isAuto ? 'CRS / DIR / concessionnaire autoroutier' : 'gendarmerie / DIR'}`,
+                `Une voie rapide (${isAuto ? 'autoroute' : 'route nationale ou voie express'}) traverse la zone d'évolution prévue. Aucun survol direct de la chaussée n'est effectué : le télépilote redéfinit le périmètre de manière à conserver une marge latérale aux voies et à interdire physiquement le franchissement de l'emprise routière, y compris pendant les phases de translation et de retour automatique. En cas d'incident (perte de contrôle, batterie critique, retour mal cadré), la procédure d'atterrissage de sécurité privilégie systématiquement un terrain hors chaussée et le télépilote dispose d'au moins deux zones d'atterrissage de secours identifiées au briefing. Une coordination préalable est engagée avec ${isAuto ? 'la CRS autoroutière, la DIR et le concessionnaire autoroutier' : 'la gendarmerie territorialement compétente et la DIR'} afin d'anticiper l'intervention en cas de chute sur infrastructure. Un observateur dédié assure la veille latérale aux voies pendant toute la mission et alerte immédiatement le télépilote en cas de dérive constatée.`,
                 { lat: r.center.lat, lon: r.center.lon }
             ]);
         } else if (closest && closest.dist < 1500) {
@@ -8508,7 +8508,7 @@ function populateRiskTable() {
                 `${closest.cls.label}${closest.numero ? ' ' + closest.numero : ''} à ${fmtDist(closest.dist)} (hors zone)`,
                 closest.dist < 800 ? 'Modérée' : 'Faible',
                 isAuto ? 'Élevée' : 'Modérée',
-                'Surveillance dérive · pas de survol en cas de déport · périmètre latéral aux voies',
+                `Une voie rapide (${isAuto ? 'autoroute' : 'route nationale'}) est située à proximité, hors zone d'évolution stricte. Bien que l'enveloppe de vol prévue n'inclue pas le survol de la chaussée, un risque de dérive (vent, dérive GPS, fausse manœuvre, retour automatique mal cadré) reste présent. Le télépilote conserve une marge latérale supérieure à 100 m par rapport aux voies et surveille en continu la position du drone par rapport à cette limite, en particulier lors des phases de retour. En cas de déport involontaire constaté, le vol est immédiatement ramené à l'intérieur de la zone d'évolution prévue et l'événement est journalisé au compte-rendu. L'enregistrement de la mission est paramétré pour exclure la chaussée du champ de captation et un observateur peut être positionné côté voirie si le créneau de mission coïncide avec un trafic dense.`,
                 { lat: closest.center.lat, lon: closest.center.lon }
             ]);
         }
@@ -8524,14 +8524,14 @@ function populateRiskTable() {
         }).filter(Boolean).sort((a, b) => a.dist - b.dist);
         const closest = ighList[0];
         if (closest && closest.dist < 500)
-            rows.push([`Bâtiment ${closest.cls.kind} (${closest.h.toFixed(0)} m) à ${fmtDist(closest.dist)}`, closest.dist < 200 ? 'Élevée' : 'Modérée', 'Élevée', 'Adapter hauteur de vol > sommet · contournement latéral · vigilance turbulences en aval', { lat: closest.center.lat, lon: closest.center.lon }]);
+            rows.push([`Bâtiment ${closest.cls.kind} (${closest.h.toFixed(0)} m) à ${fmtDist(closest.dist)}`, closest.dist < 200 ? 'Élevée' : 'Modérée', 'Élevée', "Un immeuble de grande hauteur (IGH) ou un bâtiment haut est situé dans la zone d'évolution. Le télépilote adapte la hauteur de vol pour rester soit nettement au-dessus du sommet du bâtiment (avec une marge minimale de 15 m), soit nettement en deçà, afin d'éviter la couche d'air turbulente immédiatement au-dessus de la toiture qui peut générer des rabattants soudains. Le contournement de l'obstacle s'effectue par le côté au vent, à l'écart des zones d'aval où se forment les tourbillons descendants. Une attention particulière est portée à la présence éventuelle d'antennes, de drisses, de filets de sécurité, de nacelles ou de lignes de vie sur la toiture, susceptibles d'accrocher l'aéronef. En cas de turbulences marquées ou d'alarmes vent récurrentes, le drone est replié immédiatement à distance du bâtiment, à l'aplomb de la zone de décollage.", { lat: closest.center.lat, lon: closest.center.lon }]);
     }
 
     // Risques liés aux antennes / mâts hauts
     if (Array.isArray(STATE.antennas) && STATE.antennas.length > 0) {
         const tall = STATE.antennas.find(a => a.h && a.h >= 30);
         if (tall && tall.dist < 1500)
-            rows.push([`Antenne / mât haut${tall.h ? ' (' + tall.h + ' m)' : ''} à ${fmtDist(tall.dist)}`, tall.dist < 500 ? 'Élevée' : 'Modérée', 'Élevée', 'Contournement latéral · maintien hauteur de vol < antenne · vigilance turbulences', { lat: tall.lat, lon: tall.lon }]);
+            rows.push([`Antenne / mât haut${tall.h ? ' (' + tall.h + ' m)' : ''} à ${fmtDist(tall.dist)}`, tall.dist < 500 ? 'Élevée' : 'Modérée', 'Élevée', "Une antenne ou un mât d'au moins 30 m est situé dans la zone d'évolution. Le télépilote contourne l'ouvrage par le côté et conserve sa hauteur de vol nettement sous le sommet de l'antenne (ou nettement au-dessus si l'élongation l'autorise et si la mission le justifie), afin d'éviter à la fois la collision avec les haubans, drisses et dispositifs anti-volatiles, et la zone de turbulences en aval de l'ouvrage. Les émissions radioélectriques fortes (TDF, opérateurs téléphoniques, faisceau hertzien) peuvent perturber la liaison de commande et la réception GNSS du drone : le télépilote surveille la qualité du signal à l'approche et s'éloigne dès que des dégradations apparaissent (perte de satellites, baisse du RSSI radio). Aucun survol direct n'est effectué dans le périmètre d'un rayon égal à la hauteur de l'ouvrage, et la liaison de commande est testée avant tout vol à proximité.", { lat: tall.lat, lon: tall.lon }]);
     }
 
     // Risques liés au trafic aérien temps réel (SAMU / Dragon / hélico basse altitude)
@@ -8546,7 +8546,7 @@ function populateRiskTable() {
             rows.push([
                 `Hélicoptère prioritaire ${a.callsign || a.reg || ''} (SAMU/Dragon/HEMS) à ${fmtDist(a.dist)} · ${altTxt}`,
                 'Élevée', 'Élevée',
-                "Suspendre immédiatement le vol drone · contact opérationnel SAMU/SC pour coordination · ne pas reprendre tant que l'aéronef n'a pas dégagé la zone · journaliser l'événement",
+                "La présence en zone d'un hélicoptère prioritaire (SAMU, Dragon sécurité civile, HEMS, gendarmerie ou urgence sanitaire) impose la suspension immédiate du vol drone. Le télépilote ramène le drone au point de décollage par la trajectoire la plus directe et exclusivement à basse altitude (sous 30 m AGL) pour favoriser la séparation verticale avec l'aéronef habité. Un contact opérationnel est établi avec le centre engageur (CRRA 15 pour le SAMU, CODIS / SDIS pour la sécurité civile, COG pour la gendarmerie) afin de confirmer la coordination et d'obtenir une autorisation explicite avant toute reprise. Aucune reprise du vol n'est engagée tant que l'aéronef habité n'a pas dégagé la zone d'évolution et que l'autorité compétente n'a pas donné son accord. L'événement (heure, identification, callsign, distance minimale relevée, altitude) est consigné en détail dans le compte-rendu de mission.",
                 { lat: a.lat, lon: a.lon }
             ]);
         } else if (heliClose.length > 0) {
@@ -8555,7 +8555,7 @@ function populateRiskTable() {
             rows.push([
                 `Hélicoptère ${a.callsign || a.reg || a.type || ''} à basse altitude (${altTxt}) à ${fmtDist(a.dist)}`,
                 a.dist < 2000 ? 'Élevée' : 'Modérée', 'Élevée',
-                "Maintenir le drone sous 30 m AGL · vigilance trajectoire · prêt à atterrir si rapprochement",
+                "Un hélicoptère est détecté à basse altitude dans la zone d'évolution ou à proximité immédiate. Bien qu'il ne soit pas identifié comme prioritaire, sa proximité représente un risque d'abordage majeur, particulièrement en l'absence d'identification radio. Le télépilote maintient immédiatement le drone sous 30 m AGL pour faciliter la séparation verticale, surveille la trajectoire de l'aéronef habité (cap, vitesse de rapprochement, taux de descente) et prépare en permanence un atterrissage de précaution. Si la trajectoire de l'hélicoptère se rapproche du drone ou semble converger vers la zone d'évolution, le vol est immédiatement interrompu et le drone est posé à proximité du télépilote. La reprise du vol n'intervient qu'après éloignement confirmé de l'aéronef habité, et l'événement est consigné au compte-rendu de mission avec l'heure et la distance minimale relevée.",
                 { lat: a.lat, lon: a.lon }
             ]);
         }
@@ -8565,9 +8565,9 @@ function populateRiskTable() {
     if (Array.isArray(STATE.lines) && STATE.lines.length > 0) {
         const htb = STATE.lines.find(l => l.level === 'HTB');
         if (htb)
-            rows.push([`Ligne HTB ${htb.voltage} à ${fmtDist(htb.dist)}`, htb.dist < 500 ? 'Élevée' : 'Modérée', 'Élevée', 'Distance de sécurité ≥ 30 m · pas de survol · contournement latéral', { lat: htb.center.lat, lon: htb.center.lon }]);
+            rows.push([`Ligne HTB ${htb.voltage} à ${fmtDist(htb.dist)}`, htb.dist < 500 ? 'Élevée' : 'Modérée', 'Élevée', "Une ligne haute tension HTB (tension supérieure ou égale à 63 kV) est située à proximité de la zone d'évolution. Les lignes HTB présentent un risque d'amorçage électrique à distance (claquage de l'air), des champs électromagnétiques susceptibles de perturber le drone et un risque de chute mortelle en cas de contact ou d'amorçage. Une distance de sécurité minimale de 30 m est strictement respectée par rapport aux conducteurs, isolateurs, pylônes-support et toute installation associée, y compris pendant les phases de translation et de retour automatique. Aucun survol direct de la ligne n'est effectué : le contournement s'effectue par le côté, latéralement à la ligne, en privilégiant la direction sous le vent pour éviter une éventuelle traversée involontaire. En cas d'incident (chute, perte de contrôle, contact suspecté), aucune approche n'est tentée par l'équipage drone ; le gestionnaire de réseau RTE est alerté sans délai et la zone est isolée jusqu'à intervention.", { lat: htb.center.lat, lon: htb.center.lon }]);
         else if (STATE.lines[0].dist < 500)
-            rows.push([`Ligne ${STATE.lines[0].voltage || ''} à ${fmtDist(STATE.lines[0].dist)}`, 'Modérée', 'Élevée', 'Distance de sécurité ≥ 30 m · pas de survol', { lat: STATE.lines[0].center.lat, lon: STATE.lines[0].center.lon }]);
+            rows.push([`Ligne ${STATE.lines[0].voltage || ''} à ${fmtDist(STATE.lines[0].dist)}`, 'Modérée', 'Élevée', "Une ligne électrique aérienne (HTA ou BT) est située à proximité de la zone d'évolution. Une distance de sécurité minimale de 30 m est respectée par rapport aux conducteurs, isolateurs, pylônes-support et tout équipement associé, conformément aux préconisations Enedis pour les opérations à proximité des réseaux. Aucun survol direct de la ligne n'est effectué : le contournement s'effectue par le côté et à hauteur compatible avec la zone d'évolution prévue. Le télépilote reste attentif aux conducteurs fins et aux drisses de garde — parfois peu visibles selon l'angle de prise de vue et les conditions de lumière — et surveille la liaison de commande ainsi que la réception GNSS à l'approche de la ligne. En cas d'incident (chute, perte de contrôle, contact suspecté), aucune approche n'est tentée et le gestionnaire de réseau (Enedis ou exploitant local pour les lignes industrielles) est immédiatement alerté.", { lat: STATE.lines[0].center.lat, lon: STATE.lines[0].center.lon }]);
     }
 
     // Insertion des cartes auto en début de grille (avant les manuelles), en sautant les titres déjà édités
