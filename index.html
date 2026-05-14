@@ -7444,6 +7444,12 @@ function testAircraftAlert() {
         if (cb) cb.checked = true;
         _startAlertReminderLoop();
     }
+    // Démo : 3 niveaux d'alerte enchainés (vigilance/attention/danger). Le beep n'accompagne
+    // que le niveau danger — fidèle à la règle « priorité synthèse, beep uniquement en danger ».
+    try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
+    _queueSpeak('Vigilance, hélicoptère SAMU à 7 kilomètres au sud-èsst, se rapproche.');
+    _queueSpeak('Attention, hélicoptère Dragon sécurité civile à 3 kilomètres à l\'èsst, se rapproche.');
+    _queueSpeak('Danger, hélicoptère à 700 mètres au nord, altitude 250 mètres, se rapproche.');
     playHeliAlertBeep(true);
 }
 
@@ -7476,28 +7482,28 @@ function toggleAircraftAlert(enabled) {
         _startAlertReminderLoop();
     } else {
         _stopAlertReminderLoop();
+        try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
     }
 }
 
-// Boucle de rappel indépendante du refresh data : bipe toutes les 20 s tant qu'un
-// hélicoptère est encore présent dans les 5 km. L'alerte initiale (à la 1ʳᵉ détection)
-// reste immédiate via _checkHeliAlerts ; cette boucle sert uniquement à maintenir la
-// vigilance opérationnelle tant que la menace persiste.
+// Boucle de rappel : pour CHAQUE aéronef encore présent dans les 2 km, on RÉPÈTE la
+// synthèse vocale avec l'altitude. Pas de beep (cf. règle « <2 km on ne joue pas le son »).
+// Plusieurs aéronefs → enchainés du plus proche au plus loin.
 function _startAlertReminderLoop() {
     if (_alertReminderTimer) return;
     _alertReminderTimer = setInterval(() => {
         if (!aircraftAlertSound) return;
         if (!Array.isArray(STATE.aircraft) || STATE.aircraft.length === 0) return;
-        const threatInZone = STATE.aircraft.some(a => a.dist <= _alertRadiusM()
-            && (a.isHelicopter || (a.altM != null && a.altM < 500)));
-        if (threatInZone) {
-            playHeliAlertBeep();
-            const pill = document.getElementById('status-aircraft');
-            if (pill) {
-                pill.style.transition = 'box-shadow .2s';
-                pill.style.boxShadow = '0 0 0 4px rgba(220,38,38,0.4)';
-                setTimeout(() => { if (pill) pill.style.boxShadow = ''; }, 1800);
-            }
+        const inZone = STATE.aircraft.filter(a => a.dist < 2000 && a.hex
+            && (a.isHelicopter || a.isPriority || (a.altM != null && a.altM < 500)));
+        if (inZone.length === 0) return;
+        inZone.slice().sort((x, y) => x.dist - y.dist)
+              .forEach(a => speakAircraftAlert(a, { withAlt: true }));
+        const pill = document.getElementById('status-aircraft');
+        if (pill) {
+            pill.style.transition = 'box-shadow .2s';
+            pill.style.boxShadow = '0 0 0 4px rgba(220,38,38,0.4)';
+            setTimeout(() => { if (pill) pill.style.boxShadow = ''; }, 1800);
         }
     }, ALERT_REMINDER_MS);
 }
@@ -7507,19 +7513,22 @@ function _stopAlertReminderLoop() {
 // Démarre la boucle de rappel au chargement si l'alerte est activée par préférence
 if (aircraftAlertSound) _startAlertReminderLoop();
 
-// Vérifie les aéronefs critiques < 5 km :
-//   - Tout hélicoptère
+// Vérifie les aéronefs critiques dans le rayon :
+//   - Tout hélicoptère / SAMU / Dragon (priorité)
 //   - Tout aéronef à moins de 500 m d'altitude (basse altitude → conflit drone réel)
-// Bipe uniquement pour les nouveaux (hex non encore alertés) → pas de spam à chaque refresh.
+// Pour CHAQUE nouvel aéronef on déclenche la synthèse vocale (chainée du plus proche au
+// plus loin si plusieurs apparaissent en même temps). Le beep ne se déclenche QU'en zone
+// danger (<1 km) — pour le reste, priorité à la synthèse vocale (cf. demande utilisateur).
 function _checkHeliAlerts(aircraft) {
     const close = aircraft.filter(a => a.dist <= _alertRadiusM() && a.hex
         && (a.isHelicopter || a.isPriority || (a.altM != null && a.altM < 500)));
     const fresh = close.filter(a => !_alertedHexes.has(a.hex));
     if (fresh.length > 0) {
-        playHeliAlertBeep();
-        // Synthèse vocale : annonce l'aéronef le plus proche parmi les nouveaux
-        const closest = fresh.slice().sort((x, y) => x.dist - y.dist)[0];
-        speakAircraftAlert(closest);
+        // Plus proche d'abord puis enchainement (TTS queue accumulée)
+        const sorted = fresh.slice().sort((x, y) => x.dist - y.dist);
+        // Beep UNIQUEMENT si au moins un aéronef est en zone danger (<1 km)
+        if (sorted.some(a => a.dist < 1000)) playHeliAlertBeep();
+        sorted.forEach(a => speakAircraftAlert(a));
         fresh.forEach(h => _alertedHexes.add(h.hex));
         const pill = document.getElementById('status-aircraft');
         if (pill) {
@@ -7531,7 +7540,7 @@ function _checkHeliAlerts(aircraft) {
     // Cleanup : oublier les hex qui ne sont plus présents (pour pouvoir ré-alerter si l'hélico réapparait)
     const presentHexes = new Set(aircraft.map(a => a.hex).filter(Boolean));
     for (const hex of Array.from(_alertedHexes)) {
-        if (!presentHexes.has(hex)) _alertedHexes.delete(hex);
+        if (!presentHexes.has(hex)) { _alertedHexes.delete(hex); _prevDist.delete(hex); }
     }
 }
 
@@ -7563,24 +7572,58 @@ function _aircraftTypeFr(a) {
     if (a.isLowAlt) return 'avion à basse altitude';
     return 'aéronef';
 }
-function speakAircraftAlert(a) {
+// Niveau de menace selon distance horizontale
+function _threatLevel(distM) {
+    if (distM < 1000) return 'danger';
+    if (distM < 5000) return 'attention';
+    return 'vigilance';
+}
+function _threatWord(level) {
+    return level === 'danger' ? 'Danger' : level === 'attention' ? 'Attention' : 'Vigilance';
+}
+// Trace la distance précédente par aéronef pour détecter approche/éloignement
+const _prevDist = new Map();
+function _approachStateFr(hex, currDist) {
+    const prev = _prevDist.get(hex);
+    _prevDist.set(hex, currDist);
+    if (prev == null) return '';
+    const delta = currDist - prev;
+    // < 30 m d'écart → bruit / passage parallèle, on ne se prononce pas
+    if (Math.abs(delta) < 30) return '';
+    return delta < 0 ? ', se rapproche' : ', s\'éloigne';
+}
+function _fmtDistVoice(distM) {
+    if (distM >= 1000) {
+        const km = Math.round(distM / 1000);
+        return km + ' kilomètre' + (km >= 2 ? 's' : '');
+    }
+    return Math.round(distM) + ' mètres';
+}
+function _buildAlertMsg(a, opts) {
+    const level = _threatLevel(a.dist);
+    const head = _threatWord(level);
+    const kind = _aircraftTypeFr(a);
+    const dist = _fmtDistVoice(a.dist);
+    let dir = '';
+    if (STATE.lat != null && a.lat != null) dir = ' ' + _compassFr(_bearingDeg(STATE.lat, STATE.lon, a.lat, a.lon));
+    const approach = _approachStateFr(a.hex, a.dist);
+    const altPart = (opts && opts.withAlt && a.altM != null) ? `, altitude ${Math.round(a.altM)} mètres` : '';
+    return `${head}. ${kind} à ${dist}${dir}${altPart}${approach}.`;
+}
+// Met une phrase dans la file TTS (n'interrompt PAS les phrases déjà en cours, contrairement
+// à cancel()+speak()) → permet l'enchaînement quand plusieurs aéronefs sont détectés en même temps.
+function _queueSpeak(msg) {
     if (!aircraftAlertSound) return;
-    if (!('speechSynthesis' in window) || !a) return;
+    if (!('speechSynthesis' in window)) return;
     try {
-        const kind = _aircraftTypeFr(a);
-        // Distance arrondie à l'entier : > 1 km → kilomètres entiers ; < 1 km → mètres entiers.
-        const distKm = Math.round(a.dist / 1000);
-        const km = a.dist >= 1000
-            ? distKm + ' kilomètre' + (distKm >= 2 ? 's' : '')
-            : Math.round(a.dist) + ' mètres';
-        let dir = '';
-        if (STATE.lat != null && a.lat != null) dir = ' ' + _compassFr(_bearingDeg(STATE.lat, STATE.lon, a.lat, a.lon));
-        const msg = `Attention, ${kind} à ${km}${dir}.`;
         const u = new SpeechSynthesisUtterance(msg);
         u.lang = 'fr-FR'; u.rate = 1.05; u.pitch = 1.0; u.volume = 1.0;
-        window.speechSynthesis.cancel();   // évite l'empilement si plusieurs alertes
         window.speechSynthesis.speak(u);
     } catch (e) { console.warn('[speech]', e); }
+}
+function speakAircraftAlert(a, opts) {
+    if (!a) return;
+    _queueSpeak(_buildAlertMsg(a, opts));
 }
 
 // Callsigns français de secours / urgences sanitaires / sûreté à mettre en évidence
@@ -7798,8 +7841,11 @@ function renderAircraft(aircraft, lat, lon) {
             <label style="display:flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap;">Refresh :
                 <select id="aircraft-refresh-sel" onchange="setAircraftRefreshSec(this.value)" style="font-size:12px; padding:2px 4px; border:1px solid #cdd9ee; border-radius:4px;">${refreshOpts}</select>
             </label>
-            <button type="button" onclick="testAircraftAlert()" title="Tester le son d'alerte (active la préférence si désactivée)"
-                    style="background:#dc2626; color:#fff; border:0; border-radius:6px; padding:4px 11px; font-size:12px; font-weight:700; cursor:pointer;">🔊 Test</button>
+            <button type="button" onclick="testAircraftAlert()" title="Tester la synthèse vocale et le beep (active la préférence si désactivée)"
+                    style="background:#dc2626; color:#fff; border:0; border-radius:6px; padding:4px 11px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="#fff" aria-hidden="true" style="display:block;"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M14.5 8.5a4.5 4.5 0 010 7v-7zM14.5 4.5a8.5 8.5 0 010 15v-2.1a6.4 6.4 0 000-10.8V4.5z"/></svg>
+                Test
+            </button>
         </div>`;
 
     const rows = _renderAircraftRows(aircraft);
