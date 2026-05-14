@@ -177,6 +177,17 @@
         .rain-smooth-tile { transition: opacity 380ms linear; }
         @keyframes map-loader-in  { from { opacity: 0; } to { opacity: 1; } }
         @keyframes map-loader-out { to   { opacity: 0; } }
+        /* Module en plein écran : la <section.card> remplit l'écran, son contenu scrolle,
+           et la carte interne s'étire pour occuper la place restante. */
+        section.card.module-fullscreen,
+        section.card:fullscreen {
+            background: var(--c-surface); padding: 14px 18px; overflow:auto;
+            display: flex; flex-direction: column;
+        }
+        section.card.module-fullscreen .card-body,
+        section.card:fullscreen .card-body { flex: 1; display:flex; flex-direction:column; min-height: 0; }
+        section.card.module-fullscreen #aircraft-map,
+        section.card:fullscreen #aircraft-map { flex: 1; min-height: 320px; height: auto !important; }
         /* UI cartes cachée par défaut — apparaît au touch/clic, se masque après 4 s d'inactivité */
         .leaflet-control-container,
         .maplibregl-ctrl-top-left, .maplibregl-ctrl-top-right,
@@ -1983,8 +1994,11 @@ function hideMapLoader(elOrId) {
 
 /* -------- Bouton plein écran générique pour cartes Leaflet (API Fullscreen native)
             + active la molette de zoom UNIQUEMENT en plein écran (pour ne pas piéger
-            le scroll de la page en mode normal). -------- */
-function addFullscreenControl(map) {
+            le scroll de la page en mode normal).
+            fullscreenTarget : élément à passer en plein écran (par défaut le conteneur
+            de la carte). Permet de passer toute une section/card en fullscreen pour
+            que l'interface du module reste visible. -------- */
+function addFullscreenControl(map, fullscreenTarget) {
     if (!map || !L || !L.Control) return;
     const Ctl = L.Control.extend({
         options: { position: 'topright' },
@@ -1995,18 +2009,29 @@ function addFullscreenControl(map) {
             a.style.cssText = 'display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;';
             const ICON_FS = '⛶', ICON_EXIT = '✕';
             a.innerHTML = ICON_FS;
-            const container = map.getContainer();
+            const mapEl = map.getContainer();
+            // Le target est résolu au moment du clic (au cas où le sélecteur dépend d'un parent
+            // créé dynamiquement) : si fullscreenTarget est une fonction → on l'appelle, sinon
+            // on l'utilise tel quel, sinon on retombe sur le conteneur de la carte.
+            const resolveTarget = () => {
+                const t = typeof fullscreenTarget === 'function' ? fullscreenTarget() : fullscreenTarget;
+                return t || mapEl;
+            };
             const update = () => {
-                const isFs = document.fullscreenElement === container;
+                const target = resolveTarget();
+                const isFs = document.fullscreenElement === target;
                 a.innerHTML = isFs ? ICON_EXIT : ICON_FS;
                 if (isFs) map.scrollWheelZoom.enable(); else map.scrollWheelZoom.disable();
-                setTimeout(() => map.invalidateSize(), 200);
+                if (isFs && target !== mapEl) target.classList.add('module-fullscreen');
+                else target.classList.remove('module-fullscreen');
+                setTimeout(() => map.invalidateSize(), 250);
             };
             L.DomEvent.on(a, 'click', (e) => {
                 L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e);
-                if (document.fullscreenElement === container) { document.exitFullscreen && document.exitFullscreen(); }
-                else if (container.requestFullscreen) { container.requestFullscreen().catch(() => {}); }
-                else if (container.webkitRequestFullscreen) { container.webkitRequestFullscreen(); }
+                const target = resolveTarget();
+                if (document.fullscreenElement === target) { document.exitFullscreen && document.exitFullscreen(); }
+                else if (target.requestFullscreen) { target.requestFullscreen().catch(() => {}); }
+                else if (target.webkitRequestFullscreen) { target.webkitRequestFullscreen(); }
             });
             L.DomEvent.disableClickPropagation(c);
             document.addEventListener('fullscreenchange', update);
@@ -7457,12 +7482,14 @@ if (aircraftAlertSound) _startAlertReminderLoop();
 // Bipe uniquement pour les nouveaux (hex non encore alertés) → pas de spam à chaque refresh.
 function _checkHeliAlerts(aircraft) {
     const close = aircraft.filter(a => a.dist <= _alertRadiusM() && a.hex
-        && (a.isHelicopter || (a.altM != null && a.altM < 500)));
+        && (a.isHelicopter || a.isPriority || (a.altM != null && a.altM < 500)));
     const fresh = close.filter(a => !_alertedHexes.has(a.hex));
     if (fresh.length > 0) {
         playHeliAlertBeep();
+        // Synthèse vocale : annonce l'aéronef le plus proche parmi les nouveaux
+        const closest = fresh.slice().sort((x, y) => x.dist - y.dist)[0];
+        speakAircraftAlert(closest);
         fresh.forEach(h => _alertedHexes.add(h.hex));
-        // Flash visuel sur le pill statut + le bouton alerte
         const pill = document.getElementById('status-aircraft');
         if (pill) {
             pill.style.transition = 'box-shadow .2s';
@@ -7475,6 +7502,49 @@ function _checkHeliAlerts(aircraft) {
     for (const hex of Array.from(_alertedHexes)) {
         if (!presentHexes.has(hex)) _alertedHexes.delete(hex);
     }
+}
+
+// Synthèse vocale : annonce type + distance + direction cardinale (depuis le point mission).
+// Active uniquement si l'alerte sonore est ON (un seul toggle pour les deux).
+function _bearingDeg(lat1, lon1, lat2, lon2) {
+    const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+    const y = Math.sin(Δλ) * Math.cos(φ2);
+    const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+    return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+}
+function _compassFr(deg) {
+    const dirs = ['au nord', 'au nord-est', 'à l\'est', 'au sud-est', 'au sud', 'au sud-ouest', 'à l\'ouest', 'au nord-ouest'];
+    return dirs[Math.round(deg / 45) % 8];
+}
+function _aircraftTypeFr(a) {
+    if (a.isPriority) {
+        const cs = (a.callsign || '').toUpperCase();
+        if (/^DRAGON/.test(cs)) return 'hélicoptère Dragon sécurité civile';
+        if (/^SAMU|^HELISAMU|^HEMS|^HOSPIT|^MEDIC/.test(cs)) return 'hélicoptère SAMU';
+        if (/^FAGN|^GIGN/.test(cs)) return 'hélicoptère gendarmerie';
+        if (/^RESCUE|^AIRMED/.test(cs)) return 'hélicoptère secours';
+        return 'hélicoptère prioritaire';
+    }
+    if (a.isHelicopter) return 'hélicoptère';
+    if (a.isLowAlt) return 'avion à basse altitude';
+    return 'aéronef';
+}
+function speakAircraftAlert(a) {
+    if (!aircraftAlertSound) return;
+    if (!('speechSynthesis' in window) || !a) return;
+    try {
+        const kind = _aircraftTypeFr(a);
+        const km = a.dist >= 1000 ? (a.dist / 1000).toFixed(1).replace('.0', '') + ' kilomètre' + (a.dist >= 2000 ? 's' : '')
+                                  : Math.round(a.dist) + ' mètres';
+        let dir = '';
+        if (STATE.lat != null && a.lat != null) dir = ' ' + _compassFr(_bearingDeg(STATE.lat, STATE.lon, a.lat, a.lon));
+        const msg = `Attention, ${kind} à ${km}${dir}.`;
+        const u = new SpeechSynthesisUtterance(msg);
+        u.lang = 'fr-FR'; u.rate = 1.05; u.pitch = 1.0; u.volume = 1.0;
+        window.speechSynthesis.cancel();   // évite l'empilement si plusieurs alertes
+        window.speechSynthesis.speak(u);
+    } catch (e) { console.warn('[speech]', e); }
 }
 
 // Callsigns français de secours / urgences sanitaires / sûreté à mettre en évidence
@@ -7770,20 +7840,30 @@ function updateAircraftLive(aircraft) {
     }
 }
 
-// Construit l'icône divIcon + le HTML popup pour un aéronef. Réutilisé par initAircraftMap (1re création) et updateAircraftLive (refresh sans rebuild de la carte).
+// Icônes SVG nettes (parfaitement centrées dans leur viewBox 24×24 → centrage garanti
+// peu importe le rendu emoji du navigateur).
+const SVG_PLANE = '<svg viewBox="0 0 24 24" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" style="display:block;" fill="#fff"><path d="M12 2L10.5 11l-7.5 2v1.5l7.5-1v4L8.5 19v1.5L12 19.5l3.5 1V19l-2-1.5v-4l7.5 1V13l-7.5-2z"/></svg>';
+const SVG_HELI = '<svg viewBox="0 0 24 24" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" style="display:block;" fill="#fff"><rect x="2.5" y="6.5" width="19" height="1.6" rx="0.6"/><rect x="11.3" y="8" width="1.4" height="2.2"/><ellipse cx="12" cy="13.3" rx="4.4" ry="2.6"/><rect x="4.5" y="12.7" width="7.5" height="1.4"/><rect x="3.6" y="10.5" width="1.6" height="5"/><rect x="7" y="17" width="10" height="1" rx="0.4"/><rect x="8.6" y="15.5" width="0.9" height="2"/><rect x="14.5" y="15.5" width="0.9" height="2"/></svg>';
+
+// Construit l'icône divIcon + le HTML popup pour un aéronef.
 function _buildAircraftMarkerSpec(a) {
     const isPrio = a.isPriority || a.emergency;
-    const isHeli = a.isHelicopter;
-    const color = isPrio ? '#ef4444' : isHeli ? '#fb923c' : a.isLowAlt ? '#fde047' : '#67e8f9';
-    const icon = isHeli ? '🚁' : '✈';
+    // ⚠ SAMU/Dragon sont TOUJOURS des hélicos même si la cat ADS-B / le type ne le confirme pas
+    const isHeli = a.isHelicopter || a.isPriority;
+    const color = isPrio ? '#ef4444' : isHeli ? '#fb923c' : a.isLowAlt ? '#fde047' : '#0e7490';
     const size = isPrio ? 42 : isHeli ? 38 : 34;
+    const svg = isHeli ? SVG_HELI : SVG_PLANE;
+    // L'avion suit son cap (track) ; l'hélico n'a pas d'orientation pertinente → on ne le tourne pas.
+    const rot = isHeli ? 0 : (a.track || 0);
     const labelHtml = isPrio
-        ? `<div style="position:absolute; top:-17px; left:50%; transform:translateX(-50%); background:#ef4444; color:#fff; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:700; white-space:nowrap; box-shadow:0 1px 4px rgba(0,0,0,.7); pointer-events:none;">${(a.callsign || a.reg || 'PRIO').slice(0, 12)}</div>`
+        ? `<div style="position:absolute; top:-17px; left:50%; transform:translateX(-50%); background:#ef4444; color:#fff; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:700; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,.45); pointer-events:none;">${(a.callsign || a.reg || 'PRIO').slice(0, 12)}</div>`
         : '';
+    // Disque coloré avec bord blanc + ombre douce ; SVG centré (padding intérieur pour l'aération).
+    const pad = Math.max(4, Math.round(size * 0.18));
     const html = `<div style="position:relative; width:${size}px; height:${size}px;">
         ${labelHtml}
-        <div class="${isPrio ? 'ac-priority' : 'ac-normal'}" style="width:${size}px; height:${size}px; transform:rotate(${a.track}deg); transform-origin:center; background:${color}; border:3px solid #fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:${size - 14}px; line-height:1; box-shadow:0 0 0 2px rgba(0,0,0,0.55), 0 0 14px rgba(0,0,0,0.7), 0 0 6px ${color};">
-            <span style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.95)); color:#fff; font-weight:900;">${icon}</span>
+        <div class="${isPrio ? 'ac-priority' : 'ac-normal'}" style="width:${size}px; height:${size}px; background:${color}; border:2.5px solid #fff; border-radius:50%; box-shadow:0 2px 5px rgba(0,0,0,0.35); box-sizing:border-box; padding:${pad}px;">
+            <div style="width:100%; height:100%; transform:rotate(${rot}deg);">${svg}</div>
         </div>
     </div>`;
     const textColor = isPrio ? '#b91c1c' : isHeli ? '#c2410c' : a.isLowAlt ? '#a16207' : '#0e7490';
@@ -7859,7 +7939,8 @@ function initAircraftMap(aircraft, lat, lon) {
     // Marqueurs aéronefs (via la fonction d'update partagée)
     updateAircraftMarkers(aircraft);
 
-    addFullscreenControl(aircraftMap);
+    // Plein écran : tout le module §18 (carte + contrôles + tableau) pour rester opérationnel
+    addFullscreenControl(aircraftMap, () => el.closest('section.card'));
     setTimeout(() => aircraftMap.invalidateSize(), 100);
 }
 
