@@ -7813,16 +7813,39 @@ function _threatLevel(distM) {
 function _threatWord(level) {
     return level === 'danger' ? 'Danger' : level === 'attention' ? 'Attention' : 'Vigilance';
 }
-// Trace la distance précédente par aéronef pour détecter approche/éloignement
+// Détection approche / éloignement par projection du cap (track) sur le vecteur
+// aéronef → point de mission. Bien plus fiable que le delta de distance entre 2 refresh :
+// résultat instantané dès la 1ʳᵉ détection, insensible à la dérive GPS et au bruit.
+//
+//   bearingAM = cap depuis l'aéronef vers le point de mission
+//   delta = track - bearingAM (normalisé dans [-180°, 180°])
+//   |delta| <  60° → l'aéronef va vers nous (rapproche)
+//   |delta| > 120° → l'aéronef nous tourne le dos (éloigne)
+//   60° ≤ |delta| ≤ 120° → trajectoire tangentielle, on ne se prononce pas
+//
+// Fallback : delta de distance entre 2 refresh (si track/vitesse absents ou nuls).
 const _prevDist = new Map();
-function _approachStateFr(hex, currDist) {
+function _approachStateFr(hex, currDist, aircraft) {
     const prev = _prevDist.get(hex);
     _prevDist.set(hex, currDist);
+    // Méthode primaire : géométrie cap ↔ bearing vers point de mission
+    if (aircraft && STATE.lat != null && aircraft.lat != null
+            && typeof aircraft.track === 'number'
+            && typeof aircraft.gs === 'number' && aircraft.gs > 5) {
+        const bearingAM = _bearingDeg(aircraft.lat, aircraft.lon, STATE.lat, STATE.lon);
+        let delta = aircraft.track - bearingAM;
+        while (delta > 180) delta -= 360;
+        while (delta < -180) delta += 360;
+        const abs = Math.abs(delta);
+        if (abs < 60) return ', se rapproche';
+        if (abs > 120) return ', s\'éloigne';
+        return '';
+    }
+    // Fallback : delta de distance (peu utile à la 1ʳᵉ détection puisque prev == null)
     if (prev == null) return '';
-    const delta = currDist - prev;
-    // < 30 m d'écart → bruit / passage parallèle, on ne se prononce pas
-    if (Math.abs(delta) < 30) return '';
-    return delta < 0 ? ', se rapproche' : ', s\'éloigne';
+    const d = currDist - prev;
+    if (Math.abs(d) < 30) return '';
+    return d < 0 ? ', se rapproche' : ', s\'éloigne';
 }
 function _fmtDistVoice(distM) {
     if (distM >= 1000) {
@@ -7838,7 +7861,7 @@ function _buildAlertMsg(a, opts) {
     const dist = _fmtDistVoice(a.dist);
     let dir = '';
     if (STATE.lat != null && a.lat != null) dir = ' ' + _compassFr(_bearingDeg(STATE.lat, STATE.lon, a.lat, a.lon));
-    const approach = _approachStateFr(a.hex, a.dist);
+    const approach = _approachStateFr(a.hex, a.dist, a);
     const altPart = (opts && opts.withAlt && a.altM != null) ? `, altitude ${Math.round(a.altM)} mètres` : '';
     return `${head}. ${kind} à ${dist}${dir}${altPart}${approach}.`;
 }
