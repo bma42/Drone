@@ -8407,26 +8407,29 @@ function riskRow(risk, prob, sev, mit, auto = false, pos = null) {
             </div>
         </div>`;
     }
-    // Mode manuel : édition pleine
+    // Mode édition : structure visuelle alignée sur le mode compact auto
+    //   ligne 1 : Titre + badge score
+    //   ligne 2 : P : [select]   G : [select]   (inline, comme en compact)
+    //   ligne 3 : « Mitigation » + textarea pleine largeur
     return `<div class="risk-card ${lvlCls}"${posAttr}>
         <div class="risk-card-head">
             <input type="text" class="risk-title" value="${escape(risk)}" placeholder="Risque identifié…">
             <span class="risk-level-badge ${lvlCls}">${score}</span>
             <button type="button" class="risk-row-del no-print" onclick="this.closest('.risk-card').remove()" title="Supprimer">×</button>
         </div>
-        <div class="risk-card-grid">
-            <div>
-                <span class="risk-sublabel">Probabilité</span>
-                <select onchange="updateRiskScore(this)">${opt(prob)}</select>
-            </div>
-            <div>
-                <span class="risk-sublabel">Gravité</span>
-                <select onchange="updateRiskScore(this)">${opt(sev)}</select>
-            </div>
+        <div class="risk-pg-row" style="display:flex; gap:18px; flex-wrap:wrap; align-items:center; font-size:12px; color:var(--c-muted);">
+            <label style="display:inline-flex; gap:6px; align-items:center;">
+                <strong style="color:var(--c-text);">P&nbsp;:</strong>
+                <select onchange="updateRiskScore(this)" style="font-size:12px; padding:4px 6px;">${opt(prob)}</select>
+            </label>
+            <label style="display:inline-flex; gap:6px; align-items:center;">
+                <strong style="color:var(--c-text);">G&nbsp;:</strong>
+                <select onchange="updateRiskScore(this)" style="font-size:12px; padding:4px 6px;">${opt(sev)}</select>
+            </label>
         </div>
-        <div>
-            <span class="risk-mit-label">Mesure de mitigation</span>
-            <textarea class="risk-mit" placeholder="Mesure à appliquer…">${escape(mit)}</textarea>
+        <div style="display:block;">
+            <span class="risk-mit-label">Mitigation</span>
+            <textarea class="risk-mit" placeholder="Mesure à appliquer…" style="display:block; width:100%;">${escape(mit)}</textarea>
         </div>
         ${miniMapDiv}
         <div class="risk-card-foot">
