@@ -2283,6 +2283,13 @@ const FR_TILE_OPTS = { attribution: '© OpenStreetMap France', subdomains: 'abc'
 function _frTileLayer(extra) {
     return L.tileLayer(FR_TILE_URL, Object.assign({}, FR_TILE_OPTS, extra || {}));
 }
+// PLAN.IGN — fond IGN officiel 100 % en français, idéal pour les vues régionales /
+// nationales où OSM France peut encore afficher des labels anglais aux faibles zooms.
+const IGN_PLAN_URL  = 'https://data.geopf.fr/wmts?layer=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&style=normal&tilematrixset=PM&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image/png&TileMatrix={z}&TileCol={x}&TileRow={y}';
+const IGN_PLAN_OPTS = { attribution: '© IGN-F / Géoplateforme', crossOrigin: true, maxZoom: 18 };
+function _ignPlanTileLayer(extra) {
+    return L.tileLayer(IGN_PLAN_URL, Object.assign({}, IGN_PLAN_OPTS, extra || {}));
+}
 
 let map = L.map('map', { scrollWheelZoom: false }).setView([46.2276, 2.2137], 5);
 _frTileLayer().addTo(map);
@@ -3611,7 +3618,7 @@ async function initRainRadar(lat, lon) {
         minZoom: 4,
         maxZoom: 11
     }).setView([lat, lon], 7);
-    _frTileLayer({ attribution: '© OpenStreetMap France · Radar © RainViewer', maxZoom: 11, maxNativeZoom: 11 }).addTo(rainMap);
+    _ignPlanTileLayer({ attribution: '© IGN-F / Géoplateforme · Radar © RainViewer', maxZoom: 11, maxNativeZoom: 11 }).addTo(rainMap);
     L.circleMarker([lat, lon], { radius: 7, color: '#0b3d91', fillColor: '#fff', fillOpacity: 1, weight: 3 }).addTo(rainMap).bindPopup('<b>Point de mission</b>');
     L.circle([lat, lon], { radius: 50000, color: '#0b3d91', fillOpacity: 0, weight: 1, dashArray: '4,4' }).addTo(rainMap);
 
