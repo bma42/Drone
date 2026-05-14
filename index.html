@@ -1981,7 +1981,9 @@ function hideMapLoader(elOrId) {
     setTimeout(() => { try { loader.remove(); } catch (e) {} }, 300);
 }
 
-/* -------- Bouton plein écran générique pour cartes Leaflet (API Fullscreen native) -------- */
+/* -------- Bouton plein écran générique pour cartes Leaflet (API Fullscreen native)
+            + active la molette de zoom UNIQUEMENT en plein écran (pour ne pas piéger
+            le scroll de la page en mode normal). -------- */
 function addFullscreenControl(map) {
     if (!map || !L || !L.Control) return;
     const Ctl = L.Control.extend({
@@ -1994,7 +1996,12 @@ function addFullscreenControl(map) {
             const ICON_FS = '⛶', ICON_EXIT = '✕';
             a.innerHTML = ICON_FS;
             const container = map.getContainer();
-            const update = () => { a.innerHTML = document.fullscreenElement === container ? ICON_EXIT : ICON_FS; setTimeout(() => map.invalidateSize(), 200); };
+            const update = () => {
+                const isFs = document.fullscreenElement === container;
+                a.innerHTML = isFs ? ICON_EXIT : ICON_FS;
+                if (isFs) map.scrollWheelZoom.enable(); else map.scrollWheelZoom.disable();
+                setTimeout(() => map.invalidateSize(), 200);
+            };
             L.DomEvent.on(a, 'click', (e) => {
                 L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e);
                 if (document.fullscreenElement === container) { document.exitFullscreen && document.exitFullscreen(); }
@@ -2257,7 +2264,7 @@ STATE.layers.lines     = L.layerGroup().addTo(map);
 STATE.layers.buildings = L.layerGroup().addTo(map);
 STATE.layers.roads     = L.layerGroup().addTo(map);
 STATE.layers.elevAxis  = L.layerGroup().addTo(map);
-STATE.layers.captation = L.layerGroup();   // zone de captation de l'arrêté préfectoral (off par défaut)
+STATE.layers.captation = L.layerGroup().addTo(map);   // zone de captation — activée par défaut
 
 L.control.layers(null, {
     "Aérodromes / héliports": STATE.layers.heliports,
@@ -2479,8 +2486,38 @@ function initCaptationMap() {
         }
     });
     addFullscreenControl(captationMap);
+    addCaptationPolyControls(captationMap);
     setTimeout(() => { try { captationMap.invalidateSize(); } catch (e) {} }, 120);
 }
+
+// Boutons in-map (visibles aussi en plein écran) : 🔒 Fermer / ↩ Retirer dernier / 🗑 Effacer
+let _captationPolyCtl = null;
+function addCaptationPolyControls(map) {
+    if (!map || _captationPolyCtl) return;
+    const Ctl = L.Control.extend({
+        options: { position: 'topleft' },
+        onAdd: function () {
+            const c = L.DomUtil.create('div', 'leaflet-bar');
+            c.style.display = 'none';   // affiché uniquement en mode polygone
+            const mkBtn = (icon, title, fn) => {
+                const a = L.DomUtil.create('a', '', c);
+                a.href = '#'; a.title = title; a.innerHTML = icon;
+                a.style.cssText = 'display:flex;align-items:center;justify-content:center;width:34px;height:34px;font-size:16px;text-decoration:none;color:#333;background:#fff;';
+                L.DomEvent.on(a, 'click', (e) => { L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e); fn(); });
+                return a;
+            };
+            mkBtn('🔒', 'Fermer le polygone (relier le dernier sommet au 🚩 départ)', () => { if (_captationVertices.length >= 2 && !_captationLocked && !_captationRouting) _captationCloseLoop(); });
+            mkBtn('↩', 'Retirer le dernier point', () => undoCaptationVertex());
+            mkBtn('🗑', 'Tout effacer', () => clearCaptation());
+            L.DomEvent.disableClickPropagation(c);
+            L.DomEvent.disableScrollPropagation(c);
+            _captationPolyCtl = c;
+            return c;
+        }
+    });
+    map.addControl(new Ctl());
+}
+function _setCaptationPolyCtlVisible(v) { if (_captationPolyCtl) _captationPolyCtl.style.display = v ? 'flex' : 'none'; }
 // Recentre la carte captation sur le point de mission quand une adresse est choisie en §1
 function recenterCaptationMap() {
     if (!captationMap || STATE.lat == null) return;
@@ -2502,6 +2539,7 @@ function setCaptationMode(mode) {
         : 'Cliquez sur la carte pour placer le point de départ. À chaque clic suivant le tracé suivra les rues. Re-cliquez près du 🚩 départ pour fermer le polygone (verrouillage automatique).';
     const el = document.getElementById('captation-map');
     if (el) el.style.cursor = 'crosshair';
+    _setCaptationPolyCtlVisible(mode === 'polygone');
     // Repart proprement quand on bascule de mode (évite de mélanger cercle et polygone)
     clearCaptation();
 }
@@ -2583,11 +2621,13 @@ async function _captationHandleClick(latlng) {
         _setCaptationPolyStatus('🚩 Point de départ posé. Cliquez sur la prochaine rue — le tracé suivra la voirie.');
         return;
     }
-    // Vérifie si on clique près du départ pour boucler (>=2 segments déjà tracés → >=3 sommets)
+    // Vérifie si on clique près du départ pour boucler (>=2 segments déjà tracés → >=3 sommets).
+    // Hybride : 60 m OU 25 px à l'écran (couvre les forts zooms autant que les vues larges).
     const start = _captationVertices[0];
-    const distStart = captationMap.distance(latlng, L.latLng(start.lat, start.lng));
-    const closeThresholdM = Math.max(20, captationMap.getZoom() ? 30 : 30);
-    if (_captationVertices.length >= 3 && distStart < closeThresholdM) {
+    const startLL = L.latLng(start.lat, start.lng);
+    const distM = captationMap.distance(latlng, startLL);
+    const distPx = captationMap.latLngToContainerPoint(latlng).distanceTo(captationMap.latLngToContainerPoint(startLL));
+    if (_captationVertices.length >= 3 && (distM < 60 || distPx < 25)) {
         return _captationCloseLoop();
     }
     // Sinon : nouveau sommet, on route depuis le dernier
@@ -2650,7 +2690,8 @@ function _redrawCaptationTrace() {
             .addTo(captationMap).bindPopup(isStart ? '<b>🚩 Point de départ</b><br>Re-cliquez ici (≤30 m) pour fermer.' : `<b>Sommet ${i + 1}</b>`);
         captationMap._capExtra.push(m);
     });
-    if (path.length >= 2) try { captationMap.fitBounds(L.latLngBounds(path).pad(0.2)); } catch (e) {}
+    // ⚠️ Pas de fitBounds ici : recadrer à chaque clic perdait le zoom / le contexte
+    //    de l'utilisateur. On laisse la vue inchangée. Recadrage uniquement à initCaptationMap().
     _syncCaptationToMainMap();
 }
 
