@@ -7325,8 +7325,12 @@ let _lastRenderedLat = null, _lastRenderedLon = null;
 let aircraftElongationCircle = null;
 let aircraftRefreshTimer = null;
 // UN SEUL rayon : sert à la fois pour la recherche d'aéronefs ET pour le déclenchement de l'alerte
-let aircraftSearchRadiusKm = 10;       // 10 km par défaut
-try { const v = localStorage.getItem('drone_aircraft_search_radius'); if (v) aircraftSearchRadiusKm = Math.max(5, Math.min(150, parseInt(v, 10) || 10)); } catch (e) {}
+let aircraftSearchRadiusKm = 20;       // 20 km par défaut
+try { const v = localStorage.getItem('drone_aircraft_search_radius'); if (v) aircraftSearchRadiusKm = Math.max(5, Math.min(150, parseInt(v, 10) || 20)); } catch (e) {}
+// Filtre altitude : par défaut on masque les aéronefs > 500 m (gros porteurs / haute altitude
+// qui n'entrent pas en conflit avec le drone). Le plein écran force ce filtre quoi qu'il arrive.
+let aircraftShowHighAlt = false;
+try { const v = localStorage.getItem('drone_aircraft_show_high'); if (v !== null) aircraftShowHighAlt = (v === '1'); } catch (e) {}
 let aircraftAutoRefresh = false;       // auto-refresh DÉSACTIVÉ par défaut
 let aircraftAlertSound = false;        // alerte sonore DÉSACTIVÉE par défaut
 let aircraftRefreshSec = 15;           // intervalle de rafraîchissement (1 / 5 / 10 / 15 s) — 15 s par défaut
@@ -7541,7 +7545,9 @@ function _bearingDeg(lat1, lon1, lat2, lon2) {
     return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
 }
 function _compassFr(deg) {
-    const dirs = ['au nord', 'au nord-est', 'à l\'est', 'au sud-est', 'au sud', 'au sud-ouest', 'à l\'ouest', 'au nord-ouest'];
+    // « est » seul est prononcé « è » par la plupart des moteurs TTS français (confusion
+    // avec le verbe être). Le respelling « èsst » force la prononciation /ɛst/ du point cardinal.
+    const dirs = ['au nord', 'au nord-èsst', 'à l\'èsst', 'au sud-èsst', 'au sud', 'au sud-ouest', 'à l\'ouest', 'au nord-ouest'];
     return dirs[Math.round(deg / 45) % 8];
 }
 function _aircraftTypeFr(a) {
@@ -7562,8 +7568,11 @@ function speakAircraftAlert(a) {
     if (!('speechSynthesis' in window) || !a) return;
     try {
         const kind = _aircraftTypeFr(a);
-        const km = a.dist >= 1000 ? (a.dist / 1000).toFixed(1).replace('.0', '') + ' kilomètre' + (a.dist >= 2000 ? 's' : '')
-                                  : Math.round(a.dist) + ' mètres';
+        // Distance arrondie à l'entier : > 1 km → kilomètres entiers ; < 1 km → mètres entiers.
+        const distKm = Math.round(a.dist / 1000);
+        const km = a.dist >= 1000
+            ? distKm + ' kilomètre' + (distKm >= 2 ? 's' : '')
+            : Math.round(a.dist) + ' mètres';
         let dir = '';
         if (STATE.lat != null && a.lat != null) dir = ' ' + _compassFr(_bearingDeg(STATE.lat, STATE.lon, a.lat, a.lon));
         const msg = `Attention, ${kind} à ${km}${dir}.`;
@@ -7718,7 +7727,7 @@ function toggleAircraftAuto(enabled) {
 }
 
 function setAircraftRadius(km) {
-    aircraftSearchRadiusKm = Math.max(5, Math.min(150, parseInt(km, 10) || 10));
+    aircraftSearchRadiusKm = Math.max(5, Math.min(150, parseInt(km, 10) || 20));
     try { localStorage.setItem('drone_aircraft_search_radius', String(aircraftSearchRadiusKm)); } catch (e) {}
     const numEl = document.getElementById('aircraft-radius-num');
     if (numEl) numEl.innerText = aircraftSearchRadiusKm;
@@ -7780,6 +7789,9 @@ function renderAircraft(aircraft, lat, lon) {
             <label style="display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap; font-weight:600;" title="Beep d'alerte si un hélicoptère OU tout aéronef à moins de 500 m d'altitude entre dans le rayon">
                 <input type="checkbox" id="aircraft-alert-cb" ${aircraftAlertSound ? 'checked' : ''} onchange="toggleAircraftAlert(this.checked)" style="accent-color:#dc2626;"> 🔔 Alerte
             </label>
+            <label style="display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap;" title="Afficher aussi les gros porteurs au-dessus de 500 m. En plein écran le filtre <500 m est forcé.">
+                <input type="checkbox" id="aircraft-high-cb" ${aircraftShowHighAlt ? 'checked' : ''} onchange="toggleAircraftHighAlt(this.checked)" style="accent-color:var(--c-primary);"> ✈ &gt; 500 m
+            </label>
             <label style="display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap;">
                 <input type="checkbox" id="aircraft-auto-cb" ${aircraftAutoRefresh ? 'checked' : ''} onchange="toggleAircraftAuto(this.checked)" style="accent-color:var(--c-primary);"> Auto
             </label>
@@ -7812,10 +7824,13 @@ function renderAircraft(aircraft, lat, lon) {
 
 // Construit le HTML des lignes du tableau (extrait pour réutilisation par updateAircraftLive)
 function _renderAircraftRows(aircraft) {
-    if (aircraft.length === 0) {
-        return `<tr><td colspan="5" class="empty-state">Aucun aéronef détecté dans un rayon de ${aircraftSearchRadiusKm} km.</td></tr>`;
+    const visible = _visibleAircraft(aircraft);
+    if (visible.length === 0) {
+        const hidden = Array.isArray(aircraft) ? aircraft.length - visible.length : 0;
+        const note = hidden > 0 ? ` (${hidden} aéronef${hidden > 1 ? 's' : ''} > 500 m masqué${hidden > 1 ? 's' : ''})` : '';
+        return `<tr><td colspan="5" class="empty-state">Aucun aéronef à surveiller dans un rayon de ${aircraftSearchRadiusKm} km${note}.</td></tr>`;
     }
-    return aircraft.slice(0, 15).map(a => {
+    return visible.slice(0, 15).map(a => {
         const isLowAlt = a.altM != null && a.altM < 500;
         const badge = a.isPriority ? '<span style="background:#dc2626; color:#fff; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:700;">🚨 SAMU/DRAGON</span>'
                     : a.emergency ? '<span style="background:#dc2626; color:#fff; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:700;">🆘 URG.</span>'
@@ -7867,6 +7882,36 @@ function updateAircraftLive(aircraft) {
     }
 }
 
+// Filtre d'affichage des aéronefs. Objectifs :
+//   · masquer les gros porteurs > 500 m qui ne représentent aucun conflit drone
+//   · toujours montrer hélicoptères, SAMU/Dragon, urgences, basses altitudes,
+//     et les cibles sans altitude connue (par précaution)
+//   · en PLEIN ÉCRAN : on force le filtre <500 m strict (focus zone de conflit)
+let _aircraftFullscreen = false;
+function _visibleAircraft(list) {
+    if (!Array.isArray(list)) return [];
+    if (_aircraftFullscreen) {
+        return list.filter(a => a.altM == null || a.altM < 500);
+    }
+    if (aircraftShowHighAlt) return list;
+    return list.filter(a => a.isHelicopter || a.isPriority || a.emergency || a.altM == null || a.altM < 500);
+}
+function toggleAircraftHighAlt(checked) {
+    aircraftShowHighAlt = !!checked;
+    try { localStorage.setItem('drone_aircraft_show_high', checked ? '1' : '0'); } catch (e) {}
+    if (Array.isArray(STATE.aircraft)) updateAircraftLive(STATE.aircraft);
+}
+// Détecte l'entrée/sortie de plein écran sur la section §18 → re-render markers + tableau
+document.addEventListener('fullscreenchange', () => {
+    const el = document.getElementById('aircraft-map');
+    const card = el ? el.closest('section.card') : null;
+    const isFs = !!(card && document.fullscreenElement === card);
+    if (isFs !== _aircraftFullscreen) {
+        _aircraftFullscreen = isFs;
+        if (Array.isArray(STATE.aircraft)) updateAircraftLive(STATE.aircraft);
+    }
+});
+
 // Icônes SVG nettes (parfaitement centrées dans leur viewBox 24×24 → centrage garanti
 // peu importe le rendu emoji du navigateur).
 const SVG_PLANE = '<svg viewBox="0 0 24 24" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" style="display:block;" fill="#fff"><path d="M12 2L10.5 11l-7.5 2v1.5l7.5-1v4L8.5 19v1.5L12 19.5l3.5 1V19l-2-1.5v-4l7.5 1V13l-7.5-2z"/></svg>';
@@ -7913,8 +7958,9 @@ function _buildAircraftMarkerSpec(a) {
 // Mise à jour incrémentielle des marqueurs : créé/déplace/supprime sans recréer la carte.
 function updateAircraftMarkers(aircraft) {
     if (!aircraftMap) return;
+    const visible = _visibleAircraft(aircraft);
     const present = new Set();
-    aircraft.forEach(a => {
+    visible.forEach(a => {
         if (a.lat == null || a.lon == null || !a.hex) return;
         present.add(a.hex);
         const spec = _buildAircraftMarkerSpec(a);
