@@ -555,6 +555,11 @@
         /* §15 — Cartes de risque responsives */
         #risk-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
         @media (max-width: 720px) { #risk-grid { grid-template-columns: 1fr; } }
+        /* En mode édition (carte auto dépliée par « Modifier » OU carte saisie manuelle),
+           on étire la carte sur toute la largeur de la grille → le textarea de mitigation
+           prend la pleine largeur disponible (et non plus la moitié). */
+        #risk-grid .risk-card[data-expanded="1"],
+        #risk-grid .risk-card:not([data-auto="1"]) { grid-column: 1 / -1; }
         .risk-card {
             border: 1px solid var(--c-border); border-radius: 10px;
             background: #fff; padding: 12px 14px;
