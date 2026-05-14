@@ -263,6 +263,21 @@
         }
         .blink-obligatoire { animation: blink-obligatoire 1.1s ease-in-out infinite; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         @media print { .blink-warn, .blink-obligatoire { animation: none !important; opacity: 1 !important; } }
+        /* Visual Drone — état "Mission sensible / vol discret" : on passe le bloc en vert,
+           on retire la pastille OBLIGATOIRE et son clignotement, et on neutralise le rouge. */
+        #visualdrone-box.vd-sensitive {
+            background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%) !important;
+            border-color: var(--c-success) !important;
+            box-shadow: 0 0 0 4px rgba(22,163,74,.08) !important;
+        }
+        #visualdrone-box.vd-sensitive .vd-pill { display: none !important; }
+        #visualdrone-box.vd-sensitive .vd-title { color: var(--c-success) !important; }
+        #visualdrone-box.vd-sensitive .vd-z-block { border-color: #bbf7d0 !important; }
+        #visualdrone-box.vd-sensitive .vd-z-block strong { color: var(--c-success) !important; }
+        #visualdrone-box.vd-sensitive .vd-z-label { display: none; }
+        #visualdrone-box.vd-sensitive #visualdrone-check,
+        #visualdrone-box.vd-sensitive #visualdrone-check + label,
+        #visualdrone-box.vd-sensitive #visualdrone-check ~ a { opacity:.45; pointer-events:none; }
 
         .btn {
             font-family: inherit; font-size: 13px; font-weight: 600;
@@ -605,6 +620,9 @@
             border: 1px solid var(--c-border); border-radius: var(--radius-sm);
             padding: 12px 14px; background: #fafbfd;
         }
+        /* Case "Pas de chef de mission" : on masque complètement le bloc chef à l'écran et en impression */
+        .sig-box.sig-box-disabled { display: none !important; }
+        .sig-grid:has(.sig-box-disabled) { grid-template-columns: 1fr; max-width: 580px; margin: 0 auto; }
         .sig-box .role { font-size: 10px; font-weight: 700; color: var(--c-primary); text-transform: uppercase; letter-spacing: 1px; }
         .sig-wrap { position: relative; margin-top: 8px; }
         .sig-pad {
@@ -1344,18 +1362,22 @@
                         </div>
                     </div>
                 </div>
-                <div class="field-group" style="padding:14px 16px; background:linear-gradient(180deg, #fef2f2 0%, #fee2e2 100%); border:2px solid var(--c-danger); border-radius:8px; box-shadow:0 0 0 4px rgba(220,38,38,.08);">
+                <div id="visualdrone-box" class="field-group" style="padding:14px 16px; background:linear-gradient(180deg, #fef2f2 0%, #fee2e2 100%); border:2px solid var(--c-danger); border-radius:8px; box-shadow:0 0 0 4px rgba(220,38,38,.08);">
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                        <span class="blink-obligatoire" style="background:#fff; color:var(--c-danger); padding:3px 12px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:.5px; border:2px solid var(--c-danger); box-shadow:0 0 0 0 rgba(220,38,38,.5);">OBLIGATOIRE</span>
-                        <span style="font-weight:700; color:var(--c-danger); text-transform:uppercase; letter-spacing:.5px; font-size:12px;">Déclaration Visual Drone</span>
+                        <span class="vd-pill blink-obligatoire" style="background:#fff; color:var(--c-danger); padding:3px 12px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:.5px; border:2px solid var(--c-danger); box-shadow:0 0 0 0 rgba(220,38,38,.5);">OBLIGATOIRE</span>
+                        <span class="vd-title" style="font-weight:700; color:var(--c-danger); text-transform:uppercase; letter-spacing:.5px; font-size:12px;">Déclaration Visual Drone</span>
+                    </div>
+                    <div class="check-option no-print" style="padding:6px 0; background:rgba(255,255,255,.55); border-radius:4px; padding-left:8px; padding-right:8px; margin-bottom:6px;">
+                        <input type="checkbox" id="visualdrone-sensitive" style="accent-color:var(--c-muted); transform:scale(1.05);" onchange="toggleVisualDroneSensitive()">
+                        <label for="visualdrone-sensitive" style="font-weight:600; color:var(--c-text);">Mission sensible / vol discret <span style="color:var(--c-muted); font-weight:400;">— exempte de Visual Drone</span></label>
                     </div>
                     <div class="check-option" style="padding:6px 0; background:rgba(255,255,255,.6); border-radius:4px; padding-left:8px; padding-right:8px;">
                         <input type="checkbox" id="visualdrone-check" style="accent-color:var(--c-danger); transform:scale(1.15);">
                         <label for="visualdrone-check" style="font-weight:600;">Déclaration effectuée sur Visual Drone</label>
                         <a href="https://www.visualdrone.dsae.defense.gouv.fr" target="_blank" rel="noopener" class="no-print" style="margin-left:auto; font-size:12px; color:#fff; background:var(--c-danger); padding:4px 10px; border-radius:4px; text-decoration:none; font-weight:600;">Faire la déclaration ↗</a>
                     </div>
-                    <div style="margin-top:8px; padding:8px 12px; background:#fff; border:1px solid #fecaca; border-radius:6px; font-size:12px; line-height:1.7;">
-                        <div><strong style="color:var(--c-danger);">⚠ Visual Drone exige les heures en Z (UTC)</strong></div>
+                    <div class="vd-z-block" style="margin-top:8px; padding:8px 12px; background:#fff; border:1px solid #fecaca; border-radius:6px; font-size:12px; line-height:1.7;">
+                        <div class="vd-z-label"><strong style="color:var(--c-danger);">⚠ Visual Drone exige les heures en Z (UTC)</strong></div>
                         <div>Heure de début&nbsp;: <strong id="z-start" style="color:var(--c-danger); font-size:14px;">—</strong> Z &nbsp;·&nbsp; Heure de fin&nbsp;: <strong id="z-end" style="color:var(--c-danger); font-size:14px;">—</strong> Z</div>
                     </div>
                 </div>
@@ -1398,6 +1420,7 @@
                         <span style="font-size:13px;">Déclaration Clearance&nbsp;:</span>
                         <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;"><input type="radio" name="clearance-radio" value="oui" style="accent-color:var(--c-success);" onchange="toggleClearanceLate()"> Oui</label>
                         <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;"><input type="radio" name="clearance-radio" value="non" style="accent-color:var(--c-danger);" onchange="toggleClearanceLate()"> Non</label>
+                        <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;"><input type="radio" name="clearance-radio" value="na" style="accent-color:var(--c-muted);" onchange="toggleClearanceLate()"> Non requise (hors CTR)</label>
                         <a href="https://clearance.aero" target="_blank" rel="noopener" class="no-print" style="margin-left:auto; font-size:12px; color:var(--c-accent); text-decoration:none; font-weight:500;">Faire la déclaration ↗</a>
                     </div>
                     <div id="clearance-late-box" style="display:none; padding:8px 12px; background:#fef3c7; border:1px solid #fde68a; border-radius:6px; margin-top:6px; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -1864,6 +1887,10 @@
                 <div class="card-title">Validation<span class="sub">Visa hiérarchique et signatures</span></div>
             </div>
             <div class="card-body">
+                <div class="check-option no-print" style="padding:6px 10px; background:#f7f9fc; border:1px solid var(--c-border); border-radius:6px; margin-bottom:10px;">
+                    <input type="checkbox" id="no-chef-mission" style="accent-color:var(--c-muted);" onchange="toggleNoChefMission()">
+                    <label for="no-chef-mission" style="font-weight:600;">Pas de chef de mission <span style="color:var(--c-muted); font-weight:400;">— signature rédacteur seule</span></label>
+                </div>
                 <div class="sig-grid">
                     <div class="sig-box" data-sig="redac">
                         <div class="role">Rédacteur</div>
@@ -7979,10 +8006,12 @@ function riskRow(risk, prob, sev, mit, auto = false, pos = null) {
                 <strong style="flex:1; font-size:14px; color:var(--c-text);" data-field="risk">${escape(risk)}</strong>
                 <span class="risk-level-badge ${lvlCls}">${score}</span>
             </div>
-            <div style="display:flex; gap:12px; font-size:12px; color:var(--c-muted); flex-wrap:wrap;">
+            <div style="display:flex; gap:14px; font-size:12px; color:var(--c-muted); flex-wrap:wrap; margin-top:2px;">
                 <span><strong>P&nbsp;:</strong> <span data-field="prob">${prob}</span></span>
                 <span><strong>G&nbsp;:</strong> <span data-field="sev">${sev}</span></span>
-                <span style="flex:1;"><strong>Mitigation&nbsp;:</strong> <span data-field="mit">${escape(mit)}</span></span>
+            </div>
+            <div style="font-size:12px; color:var(--c-muted); margin-top:3px; line-height:1.45;">
+                <strong>Mitigation&nbsp;:</strong> <span data-field="mit">${escape(mit)}</span>
             </div>
             ${miniMapDiv}
             <div class="risk-card-foot">
@@ -8567,6 +8596,30 @@ function toggleClearanceLate() {
     const radio = document.querySelector('input[name="clearance-radio"]:checked');
     const value = radio ? radio.value : null;
     box.style.display = (value === 'non') ? 'flex' : 'none';
+}
+
+function toggleVisualDroneSensitive() {
+    const cb = document.getElementById('visualdrone-sensitive');
+    const box = document.getElementById('visualdrone-box');
+    if (!cb || !box) return;
+    box.classList.toggle('vd-sensitive', cb.checked);
+    if (cb.checked) {
+        const decl = document.getElementById('visualdrone-check');
+        if (decl) decl.checked = false;   // déclaration plus pertinente quand exempté
+    }
+}
+
+function toggleNoChefMission() {
+    const cb = document.getElementById('no-chef-mission');
+    const chefBox = document.querySelector('.sig-box[data-sig="chef"]');
+    if (!cb || !chefBox) return;
+    if (cb.checked) {
+        chefBox.classList.add('sig-box-disabled');
+        // Vide les champs pour ne pas polluer l'export PDF
+        ['sig-chef', 'sig-chef-mat', 'sig-chef-date'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    } else {
+        chefBox.classList.remove('sig-box-disabled');
+    }
 }
 
 function toggleHorsCircuit() {
