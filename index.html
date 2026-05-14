@@ -9092,10 +9092,16 @@ function addNewBlock() {
         </div>
         <textarea placeholder="Observations / commentaire (facultatif)…" style="margin-top:8px;"></textarea>
         <div class="step-photos" id="${sid}-photos" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;"></div>
-        <label class="no-print" style="display:inline-flex; align-items:center; gap:6px; margin-top:8px; padding:6px 12px; background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;">
-            📷 Ajouter des photos
-            <input type="file" accept="image/*" multiple style="display:none;" onchange="addStepPhotos('${sid}-photos', this.files); this.value='';">
-        </label>
+        <div class="step-maps" id="${sid}-maps" style="margin-top:10px;"></div>
+        <div class="no-print" style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
+            <label style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;">
+                📷 Ajouter des photos
+                <input type="file" accept="image/*" multiple style="display:none;" onchange="addStepPhotos('${sid}-photos', this.files); this.value='';">
+            </label>
+            <button type="button" onclick="addStepMap('${sid}-maps')" style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;">
+                🗺 Ajouter une carte
+            </button>
+        </div>
     `;
     setStepKind(div.querySelector('select'));
     document.getElementById('dynamic-container').appendChild(div);
@@ -9114,6 +9120,40 @@ function setStepKind(sel) {
     item.style.borderLeftColor = c.border;
     item.style.borderLeftWidth = '4px';
     item.style.background = c.bg;
+}
+
+// Ajoute une carte Leaflet (avec marker draggable) à un bloc d'information complémentaire.
+// Centre par défaut : point de mission (STATE.lat/lon) ou centre France si pas encore défini.
+// Le marker peut être déplacé en drag ou en cliquant sur la carte → coordonnées affichées sous la carte.
+function addStepMap(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'step-map';
+    wrap.style.cssText = 'position:relative; margin-bottom:10px;';
+    wrap.innerHTML = `
+        <div class="step-map-canvas" style="height:240px; width:100%; border-radius:6px; border:1px solid var(--c-border); overflow:hidden;"></div>
+        <button type="button" class="no-print" onclick="this.closest('.step-map').remove()" title="Retirer la carte" style="position:absolute; top:6px; right:6px; z-index:600; background:rgba(255,255,255,.95); border:1px solid var(--c-border-strong); border-radius:4px; width:26px; height:26px; line-height:1; cursor:pointer; font-size:16px;">×</button>
+        <div class="step-map-coords" style="font-size:11px; color:var(--c-muted); margin-top:4px;"></div>
+    `;
+    container.appendChild(wrap);
+    const canvas = wrap.querySelector('.step-map-canvas');
+    const coordsLabel = wrap.querySelector('.step-map-coords');
+    const center = (STATE.lat != null) ? [STATE.lat, STATE.lon] : [46.6, 2.4];
+    const stepMap = L.map(canvas, { scrollWheelZoom: false }).setView(center, STATE.lat != null ? 14 : 6);
+    _frTileLayer().addTo(stepMap);
+    const m = L.marker(center, { draggable: true, autoPan: true, title: 'Glisser ou cliquer sur la carte pour repositionner le point' }).addTo(stepMap);
+    const updateCoords = () => {
+        const ll = m.getLatLng();
+        coordsLabel.textContent = `📍 ${ll.lat.toFixed(6)}, ${ll.lng.toFixed(6)} — glisser le marqueur ou cliquer sur la carte pour ajuster`;
+        wrap.dataset.lat = ll.lat;
+        wrap.dataset.lon = ll.lng;
+    };
+    m.on('dragend', updateCoords);
+    stepMap.on('click', (e) => { m.setLatLng(e.latlng); updateCoords(); });
+    updateCoords();
+    if (typeof addFullscreenControl === 'function') addFullscreenControl(stepMap);
+    setTimeout(() => stepMap.invalidateSize(), 200);
 }
 
 function addStepPhotos(containerId, files) {
