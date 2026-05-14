@@ -1227,6 +1227,7 @@
                 </div>
                 <div class="field-group">
                     <div id="map"></div>
+                    <div class="hint no-print" style="margin-top:4px; font-size:11px; color:var(--c-muted);">💡 <strong>Glissez la pastille bleue</strong> ou <strong>cliquez sur la carte</strong> pour redéfinir le centre de la zone (mise à jour automatique de l'adresse et des données).</div>
                 </div>
                 <div class="field-group row-2">
                     <div class="slider-box">
@@ -1947,13 +1948,16 @@
                         Sources de données
                     </h4>
                     <ul>
-                        <li>IGN Géoplateforme — BDTOPO, orthophotos, ZICAD</li>
-                        <li>Open-Meteo — météo, point de rosée, élévation</li>
-                        <li>OpenStreetMap / Overpass — voies rapides</li>
-                        <li>SIA / IGN — restrictions UAS, espaces aériens</li>
-                        <li>BAN — adresses · GéoRisques — Seveso · SNCF Navitia</li>
-                        <li>OpenAIP, CheckWX — METAR/TAF · NOAA SWPC — Kp</li>
-                        <li>SGDSN — ZICAD (arrêté du 10/04/2017, CT L. 6224-1)</li>
+                        <li>IGN Géoplateforme — BDTOPO (lignes HT, IGH, voies ferrées, antennes, ZICAD, restrictions UAS), orthophotos</li>
+                        <li>Open-Meteo — météo prévisionnelle, point de rosée, altimétrie / élévation</li>
+                        <li>NOAA aviationweather.gov — METAR / TAF (primaire) · CheckWX — fallback</li>
+                        <li>OpenAIP — espaces aériens contrôlés (CTR, TMA, P/R/D) · NOAA SWPC — indice Kp</li>
+                        <li>RainViewer — radar pluie LIVE · CartoDB Voyager / Light — fonds cartographiques</li>
+                        <li>ADSB.lol · airplanes.live · OpenSky — trafic aérien temps réel (ADS-B + MLAT)</li>
+                        <li>OpenStreetMap / Overpass — voies rapides, plateformes, héliports · OSRM — routage piéton (zone captation §2)</li>
+                        <li>BAN api-adresse — adresses · api.geo.api.gouv.fr — communes INSEE (densité de population)</li>
+                        <li>GéoRisques — sites Seveso · SNCF Navitia — gares · MNHN — Natura 2000 / Ramsar / réserves</li>
+                        <li>SIA / IGN — restrictions drones (UAS) · SGDSN — ZICAD (arrêté 10/04/2017, CT L. 6224-1)</li>
                     </ul>
                 </div>
                 <div>
@@ -2275,8 +2279,27 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
     attribution: '© OSM · © CartoDB', crossOrigin: true
 }).addTo(map);
 
-let marker = L.marker([0, 0]).addTo(map);
+let marker = L.marker([0, 0], { draggable: true, autoPan: true, title: 'Glisser pour déplacer le point de mission' }).addTo(map);
 let rangeCircle = L.circle([0, 0], { color: '#0066cc', fillColor: '#0066cc', fillOpacity: .12, weight: 2 }).addTo(map);
+
+// Déplacement du point central de la zone :
+//   · Drag de la pastille bleue (geocoding inverse automatique → adresse mise à jour)
+//   · Clic sur la carte (n'importe où) → redéfinit le centre au point cliqué
+//   · Le slider GPS manuel + le bouton « Ma position » + l'autocomplétion adresse
+//     conservent leur comportement habituel.
+function _recenterFromMap(lat, lon) {
+    const fallback = `Point cliqué (${lat.toFixed(5)}, ${lon.toFixed(5)})`;
+    reverseGeocodeAndSelect(lat, lon, fallback, { skipMapView: true });
+}
+marker.on('dragend', (e) => {
+    const ll = e.target.getLatLng();
+    _recenterFromMap(ll.lat, ll.lng);
+});
+map.on('click', (e) => {
+    // Ignore les clics qui partent d'un autre layer (popup, marker existant)
+    if (e.originalEvent && e.originalEvent.target && e.originalEvent.target.closest('.leaflet-popup')) return;
+    _recenterFromMap(e.latlng.lat, e.latlng.lng);
+});
 
 /* -------- Carte satellite secondaire (toggle) -------- */
 let satMap = null, satMarker = null, satRangeCircle = null;
@@ -2298,8 +2321,13 @@ function toggleSatMap() {
                 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
                 { attribution: '© Esri', maxZoom: 19, opacity: 0 }
             ).addTo(satMap);
-            satMarker = L.marker([0, 0]).addTo(satMap);
+            satMarker = L.marker([0, 0], { draggable: true, autoPan: true, title: 'Glisser pour déplacer le point de mission' }).addTo(satMap);
             satRangeCircle = L.circle([0, 0], { color: '#fbbf24', fillColor: '#fbbf24', fillOpacity: .15, weight: 2 }).addTo(satMap);
+            satMarker.on('dragend', (e) => { const ll = e.target.getLatLng(); _recenterFromMap(ll.lat, ll.lng); });
+            satMap.on('click', (e) => {
+                if (e.originalEvent && e.originalEvent.target && e.originalEvent.target.closest('.leaflet-popup')) return;
+                _recenterFromMap(e.latlng.lat, e.latlng.lng);
+            });
             // Synchronisation avec la carte principale (déplacement / zoom)
             map.on('move zoom', () => {
                 if (!satMap) return;
@@ -3081,7 +3109,7 @@ function autoToggleHorsCircuit(dept) {
 }
 
 // Recherche inverse BAN : depuis lat/lon → adresse + département
-async function reverseGeocodeAndSelect(lat, lon, fallbackLabel) {
+async function reverseGeocodeAndSelect(lat, lon, fallbackLabel, opts) {
     let label = fallbackLabel, dept = '';
     try {
         const r = await fetchWithTimeout(`https://api-adresse.data.gouv.fr/reverse/?lat=${lat}&lon=${lon}&limit=1`, {}, 6000);
@@ -3094,7 +3122,7 @@ async function reverseGeocodeAndSelect(lat, lon, fallbackLabel) {
             }
         }
     } catch (e) { /* fallback aux coordonnées brutes */ }
-    selectAddr(label, lat, lon, dept);
+    selectAddr(label, lat, lon, dept, opts);
 }
 
 function useManualGPS() {
@@ -3215,24 +3243,28 @@ function useGeolocation() {
     );
 }
 
-function selectAddr(label, lat, lon, dept) {
+function selectAddr(label, lat, lon, dept, opts) {
+    opts = opts || {};
     document.getElementById('addr-input').value = label;
     document.getElementById('address-list').innerHTML = '';
     STATE.lat = lat; STATE.lon = lon; STATE.address = label; STATE.dept = dept;
     autoToggleHorsCircuit(dept);
     renderGPS(lat, lon);
     // Frame de chargement sur la carte §1 à chaque nouvelle adresse / position GPS
-    const _mapEl = document.getElementById('map');
-    if (_mapEl && typeof showMapLoader === 'function') {
-        showMapLoader(_mapEl, 'Chargement de la zone');
-        setTimeout(() => hideMapLoader(_mapEl), 900);
+    // (sautée lors d'un drag/clic pour éviter de masquer la carte qu'on vient de toucher)
+    if (!opts.skipMapView) {
+        const _mapEl = document.getElementById('map');
+        if (_mapEl && typeof showMapLoader === 'function') {
+            showMapLoader(_mapEl, 'Chargement de la zone');
+            setTimeout(() => hideMapLoader(_mapEl), 900);
+        }
+        map.setView([lat, lon], 13);   // léger dézoom pour englober les repères cardinaux N/S/E/O
     }
-    map.setView([lat, lon], 13);   // léger dézoom pour englober les repères cardinaux N/S/E/O
     marker.setLatLng([lat, lon]);
     rangeCircle.setLatLng([lat, lon]);
     if (satMarker) satMarker.setLatLng([lat, lon]);
     if (satRangeCircle) satRangeCircle.setLatLng([lat, lon]);
-    if (satMap) satMap.setView([lat, lon], Math.max(map.getZoom(), 14));
+    if (satMap && !opts.skipMapView) satMap.setView([lat, lon], Math.max(map.getZoom(), 14));
     updateElongation(document.getElementById('elong-slider').value);
     // updateElongation a pu programmer un fetchElevation debouncé (si STATE.elev existait
     // déjà d'une mission précédente). On l'annule : refreshAuto va fetcher l'altimétrie
