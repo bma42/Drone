@@ -517,6 +517,10 @@
         .elev-svg { flex: 1; background: #f7f9fc; border: 1px solid var(--c-border); border-radius: var(--radius-sm); padding: 8px; }
         .elev-charts { display: grid; grid-template-columns: 1fr; gap: 14px; }
         .elev-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-width: 180px; }
+        /* Préserve le dégradé bleu→vert des cartes de coupe à l'impression / export PDF.
+           Sans ce flag, Chrome/Safari suppriment le background-image et le dégradé blanc
+           semi-transparent du tracé devient invisible sur fond blanc. */
+        .elev-svg-card { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 
         /* ---------- Kp index gauge ---------- */
         .kp-row { display: flex; align-items: center; gap: 16px; }
