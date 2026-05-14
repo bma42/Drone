@@ -1419,11 +1419,9 @@
                         <button type="button" onclick="clearCaptation()" style="background:#fef3c7; color:#92400e; border:1px solid #fcd34d; border-radius:5px; padding:4px 10px; font-size:12px; font-weight:600; cursor:pointer;">Effacer</button>
                     </div>
                     <div id="captation-polygon-controls" class="no-print" style="display:none; margin-bottom:8px;">
-                        <input type="text" id="captation-street-input" placeholder="Saisir la première rue (autocomplétion)…" autocomplete="off" oninput="searchCaptationStreet(this.value)" style="font-size:13px;">
-                        <div id="captation-street-list" style="margin-top:4px;"></div>
-                        <div id="captation-polygon-chain" style="margin-top:6px; font-size:11px; color:var(--c-text-soft);"></div>
+                        <div id="captation-polygon-status" style="font-size:12px; color:var(--c-text-soft); padding:6px 9px; background:#f7f9fc; border:1px solid var(--c-border); border-radius:5px;">Cliquez sur la carte pour démarrer le tracé.</div>
                         <div style="display:flex; gap:8px; margin-top:8px;">
-                            <button type="button" onclick="validateCaptationPolygon()" style="flex:1; background:#dcfce7; color:#15803d; border:1px solid #86efac; border-radius:5px; padding:6px 10px; font-size:12px; font-weight:700; cursor:pointer;">✓ Valider le polygone</button>
+                            <button type="button" id="captation-undo-btn" onclick="undoCaptationVertex()" style="flex:1; background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; border-radius:5px; padding:6px 10px; font-size:12px; font-weight:600; cursor:pointer;">↩ Retirer dernier point</button>
                             <button type="button" onclick="clearCaptation()" style="flex:1; background:#fef3c7; color:#92400e; border:1px solid #fcd34d; border-radius:5px; padding:6px 10px; font-size:12px; font-weight:600; cursor:pointer;">Effacer</button>
                         </div>
                     </div>
@@ -1983,6 +1981,35 @@ function hideMapLoader(elOrId) {
     setTimeout(() => { try { loader.remove(); } catch (e) {} }, 300);
 }
 
+/* -------- Bouton plein écran générique pour cartes Leaflet (API Fullscreen native) -------- */
+function addFullscreenControl(map) {
+    if (!map || !L || !L.Control) return;
+    const Ctl = L.Control.extend({
+        options: { position: 'topright' },
+        onAdd: function () {
+            const c = L.DomUtil.create('div', 'leaflet-bar');
+            const a = L.DomUtil.create('a', '', c);
+            a.href = '#'; a.title = 'Plein écran'; a.setAttribute('role', 'button');
+            a.style.cssText = 'display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;';
+            const ICON_FS = '⛶', ICON_EXIT = '✕';
+            a.innerHTML = ICON_FS;
+            const container = map.getContainer();
+            const update = () => { a.innerHTML = document.fullscreenElement === container ? ICON_EXIT : ICON_FS; setTimeout(() => map.invalidateSize(), 200); };
+            L.DomEvent.on(a, 'click', (e) => {
+                L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e);
+                if (document.fullscreenElement === container) { document.exitFullscreen && document.exitFullscreen(); }
+                else if (container.requestFullscreen) { container.requestFullscreen().catch(() => {}); }
+                else if (container.webkitRequestFullscreen) { container.webkitRequestFullscreen(); }
+            });
+            L.DomEvent.disableClickPropagation(c);
+            document.addEventListener('fullscreenchange', update);
+            document.addEventListener('webkitfullscreenchange', update);
+            return c;
+        }
+    });
+    map.addControl(new Ctl());
+}
+
 /* -------- Monkey-patch L.map() : loader auto pour toutes les cartes Leaflet -------- */
 (function () {
     if (typeof L === 'undefined' || !L.map) return;
@@ -2443,11 +2470,15 @@ function initCaptationMap() {
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', subdomains: 'abcd', maxZoom: 19, crossOrigin: true }).addTo(captationMap);
     if (STATE.lat != null) L.circleMarker([STATE.lat, STATE.lon], { radius: 6, color: '#0b3d91', fillColor: '#fff', fillOpacity: 1, weight: 2 }).addTo(captationMap).bindPopup('<b>Point de mission</b>');
     captationMap.on('click', (e) => {
-        if (STATE.captation.mode !== 'cercle') return;
-        STATE.captation.center = [e.latlng.lat, e.latlng.lng];
-        _drawCaptationCircle();
-        _syncCaptationToMainMap();
+        if (STATE.captation.mode === 'cercle') {
+            STATE.captation.center = [e.latlng.lat, e.latlng.lng];
+            _drawCaptationCircle();
+            _syncCaptationToMainMap();
+        } else if (STATE.captation.mode === 'polygone') {
+            _captationHandleClick(e.latlng);
+        }
     });
+    addFullscreenControl(captationMap);
     setTimeout(() => { try { captationMap.invalidateSize(); } catch (e) {} }, 120);
 }
 // Recentre la carte captation sur le point de mission quand une adresse est choisie en §1
@@ -2468,9 +2499,9 @@ function setCaptationMode(mode) {
     const hint = document.getElementById('captation-hint');
     if (hint) hint.textContent = (mode === 'cercle')
         ? 'Cliquez sur la carte pour placer le centre de la zone de captation, puis ajustez le périmètre.'
-        : 'Cherchez et sélectionnez la 1re rue. Ensuite seules les rues qui font intersection s\'affichent : cliquez-les une à une — le tracé suit les rues. Quand « Fermer le polygone sur <1re rue> » apparaît, cliquez-le, puis « Valider ».';
+        : 'Cliquez sur la carte pour placer le point de départ. À chaque clic suivant le tracé suivra les rues. Re-cliquez près du 🚩 départ pour fermer le polygone (verrouillage automatique).';
     const el = document.getElementById('captation-map');
-    if (el) el.style.cursor = (mode === 'cercle') ? 'crosshair' : 'default';
+    if (el) el.style.cursor = 'crosshair';
     // Repart proprement quand on bascule de mode (évite de mélanger cercle et polygone)
     clearCaptation();
 }
@@ -2499,226 +2530,128 @@ function _drawCaptationCircle() {
 function clearCaptation() {
     STATE.captation.center = null;
     STATE.captation.polygon = null;
-    _captationChain = [];
-    _captationCandidates = {};
-    _captationClosed = false;
-    const ch = document.getElementById('captation-polygon-chain'); if (ch) ch.textContent = '';
-    const lst = document.getElementById('captation-street-list'); if (lst) lst.innerHTML = '';
-    const inp = document.getElementById('captation-street-input'); if (inp) inp.value = '';
+    _captationVertices = [];
+    _captationLegs = [];
+    _captationLocked = false;
     if (captationMap) {
         [captationCircleLayer, captationCenterMarker, captationPolygonLayer].forEach(l => { if (l) { try { captationMap.removeLayer(l); } catch (e) {} } });
         captationCircleLayer = captationCenterMarker = captationPolygonLayer = null;
         if (captationMap._capExtra) { captationMap._capExtra.forEach(l => { try { captationMap.removeLayer(l); } catch (e) {} }); captationMap._capExtra = []; }
     }
+    _setCaptationPolyStatus('Cliquez sur la carte pour démarrer le tracé.');
     _syncCaptationToMainMap();
 }
 
-// ---- Mode polygone de rues : autocomplétion BAN pour la 1re rue, puis Overpass pour
-//      n'afficher que les rues en intersection. Le polygone suit les centerlines des rues. ----
-const OVERPASS_URLS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
-async function _overpass(query) {
-    let lastErr = null;
-    for (const url of OVERPASS_URLS) {
-        try {
-            const r = await fetchWithTimeout(url + '?data=' + encodeURIComponent(query), { headers: { 'Accept': 'application/json' } }, 25000);
-            if (!r.ok) { lastErr = new Error('HTTP ' + r.status); continue; }
-            const j = await r.json();
-            return j.elements || [];
-        } catch (e) { lastErr = e; }
-    }
-    throw lastErr || new Error('Overpass indisponible');
+// ---- Mode polygone : tracé click-to-route. À chaque clic on appelle OSRM (réseau piéton)
+//      qui renvoie une polyline qui suit les rues entre le point précédent et le clic.
+//      Quand l'utilisateur reclique près du point de départ (>=2 points déjà posés) → fermeture. ----
+let _captationVertices = [];        // [{lat,lng}, ...] sommets dans l'ordre des clics
+let _captationLegs = [];            // [[ [lat,lng], ... ], ...] : pour chaque segment (entre Vi et Vi+1), la polyline qui suit la rue
+let _captationLocked = false;       // true une fois le polygone fermé : plus de clic possible jusqu'à « Effacer »
+let _captationRouting = false;      // true pendant un appel OSRM (évite double-clic)
+
+const OSRM_URL = 'https://router.project-osrm.org/route/v1/foot';
+
+function _setCaptationPolyStatus(html, type) {
+    const el = document.getElementById('captation-polygon-status');
+    if (!el) return;
+    const bg = type === 'ok' ? '#dcfce7' : type === 'err' ? '#fee2e2' : type === 'wait' ? '#fef3c7' : '#f7f9fc';
+    const col = type === 'ok' ? '#15803d' : type === 'err' ? '#b91c1c' : type === 'wait' ? '#92400e' : 'var(--c-text-soft)';
+    el.style.background = bg; el.style.color = col;
+    el.innerHTML = html;
 }
 
-// _captationChain : [{ name, ways:[{id, nodes:[ids], geometry:[{lat,lon}]}], nodeSet:Set }]
-let _captationChain = [];
-let _captationCandidates = {};      // name -> { ways, nodeSet }  (rues en intersection avec la rue courante)
-let _captationSearchTimer = null;
-let _captationClosed = false;
-
-function _setCaptationList(html) { const lst = document.getElementById('captation-street-list'); if (lst) lst.innerHTML = html; }
-
-function searchCaptationStreet(q) {
-    // Autocomplétion BAN — uniquement pour la 1re rue. Après, on choisit dans la liste des intersections.
-    if (_captationChain.length > 0) { _setCaptationList('<div style="padding:6px 9px; font-size:12px; color:var(--c-muted);">Sélectionnez une rue dans la liste des intersections ci-dessous (ou « Effacer » pour recommencer).</div>'); return; }
-    clearTimeout(_captationSearchTimer);
-    if (!q || q.trim().length < 3) { _setCaptationList(''); return; }
-    _captationSearchTimer = setTimeout(async () => {
-        try {
-            const bias = STATE.lat != null ? `&lat=${STATE.lat}&lon=${STATE.lon}` : '';
-            const r = await fetchWithTimeout(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&type=street&limit=6${bias}`, {}, 8000);
-            const j = await r.json();
-            const feats = j.features || [];
-            _setCaptationList(feats.map(f => {
-                const p = f.properties || {}, co = f.geometry && f.geometry.coordinates;
-                const lon = co ? co[0] : 0, lat = co ? co[1] : 0;
-                const name = (p.name || p.label || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                const city = (p.city || '').replace(/'/g, "\\'");
-                return `<div class="captation-street-item" onclick="addCaptationFirstStreet('${name}', ${lat}, ${lon}, '${city}')" style="padding:6px 9px; font-size:12px; cursor:pointer; border-bottom:1px solid var(--c-border); background:#f7f9fc;">📍 ${p.name || p.label}<span style="color:var(--c-muted);"> · ${p.city || ''}</span></div>`;
-            }).join('') || '<div style="padding:6px 9px; font-size:12px; color:var(--c-muted);">Aucune rue trouvée</div>');
-        } catch (e) { console.warn('[captation street]', e); _setCaptationList('<div style="padding:6px 9px; font-size:12px; color:var(--c-danger);">Recherche indisponible</div>'); }
-    }, 250);
-}
-
-async function addCaptationFirstStreet(name, lat, lon, city) {
-    const inp = document.getElementById('captation-street-input'); if (inp) inp.value = '';
-    _setCaptationList('<div style="padding:6px 9px; font-size:12px; color:var(--c-muted);">⏳ Récupération de la rue dans OSM…</div>');
+// Appel OSRM (foot) : renvoie un tableau [lat,lng] qui suit les rues, ou une ligne droite si erreur.
+async function _routeOnStreets(a, b) {
+    const url = `${OSRM_URL}/${a.lng.toFixed(6)},${a.lat.toFixed(6)};${b.lng.toFixed(6)},${b.lat.toFixed(6)}?overview=full&geometries=geojson`;
     try {
-        const esc = name.replace(/"/g, '\\"');
-        const elems = await _overpass(`[out:json][timeout:25];way["highway"]["name"="${esc}"](around:500,${lat},${lon});out geom;`);
-        const ways = elems.filter(e => e.type === 'way' && Array.isArray(e.geometry) && Array.isArray(e.nodes)).map(e => ({ id: e.id, nodes: e.nodes, geometry: e.geometry }));
-        if (ways.length === 0) { _setCaptationList('<div style="padding:6px 9px; font-size:12px; color:var(--c-danger);">Rue introuvable dans OSM autour de ce point.</div>'); return; }
-        const nodeSet = new Set(); ways.forEach(w => w.nodes.forEach(n => nodeSet.add(n)));
-        _captationChain = [{ name, ways, nodeSet }];
-        _captationClosed = false;
-        STATE.captation.polygon = null;
-        _renderCaptationChain();
-        _redrawCaptationPolygon();
-        await _showIntersectingStreets();
-    } catch (e) { console.warn('[captation overpass]', e); _setCaptationList('<div style="padding:6px 9px; font-size:12px; color:var(--c-danger);">Overpass indisponible — réessayez dans quelques secondes.</div>'); }
+        const r = await fetchWithTimeout(url, {}, 10000);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const j = await r.json();
+        const coords = j.routes && j.routes[0] && j.routes[0].geometry && j.routes[0].geometry.coordinates;
+        if (Array.isArray(coords) && coords.length >= 2) return coords.map(c => [c[1], c[0]]);   // GeoJSON: [lon,lat] → [lat,lng]
+    } catch (e) { console.warn('[OSRM]', e); }
+    return [[a.lat, a.lng], [b.lat, b.lng]];   // fallback ligne droite
 }
 
-async function _showIntersectingStreets() {
-    _setCaptationList('<div style="padding:6px 9px; font-size:12px; color:var(--c-muted);">⏳ Recherche des rues en intersection…</div>');
-    const chain = _captationChain;
-    const cur = chain[chain.length - 1];
-    const wayIds = cur.ways.map(w => w.id).join(',');
-    try {
-        const elems = await _overpass(`[out:json][timeout:25];way(id:${wayIds})->.c;node(w.c)->.cn;way(bn.cn)["highway"]["name"];out geom;`);
-        const byName = {};
-        elems.filter(e => e.type === 'way' && Array.isArray(e.geometry) && Array.isArray(e.nodes) && e.tags && e.tags.name).forEach(w => {
-            const nm = w.tags.name;
-            if (!byName[nm]) byName[nm] = { ways: [], nodeSet: new Set() };
-            byName[nm].ways.push({ id: w.id, nodes: w.nodes, geometry: w.geometry });
-            w.nodes.forEach(n => byName[nm].nodeSet.add(n));
-        });
-        _captationCandidates = {};
-        const items = [];
-        const prevName = chain.length >= 2 ? chain[chain.length - 2].name : null;
-        Object.keys(byName).sort((a, b) => a.localeCompare(b)).forEach(nm => {
-            if (nm === cur.name) return;                              // pas la rue courante
-            const cand = byName[nm];
-            const shared = [...cand.nodeSet].filter(n => cur.nodeSet.has(n));
-            if (shared.length === 0) return;                          // pas vraiment en intersection
-            const isFirst = nm === chain[0].name;
-            if (isFirst && chain.length < 3) return;                  // retour immédiat à la 1re rue interdit (polygone dégénéré)
-            if (!isFirst && nm === prevName) return;                  // évite le simple retour arrière
-            cand.intersectionNode = shared[0];
-            _captationCandidates[nm] = cand;
-            const safe = nm.replace(/'/g, "\\'");
-            items.push(`<div class="captation-street-item" onclick="pickCaptationStreet('${safe}')" style="padding:7px 9px; font-size:12px; cursor:pointer; border-bottom:1px solid var(--c-border); background:${isFirst ? '#dcfce7' : '#f7f9fc'}; ${isFirst ? 'font-weight:700; color:#15803d;' : ''}">${isFirst ? '🔚 Fermer le polygone sur ' : '↪ '}${nm}</div>`);
-        });
-        _setCaptationList(items.join('') || '<div style="padding:6px 9px; font-size:12px; color:var(--c-muted);">Aucune rue en intersection trouvée. Vérifiez la 1re rue ou recommencez.</div>');
-    } catch (e) { console.warn('[captation intersect]', e); _setCaptationList('<div style="padding:6px 9px; font-size:12px; color:var(--c-danger);">Overpass indisponible — <a href="#" onclick="_showIntersectingStreets();return false;">réessayer</a></div>'); }
-}
-
-function pickCaptationStreet(name) {
-    const cand = _captationCandidates[name];
-    if (!cand) return;
-    const isClosing = _captationChain.length >= 3 && name === _captationChain[0].name;
-    if (isClosing) {
-        _captationClosed = true;
-        _renderCaptationChain();
-        _redrawCaptationPolygon();
-        _setCaptationList('<div style="padding:6px 9px; font-size:12px; color:#15803d; font-weight:600;">✓ Polygone bouclé sur ' + name + ' — cliquez « Valider le polygone ».</div>');
+async function _captationHandleClick(latlng) {
+    if (STATE.captation.mode !== 'polygone' || _captationLocked || _captationRouting) return;
+    // Premier sommet : on le pose et on attend le 2e clic.
+    if (_captationVertices.length === 0) {
+        _captationVertices.push({ lat: latlng.lat, lng: latlng.lng });
+        _redrawCaptationTrace();
+        _setCaptationPolyStatus('🚩 Point de départ posé. Cliquez sur la prochaine rue — le tracé suivra la voirie.');
         return;
     }
-    _captationChain.push({ name, ways: cand.ways, nodeSet: cand.nodeSet });
-    _captationClosed = false;
-    _renderCaptationChain();
-    _redrawCaptationPolygon();
-    _showIntersectingStreets();
-}
-
-function _renderCaptationChain() {
-    const ch = document.getElementById('captation-polygon-chain');
-    if (!ch) return;
-    if (!_captationChain.length) { ch.textContent = ''; return; }
-    ch.innerHTML = 'Rues : ' + _captationChain.map((s, i) =>
-        `<span style="background:#ede9fe; color:#6d28d9; padding:1px 6px; border-radius:4px; margin:1px; display:inline-block;">${i + 1}. ${s.name}</span>`).join(' → ')
-        + (_captationClosed ? ' <span style="color:#15803d;">↺ fermé</span>' : '')
-        + ` <button type="button" onclick="_undoCaptationStreet()" style="background:transparent;border:0;color:var(--c-danger);cursor:pointer;font-size:12px;">↩ retirer la dernière</button>`;
-}
-function _undoCaptationStreet() {
-    if (_captationClosed) { _captationClosed = false; _renderCaptationChain(); _redrawCaptationPolygon(); _showIntersectingStreets(); return; }
-    _captationChain.pop();
-    _renderCaptationChain();
-    _redrawCaptationPolygon();
-    if (_captationChain.length === 0) { _setCaptationList(''); STATE.captation.polygon = null; _syncCaptationToMainMap(); }
-    else _showIntersectingStreets();
-}
-
-// --- géométrie : retrouver le noeud d'intersection entre deux rues, ses coords, le sous-segment d'une rue ---
-function _intersectionNode(stA, stB) { for (const n of stA.nodeSet) if (stB.nodeSet.has(n)) return n; return null; }
-function _nodeLatLng(st, nodeId) {
-    if (nodeId == null) return null;
-    for (const w of st.ways) { const i = w.nodes.indexOf(nodeId); if (i >= 0) return [w.geometry[i].lat, w.geometry[i].lon]; }
-    return null;
-}
-function _anyNodeLatLng(chain, nodeId) { for (const st of chain) { const p = _nodeLatLng(st, nodeId); if (p) return p; } return null; }
-function _streetEdgeGeometry(st, fromNode, toNode) {
-    for (const w of st.ways) {
-        const i = w.nodes.indexOf(fromNode), j = w.nodes.indexOf(toNode);
-        if (i >= 0 && j >= 0) {
-            const a = Math.min(i, j), b = Math.max(i, j);
-            const seg = w.geometry.slice(a, b + 1).map(g => [g.lat, g.lon]);
-            return (i > j) ? seg.slice().reverse() : seg;
-        }
+    // Vérifie si on clique près du départ pour boucler (>=2 segments déjà tracés → >=3 sommets)
+    const start = _captationVertices[0];
+    const distStart = captationMap.distance(latlng, L.latLng(start.lat, start.lng));
+    const closeThresholdM = Math.max(20, captationMap.getZoom() ? 30 : 30);
+    if (_captationVertices.length >= 3 && distStart < closeThresholdM) {
+        return _captationCloseLoop();
     }
-    const pa = _nodeLatLng(st, fromNode), pb = _nodeLatLng(st, toNode);
-    return (pa && pb) ? [pa, pb] : [];
+    // Sinon : nouveau sommet, on route depuis le dernier
+    const prev = _captationVertices[_captationVertices.length - 1];
+    _captationRouting = true;
+    _setCaptationPolyStatus('⏳ Calcul du tracé qui suit les rues…', 'wait');
+    const leg = await _routeOnStreets(L.latLng(prev.lat, prev.lng), latlng);
+    _captationRouting = false;
+    // Le dernier point du leg est le snap OSRM sur la rue — on l'utilise comme sommet pour que les segments se rejoignent proprement
+    const snap = leg[leg.length - 1];
+    _captationVertices.push({ lat: snap[0], lng: snap[1] });
+    _captationLegs.push(leg);
+    _redrawCaptationTrace();
+    _setCaptationPolyStatus(`✓ ${_captationVertices.length} points · cliquez la prochaine rue, ou re-cliquez près du 🚩 départ pour fermer.`);
 }
 
-function _redrawCaptationPolygon() {
+async function _captationCloseLoop() {
+    const start = _captationVertices[0];
+    const last = _captationVertices[_captationVertices.length - 1];
+    _captationRouting = true;
+    _setCaptationPolyStatus('⏳ Fermeture du polygone via les rues…', 'wait');
+    const leg = await _routeOnStreets(L.latLng(last.lat, last.lng), L.latLng(start.lat, start.lng));
+    _captationRouting = false;
+    _captationLegs.push(leg);
+    _captationLocked = true;
+    _redrawCaptationTrace();
+    _setCaptationPolyStatus('🔒 Polygone bouclé et verrouillé. Cliquez « Effacer » pour recommencer.', 'ok');
+}
+
+function undoCaptationVertex() {
+    if (_captationLocked) { _captationLocked = false; _captationLegs.pop(); _redrawCaptationTrace(); _setCaptationPolyStatus('Verrou retiré — vous pouvez à nouveau modifier le tracé.'); return; }
+    if (_captationLegs.length) _captationLegs.pop();
+    if (_captationVertices.length) _captationVertices.pop();
+    _redrawCaptationTrace();
+    if (_captationVertices.length === 0) _setCaptationPolyStatus('Cliquez sur la carte pour démarrer le tracé.');
+    else _setCaptationPolyStatus(`✓ ${_captationVertices.length} points · cliquez la prochaine rue, ou re-cliquez près du 🚩 départ pour fermer.`);
+}
+
+function _redrawCaptationTrace() {
     if (!captationMap) return;
     [captationCircleLayer, captationCenterMarker, captationPolygonLayer].forEach(l => { if (l) { try { captationMap.removeLayer(l); } catch (e) {} } });
     captationCircleLayer = captationCenterMarker = captationPolygonLayer = null;
     if (captationMap._capExtra) { captationMap._capExtra.forEach(l => { try { captationMap.removeLayer(l); } catch (e) {} }); }
     captationMap._capExtra = [];
-    const chain = _captationChain;
-    if (chain.length === 0) { return; }
-    if (chain.length === 1) {
-        chain[0].ways.forEach(w => { const l = L.polyline(w.geometry.map(g => [g.lat, g.lon]), { color: '#a78bfa', weight: 3, dashArray: '4,3', opacity: 0.8 }).addTo(captationMap); captationMap._capExtra.push(l); });
-        try { captationMap.fitBounds(L.latLngBounds(chain[0].ways.flatMap(w => w.geometry.map(g => [g.lat, g.lon]))).pad(0.3)); } catch (e) {}
-        return;
-    }
-    // Suite ordonnée des noeuds d'intersection : I(0,1), I(1,2), ... et I(n-1,0) si fermé
-    const inter = [];
-    for (let k = 0; k < chain.length - 1; k++) { const n = _intersectionNode(chain[k], chain[k + 1]); if (n != null) inter.push(n); }
-    if (_captationClosed && chain.length >= 3) { const n = _intersectionNode(chain[chain.length - 1], chain[0]); if (n != null) inter.push(n); }
-    // Tracé : pour chaque paire d'intersections consécutives, le segment de la rue qui contient les deux
+    if (_captationVertices.length === 0) { STATE.captation.polygon = null; _syncCaptationToMainMap(); return; }
+    // Concatène toutes les jambes en une seule polyline
     const path = [];
-    const pushSeg = (seg) => seg.forEach((pt, idx) => { if (idx === 0 && path.length) return; path.push(pt); });
-    const pairCount = _captationClosed ? inter.length : inter.length - 1;
-    for (let i = 0; i < pairCount; i++) {
-        const a = inter[i], b = inter[(i + 1) % inter.length];
-        let common = null;
-        for (const st of chain) { if (st.nodeSet.has(a) && st.nodeSet.has(b)) { common = st; break; } }
-        if (common) pushSeg(_streetEdgeGeometry(common, a, b));
-        else { const pa = _anyNodeLatLng(chain, a), pb = _anyNodeLatLng(chain, b); if (pa && pb) pushSeg([pa, pb]); }
-    }
-    if (path.length === 0) {
-        inter.forEach(n => { const p = _anyNodeLatLng(chain, n); if (p) { const m = L.circleMarker(p, { radius: 5, color: '#7c3aed', fillColor: '#fff', fillOpacity: 1, weight: 2 }).addTo(captationMap); captationMap._capExtra.push(m); } });
-        return;
-    }
-    if (_captationClosed && path.length >= 4) {
-        captationPolygonLayer = L.polygon(path, { color: '#7c3aed', fillColor: '#a78bfa', fillOpacity: 0.22, weight: 2.6 }).addTo(captationMap).bindPopup('<b>Polygone de captation (suit les rues)</b><br>' + chain.length + ' rues');
+    _captationLegs.forEach(leg => leg.forEach((pt, i) => { if (i === 0 && path.length) return; path.push(pt); }));
+    if (_captationLocked && path.length >= 4) {
+        captationPolygonLayer = L.polygon(path, { color: '#7c3aed', fillColor: '#a78bfa', fillOpacity: 0.25, weight: 2.6 }).addTo(captationMap).bindPopup(`<b>Zone de captation</b><br>${_captationVertices.length} sommets · suit les rues`);
         STATE.captation.polygon = path;
-    } else {
-        captationPolygonLayer = L.polyline(path, { color: '#7c3aed', weight: 2.6, dashArray: '5,4' }).addTo(captationMap);
+    } else if (path.length >= 2) {
+        captationPolygonLayer = L.polyline(path, { color: '#7c3aed', weight: 3, opacity: 0.9 }).addTo(captationMap);
         STATE.captation.polygon = null;
     }
-    inter.forEach(n => { const p = _anyNodeLatLng(chain, n); if (p) { const m = L.circleMarker(p, { radius: 4, color: '#7c3aed', fillColor: '#fff', fillOpacity: 1, weight: 2 }).addTo(captationMap); captationMap._capExtra.push(m); } });
-    try { captationMap.fitBounds(L.latLngBounds(path).pad(0.2)); } catch (e) {}
-}
-
-function validateCaptationPolygon() {
-    if (!_captationClosed || !Array.isArray(STATE.captation.polygon) || STATE.captation.polygon.length < 4) {
-        alert('Bouclez d\'abord le polygone : ajoutez des rues jusqu\'à ce que la 1re rue (« Fermer le polygone sur … ») apparaisse dans la liste, puis cliquez-la.');
-        return;
-    }
-    STATE.captation.center = null;   // mode polygone : pas de centre
+    // Marqueurs sommets : 🚩 premier en vert, autres en violet
+    _captationVertices.forEach((v, i) => {
+        const isStart = i === 0;
+        const m = L.circleMarker([v.lat, v.lng], { radius: isStart ? 7 : 5, color: isStart ? '#15803d' : '#7c3aed', fillColor: '#fff', fillOpacity: 1, weight: 2.5 })
+            .addTo(captationMap).bindPopup(isStart ? '<b>🚩 Point de départ</b><br>Re-cliquez ici (≤30 m) pour fermer.' : `<b>Sommet ${i + 1}</b>`);
+        captationMap._capExtra.push(m);
+    });
+    if (path.length >= 2) try { captationMap.fitBounds(L.latLngBounds(path).pad(0.2)); } catch (e) {}
     _syncCaptationToMainMap();
-    _setCaptationList('<div style="padding:6px 9px; font-size:12px; color:#15803d; font-weight:600;">✓ Polygone validé — visible sur la carte §1 via le calque « Zone de captation ».</div>');
 }
 
 // ---- Synchronisation vers la carte §1 (calque "Zone de captation"), avec mise en évidence
@@ -7885,6 +7818,7 @@ function initAircraftMap(aircraft, lat, lon) {
     // Marqueurs aéronefs (via la fonction d'update partagée)
     updateAircraftMarkers(aircraft);
 
+    addFullscreenControl(aircraftMap);
     setTimeout(() => aircraftMap.invalidateSize(), 100);
 }
 
