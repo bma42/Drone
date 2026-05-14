@@ -1952,7 +1952,7 @@
                         <li>Open-Meteo — météo prévisionnelle, point de rosée, altimétrie / élévation</li>
                         <li>NOAA aviationweather.gov — METAR / TAF (primaire) · CheckWX — fallback</li>
                         <li>OpenAIP — espaces aériens contrôlés (CTR, TMA, P/R/D) · NOAA SWPC — indice Kp</li>
-                        <li>RainViewer — radar pluie LIVE · OpenStreetMap France — fonds cartographiques (labels FR)</li>
+                        <li>RainViewer — radar pluie LIVE · CartoDB Voyager / Light — fonds cartographiques</li>
                         <li>ADSB.lol · airplanes.live · OpenSky — trafic aérien temps réel (ADS-B + MLAT)</li>
                         <li>OpenStreetMap / Overpass — voies rapides, plateformes, héliports · OSRM — routage piéton (zone captation §2)</li>
                         <li>BAN api-adresse — adresses · api.geo.api.gouv.fr — communes INSEE (densité de population)</li>
@@ -2274,21 +2274,18 @@ const STATE = {
 })();
 
 /* -------- Carte Leaflet -------- */
-// Fond de carte unique pour TOUTES les cartes du module (sauf orthophotos satellite §1) :
-//   · OSM France (tile.openstreetmap.fr/osmfr) → labels français pour les régions / villes
-//     françaises (« Nouvelle-Aquitaine » et non « New Aquitaine » comme sur CartoDB)
-//   · Couvre le monde entier (avec labels locaux ailleurs)
-const FR_TILE_URL  = 'https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png';
-const FR_TILE_OPTS = { attribution: '© OpenStreetMap France', subdomains: 'abc', crossOrigin: true, maxZoom: 20 };
+// Fond de carte unique (CartoDB Light) — style clair, neutre, très lisible. Labels en
+// anglais pour les régions/grandes villes ; choix assumé en faveur de la lisibilité.
+const FR_TILE_URL  = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+const FR_TILE_OPTS = { attribution: '© OSM · © CartoDB', subdomains: 'abcd', crossOrigin: true, maxZoom: 20 };
 function _frTileLayer(extra) {
     return L.tileLayer(FR_TILE_URL, Object.assign({}, FR_TILE_OPTS, extra || {}));
 }
-// PLAN.IGN — fond IGN officiel 100 % en français, idéal pour les vues régionales /
-// nationales où OSM France peut encore afficher des labels anglais aux faibles zooms.
-const IGN_PLAN_URL  = 'https://data.geopf.fr/wmts?layer=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&style=normal&tilematrixset=PM&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image/png&TileMatrix={z}&TileCol={x}&TileRow={y}';
-const IGN_PLAN_OPTS = { attribution: '© IGN-F / Géoplateforme', crossOrigin: true, maxZoom: 18 };
-function _ignPlanTileLayer(extra) {
-    return L.tileLayer(IGN_PLAN_URL, Object.assign({}, IGN_PLAN_OPTS, extra || {}));
+// Variante CartoDB Voyager (colorée) pour les cartes où la couleur aide à différencier
+// les éléments (captation §2, trafic aérien §18).
+const FR_TILE_COLOR_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+function _frTileLayerColor(extra) {
+    return L.tileLayer(FR_TILE_COLOR_URL, Object.assign({}, FR_TILE_OPTS, extra || {}));
 }
 
 let map = L.map('map', { scrollWheelZoom: false }).setView([46.2276, 2.2137], 5);
@@ -2578,7 +2575,7 @@ function initCaptationMap() {
     if (typeof showMapLoader === 'function') showMapLoader(el, 'Carte plan · zone de captation');
     const c = (STATE.lat != null) ? [STATE.lat, STATE.lon] : [46.6, 2.4];
     captationMap = L.map(el, { scrollWheelZoom: false }).setView(c, STATE.lat != null ? 14 : 6);
-    _frTileLayer().addTo(captationMap);
+    _frTileLayerColor().addTo(captationMap);
     if (STATE.lat != null) L.circleMarker([STATE.lat, STATE.lon], { radius: 6, color: '#0b3d91', fillColor: '#fff', fillOpacity: 1, weight: 2 }).addTo(captationMap).bindPopup('<b>Point de mission</b>');
     captationMap.on('click', (e) => {
         if (STATE.captation.mode === 'cercle') {
@@ -3618,7 +3615,7 @@ async function initRainRadar(lat, lon) {
         minZoom: 4,
         maxZoom: 11
     }).setView([lat, lon], 7);
-    _ignPlanTileLayer({ attribution: '© IGN-F / Géoplateforme · Radar © RainViewer', maxZoom: 11, maxNativeZoom: 11 }).addTo(rainMap);
+    _frTileLayer({ attribution: '© OSM · © CartoDB · Radar © RainViewer', maxZoom: 11, maxNativeZoom: 11 }).addTo(rainMap);
     L.circleMarker([lat, lon], { radius: 7, color: '#0b3d91', fillColor: '#fff', fillOpacity: 1, weight: 3 }).addTo(rainMap).bindPopup('<b>Point de mission</b>');
     L.circle([lat, lon], { radius: 50000, color: '#0b3d91', fillOpacity: 0, weight: 1, dashArray: '4,4' }).addTo(rainMap);
 
@@ -8344,7 +8341,7 @@ function initAircraftMap(aircraft, lat, lon) {
     if (aircraftMap) { try { aircraftMap.remove(); } catch (e) {} aircraftMap = null; }
     aircraftMarkers.clear();
     aircraftMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 11);
-    _frTileLayer({ attribution: '© OpenStreetMap France · ADSB.lol' }).addTo(aircraftMap);
+    _frTileLayerColor({ attribution: '© OSM · © CartoDB · ADSB.lol' }).addTo(aircraftMap);
 
     // Point de mission
     L.circleMarker([lat, lon], { radius: 8, color: '#fff', fillColor: '#0b3d91', fillOpacity: 1, weight: 2 }).addTo(aircraftMap).bindPopup('<b>Point de mission</b>');
