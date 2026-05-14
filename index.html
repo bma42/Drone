@@ -1952,7 +1952,7 @@
                         <li>Open-Meteo — météo prévisionnelle, point de rosée, altimétrie / élévation</li>
                         <li>NOAA aviationweather.gov — METAR / TAF (primaire) · CheckWX — fallback</li>
                         <li>OpenAIP — espaces aériens contrôlés (CTR, TMA, P/R/D) · NOAA SWPC — indice Kp</li>
-                        <li>RainViewer — radar pluie LIVE · CartoDB Voyager / Light — fonds cartographiques</li>
+                        <li>RainViewer — radar pluie LIVE · OpenStreetMap France — fonds cartographiques (labels FR)</li>
                         <li>ADSB.lol · airplanes.live · OpenSky — trafic aérien temps réel (ADS-B + MLAT)</li>
                         <li>OpenStreetMap / Overpass — voies rapides, plateformes, héliports · OSRM — routage piéton (zone captation §2)</li>
                         <li>BAN api-adresse — adresses · api.geo.api.gouv.fr — communes INSEE (densité de population)</li>
@@ -2274,10 +2274,18 @@ const STATE = {
 })();
 
 /* -------- Carte Leaflet -------- */
+// Fond de carte unique pour TOUTES les cartes du module (sauf orthophotos satellite §1) :
+//   · OSM France (tile.openstreetmap.fr/osmfr) → labels français pour les régions / villes
+//     françaises (« Nouvelle-Aquitaine » et non « New Aquitaine » comme sur CartoDB)
+//   · Couvre le monde entier (avec labels locaux ailleurs)
+const FR_TILE_URL  = 'https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png';
+const FR_TILE_OPTS = { attribution: '© OpenStreetMap France', subdomains: 'abc', crossOrigin: true, maxZoom: 20 };
+function _frTileLayer(extra) {
+    return L.tileLayer(FR_TILE_URL, Object.assign({}, FR_TILE_OPTS, extra || {}));
+}
+
 let map = L.map('map', { scrollWheelZoom: false }).setView([46.2276, 2.2137], 5);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    attribution: '© OSM · © CartoDB', crossOrigin: true
-}).addTo(map);
+_frTileLayer().addTo(map);
 
 let marker = L.marker([0, 0], { draggable: true, autoPan: true, title: 'Glisser pour déplacer le point de mission' }).addTo(map);
 let rangeCircle = L.circle([0, 0], { color: '#0066cc', fillColor: '#0066cc', fillOpacity: .12, weight: 2 }).addTo(map);
@@ -2563,7 +2571,7 @@ function initCaptationMap() {
     if (typeof showMapLoader === 'function') showMapLoader(el, 'Carte plan · zone de captation');
     const c = (STATE.lat != null) ? [STATE.lat, STATE.lon] : [46.6, 2.4];
     captationMap = L.map(el, { scrollWheelZoom: false }).setView(c, STATE.lat != null ? 14 : 6);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', subdomains: 'abcd', maxZoom: 19, crossOrigin: true }).addTo(captationMap);
+    _frTileLayer().addTo(captationMap);
     if (STATE.lat != null) L.circleMarker([STATE.lat, STATE.lon], { radius: 6, color: '#0b3d91', fillColor: '#fff', fillOpacity: 1, weight: 2 }).addTo(captationMap).bindPopup('<b>Point de mission</b>');
     captationMap.on('click', (e) => {
         if (STATE.captation.mode === 'cercle') {
@@ -3603,11 +3611,7 @@ async function initRainRadar(lat, lon) {
         minZoom: 4,
         maxZoom: 11
     }).setView([lat, lon], 7);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '© OSM · © CartoDB · Radar © RainViewer',
-        maxZoom: 11,
-        maxNativeZoom: 11
-    }).addTo(rainMap);
+    _frTileLayer({ attribution: '© OpenStreetMap France · Radar © RainViewer', maxZoom: 11, maxNativeZoom: 11 }).addTo(rainMap);
     L.circleMarker([lat, lon], { radius: 7, color: '#0b3d91', fillColor: '#fff', fillOpacity: 1, weight: 3 }).addTo(rainMap).bindPopup('<b>Point de mission</b>');
     L.circle([lat, lon], { radius: 50000, color: '#0b3d91', fillOpacity: 0, weight: 1, dashArray: '4,4' }).addTo(rainMap);
 
@@ -4167,7 +4171,7 @@ function initLinesMap(items, lat, lon) {
     if (linesMap) { linesMap.remove(); linesMap = null; }
     linesMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 13);
     fitMapToRadius(linesMap, lat, lon, 5000);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', crossOrigin: true }).addTo(linesMap);
+    _frTileLayer().addTo(linesMap);
     // Marqueur point de mission
     L.circleMarker([lat, lon], { radius: 7, color: '#0b3d91', fillColor: '#0b3d91', fillOpacity: 1, weight: 2 }).addTo(linesMap).bindPopup('<b>Point de mission</b>');
     // Cercle de la zone d'analyse §6 (5 km)
@@ -4373,7 +4377,7 @@ function initAntennasMap(items, lat, lon) {
     if (antennasMap) { antennasMap.remove(); antennasMap = null; }
     antennasMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 14);
     fitMapToRadius(antennasMap, lat, lon, 3000);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', crossOrigin: true }).addTo(antennasMap);
+    _frTileLayer().addTo(antennasMap);
     L.circleMarker([lat, lon], { radius: 7, color: '#0b3d91', fillColor: '#0b3d91', fillOpacity: 1, weight: 2 }).addTo(antennasMap).bindPopup('<b>Point de mission</b>');
     // Cercle de la zone d'analyse §7 (3 km)
     L.circle([lat, lon], { radius: 3000, color: '#0b3d91', fillOpacity: .03, weight: 1, dashArray: '4,4' }).addTo(antennasMap);
@@ -4550,7 +4554,7 @@ function initIghMap2DFallback(items, lat, lon, reason) {
     ighMap3DUpdateElongation = null;
     ighMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 14);
     fitMapToRadius(ighMap, lat, lon, 2000);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', crossOrigin: true }).addTo(ighMap);
+    _frTileLayer().addTo(ighMap);
     L.circleMarker([lat, lon], { radius: 7, color: '#0b3d91', fillColor: '#0b3d91', fillOpacity: 1, weight: 2 }).addTo(ighMap).bindPopup('<b>Point de mission</b>');
     L.circle([lat, lon], { radius: 2000, color: '#0b3d91', fillOpacity: .03, weight: 1, dashArray: '4,4' }).addTo(ighMap);
     ighElongationCircle = STATE.radius
@@ -5011,7 +5015,7 @@ function initRailMap(tracks, stations, lat, lon) {
     if (!el) return;
     if (railMap) { railMap.remove(); railMap = null; }
     railMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 14);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', crossOrigin: true }).addTo(railMap);
+    _frTileLayer().addTo(railMap);
 
     // Tronçons : rouge si électrifié, gris sinon
     tracks.slice(0, 80).forEach(t => {
@@ -5230,7 +5234,7 @@ function initTrafficMap(roads, lat, lon) {
     if (!el) return;
     if (trafficMap) { trafficMap.remove(); trafficMap = null; }
     trafficMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 13);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', crossOrigin: true }).addTo(trafficMap);
+    _frTileLayer().addTo(trafficMap);
 
     // Tracé sur la mini-carte du module + sur la carte principale (calque "Autoroutes / RN")
     // Les voies pénétrant dans la zone d'évolution sont tracées plus épaisses + halo orange.
@@ -5394,7 +5398,7 @@ function initNaturalMap(items, lat, lon) {
     if (!el) return;
     if (naturalMap) { naturalMap.remove(); naturalMap = null; }
     naturalMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 12);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', crossOrigin: true }).addTo(naturalMap);
+    _frTileLayer().addTo(naturalMap);
 
     items.forEach(x => {
         try {
@@ -5609,7 +5613,7 @@ function initSevesoMap(items, lat, lon) {
     if (!el) return;
     if (sevesoMap) { sevesoMap.remove(); sevesoMap = null; }
     sevesoMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 12);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', crossOrigin: true }).addTo(sevesoMap);
+    _frTileLayer().addTo(sevesoMap);
     L.circleMarker([lat, lon], { radius: 7, color: '#0b3d91', fillColor: '#0b3d91', fillOpacity: 1, weight: 2 }).addTo(sevesoMap).bindPopup('<b>Point de mission</b>');
     L.circle([lat, lon], { radius: 10000, color: '#0b3d91', fillOpacity: .03, weight: 1, dashArray: '4,4' }).addTo(sevesoMap);
     sevesoElongationCircle = STATE.radius
@@ -5789,7 +5793,7 @@ function initUasMap(items, lat, lon) {
     if (!el) return;
     if (uasMap) { uasMap.remove(); uasMap = null; }
     uasMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 12);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', crossOrigin: true }).addTo(uasMap);
+    _frTileLayer().addTo(uasMap);
     // Ajout des polygones de restriction
     for (const it of items) {
         try {
@@ -6065,7 +6069,7 @@ function initZicadMap(items, lat, lon) {
     if (!el) return;
     if (zicadMap) { zicadMap.remove(); zicadMap = null; }
     zicadMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 11);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', crossOrigin: true }).addTo(zicadMap);
+    _frTileLayer().addTo(zicadMap);
 
     items.forEach(z => {
         try {
@@ -6269,7 +6273,7 @@ function initAirspaceMap(items, lat, lon) {
     if (airspaceMap) { airspaceMap.remove(); airspaceMap = null; }
     airspaceLayersById.clear();
     airspaceMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 11);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB', crossOrigin: true }).addTo(airspaceMap);
+    _frTileLayer().addTo(airspaceMap);
 
     // Polygones d'espaces (du plus large au plus petit pour l'empilement)
     const sorted = [...items].sort((a, b) => (a.inside ? 0 : 1) - (b.inside ? 0 : 1));
@@ -8333,7 +8337,7 @@ function initAircraftMap(aircraft, lat, lon) {
     if (aircraftMap) { try { aircraftMap.remove(); } catch (e) {} aircraftMap = null; }
     aircraftMarkers.clear();
     aircraftMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 11);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { attribution: '© OSM · © CartoDB · ADSB.lol', crossOrigin: true, subdomains: 'abcd', maxZoom: 19 }).addTo(aircraftMap);
+    _frTileLayer({ attribution: '© OpenStreetMap France · ADSB.lol' }).addTo(aircraftMap);
 
     // Point de mission
     L.circleMarker([lat, lon], { radius: 8, color: '#fff', fillColor: '#0b3d91', fillOpacity: 1, weight: 2 }).addTo(aircraftMap).bindPopup('<b>Point de mission</b>');
@@ -8458,7 +8462,7 @@ function initRiskMiniMaps() {
             scrollWheelZoom: false, zoomControl: false, attributionControl: false,
             dragging: false, doubleClickZoom: false, touchZoom: false, boxZoom: false, keyboard: false
         }).setView([cLat, cLon], 13);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { crossOrigin: true }).addTo(m);
+        _frTileLayer().addTo(m);
         // Cercle d'élongation
         if (STATE.radius) {
             L.circle([STATE.lat, STATE.lon], { radius: STATE.radius, color: '#d97706', fillColor: '#fbbf24', fillOpacity: .15, weight: 1 }).addTo(m);
