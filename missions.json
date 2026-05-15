@@ -1,0 +1,7 @@
+{
+  "_meta": {
+    "description": "Missions de vol drone sauvegardées. Versionné dans git pour partage entre postes. Format : { missions: [ { id, name, savedAt, state, fields, innerHtml } ] }",
+    "format_version": 1
+  },
+  "missions": []
+}
