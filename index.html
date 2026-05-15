@@ -5026,13 +5026,6 @@ function initIghMap(items, allFeatures, lat, lon) {
                 'fill-extrusion-vertical-gradient': true
             }
         });
-        // Liseré au sommet pour un rendu plus net
-        ighMap.addLayer({
-            id: 'buildings-outline',
-            type: 'line',
-            source: 'buildings',
-            paint: { 'line-color': 'rgba(255,255,255,0.85)', 'line-width': 0.5 }
-        });
         // Couche ciel (gradient au-dessus de l'horizon en vue inclinée)
         try {
             ighMap.addLayer({
