@@ -86,5 +86,16 @@
   "LFOQ": { "name": "Blois Le Breuil",                        "phone": "0254201718", "address": "41330 Le Breuil" },
   "LFRC": { "name": "Cherbourg Maupertus",                    "phone": "0233225137", "address": "50330 Maupertus-sur-Mer" },
   "LFRI": { "name": "La Roche-sur-Yon Les Ajoncs",            "phone": "0251374603", "email": "larochesuryon.aerodrome@vendee.cci.fr", "address": "85000 La Roche-sur-Yon" },
-  "LFOZ": { "name": "Orléans Saint-Denis-de-l'Hôtel",         "phone": "0238463333", "email": "contact@orleans.aeroport.fr",   "address": "45550 Saint-Denis-de-l'Hôtel" }
+  "LFOZ": { "name": "Orléans Saint-Denis-de-l'Hôtel",         "phone": "0238463333", "email": "contact@orleans.aeroport.fr",   "address": "45550 Saint-Denis-de-l'Hôtel" },
+
+  "LFCH": { "name": "Arcachon La Teste-de-Buch",              "phone": "0556547280", "address": "33260 La Teste-de-Buch" },
+  "LFEA": { "name": "Belle-Île",                              "phone": "0297318309", "address": "56360 Le Palais" },
+  "LFEC": { "name": "Ouessant",                               "phone": "0298488209", "email": "aerodrome.ouessant@wanadoo.fr",  "address": "29242 Ouessant" },
+  "LFRO": { "name": "Lannion Côte de Granit Rose",            "phone": "0296545648", "email": "afis@lannion.aeroport.fr",       "address": "22300 Lannion" },
+  "LFRT": { "name": "Saint-Brieuc Armor",                     "phone": "0296949500", "email": "aeroport.escale@cotesdarmor.cci.fr", "address": "22440 Trémuson" },
+  "LFRU": { "name": "Morlaix Ploujean",                       "phone": "0298627670", "email": "aeroport.morlaix@bretagne-ouest.cci.bzh", "address": "29600 Morlaix" },
+  "LFEY": { "name": "Île d'Yeu Le Grand Phare",               "phone": "0251583822", "email": "yeu.aero@orange.fr",             "address": "85350 L'Île d'Yeu" },
+  "LFKS": { "name": "Solenzara (BA 126)",                     "phone": "0495568484", "address": "20240 Ventiseri" },
+  "LFCC": { "name": "Cahors Lalbenque",                       "phone": "0565215212", "email": "afis.cahors@orange.fr",          "address": "46230 Lalbenque" },
+  "LFLW": { "name": "Aurillac Tronquières",                   "phone": "0471645000", "email": "aeroport@caba.fr",               "address": "15000 Aurillac" }
 }
