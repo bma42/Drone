@@ -1526,8 +1526,10 @@
                         <input type="checkbox" id="hors-circo" style="accent-color:var(--c-warning);" onchange="toggleHorsCircuit()">
                         <label for="hors-circo" style="font-weight:600;">Mission hors circonscription (DIPN 42)</label>
                     </div>
-                    <div class="hint">Si cochée, désactive les obligations SAMU 42, Tour de contrôle et Clearance.</div>
+                    <div class="hint">Si cochée, désactive les obligations SAMU 42, Tour de contrôle et Clearance — et affiche les contacts SAMU / aérodromes du département de la mission.</div>
                 </div>
+
+                <div id="hors-circo-info" style="display:none;" class="field-group"></div>
 
                 <div id="circo-block">
                 <div class="field-group">
@@ -3447,6 +3449,10 @@ function selectAddr(label, lat, lon, dept, opts) {
     document.getElementById('address-list').innerHTML = '';
     STATE.lat = lat; STATE.lon = lon; STATE.address = label; STATE.dept = dept;
     autoToggleHorsCircuit(dept);
+    // Rafraîchit les contacts SAMU / aérodromes si la case « hors circo » est cochée
+    // (utile quand l'adresse change vers un autre département alors que la case l'était déjà).
+    const _hc = document.getElementById('hors-circo');
+    if (_hc && _hc.checked && typeof populateHorsCircoInfo === 'function') populateHorsCircoInfo();
     renderGPS(lat, lon);
     // Frame de chargement sur la carte §1 à chaque nouvelle adresse / position GPS
     // (sautée lors d'un drag/clic pour éviter de masquer la carte qu'on vient de toucher)
@@ -9482,6 +9488,120 @@ function toggleHorsCircuit() {
         r.disabled = off;
     });
     if (off) toggleClearanceLate();
+    const info = document.getElementById('hors-circo-info');
+    if (info) {
+        info.style.display = off ? '' : 'none';
+        if (off) populateHorsCircoInfo();
+    }
+}
+
+// Transpose le bloc SAMU 42 / tour de contrôle vers le département réel de la mission
+// (utilisé quand la case « Mission hors circonscription » est cochée).
+async function populateHorsCircoInfo() {
+    const box = document.getElementById('hors-circo-info');
+    if (!box) return;
+    const dept = (STATE && STATE.dept) || '';
+    const lat = STATE && STATE.lat, lon = STATE && STATE.lon;
+    if (!dept || lat == null) {
+        box.innerHTML = `<div class="hint" style="padding:10px 12px; background:#fef3c7; border:1px solid #fde68a; border-radius:6px;">Sélectionnez d'abord une adresse de mission pour afficher les contacts SAMU / aérodromes du département concerné.</div>`;
+        return;
+    }
+    box.innerHTML = `<div class="hint" style="padding:10px 12px; background:#f7f9fc; border:1px solid var(--c-border); border-radius:6px;">⏳ Recherche des contacts SAMU et aérodromes pour le département ${dept}…</div>`;
+
+    // 1. Nom du département via geo.api.gouv.fr
+    let deptName = '';
+    try {
+        const r = await fetchWithTimeout(`https://geo.api.gouv.fr/departements/${dept}`, {}, 6000);
+        if (r.ok) { const j = await r.json(); deptName = j.nom || ''; }
+    } catch (e) { /* fallback : code seul */ }
+
+    // 2. Overpass : aérodromes + hôpitaux d'urgence dans 60 km
+    const q = `[out:json][timeout:25];(`
+        + `nwr["aeroway"="aerodrome"](around:60000,${lat},${lon});`
+        + `nwr["aeroway"="control_tower"](around:60000,${lat},${lon});`
+        + `nwr["amenity"="hospital"]["emergency"="yes"](around:60000,${lat},${lon});`
+        + `);out center tags;`;
+    const endpoints = [
+        'https://overpass-api.de/api/interpreter',
+        'https://overpass.kumi.systems/api/interpreter',
+        'https://overpass.osm.ch/api/interpreter'
+    ];
+    const tryOne = (url) => new Promise((resolve, reject) => {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => { ctrl.abort(); reject(new Error('timeout')); }, 12000);
+        fetch(url + '?data=' + encodeURIComponent(q), { signal: ctrl.signal })
+            .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(j => { clearTimeout(t); resolve(j.elements || []); })
+            .catch(e => { clearTimeout(t); reject(e); });
+    });
+    let elements = [];
+    try { elements = await Promise.any(endpoints.map(tryOne)); }
+    catch (e) { console.warn('Overpass hors-circo indisponible:', e); }
+
+    const aerodromes = [], towers = [], hospitals = [];
+    for (const el of elements) {
+        const t = el.tags || {}; const c = el.center || el;
+        const eLat = c.lat ?? el.lat, eLon = c.lon ?? el.lon;
+        if (eLat == null) continue;
+        const item = {
+            name: t.name || t['operator'] || '',
+            dist: haversine(lat, lon, eLat, eLon),
+            phone: t.phone || t['contact:phone'] || '',
+            email: t.email || t['contact:email'] || '',
+            website: t.website || t['contact:website'] || '',
+            icao: t.icao || t['ref:icao'] || '',
+            operator: t.operator || ''
+        };
+        if (t.aeroway === 'aerodrome') aerodromes.push(item);
+        else if (t.aeroway === 'control_tower') towers.push(item);
+        else if (t.amenity === 'hospital') hospitals.push(item);
+    }
+    aerodromes.sort((a, b) => a.dist - b.dist);
+    towers.sort((a, b) => a.dist - b.dist);
+    hospitals.sort((a, b) => a.dist - b.dist);
+
+    const fmtPhone = p => p
+        ? `<a href="tel:${p.replace(/\s/g, '')}" style="color:var(--c-accent); text-decoration:none;">${p}</a>`
+        : '<span style="color:var(--c-muted);">téléphone non renseigné</span>';
+    const fmtEmail = e => e
+        ? ` · ✉️ <a href="mailto:${e}" style="color:var(--c-accent); text-decoration:none;">${e}</a>`
+        : '';
+    const fmtWeb = w => w
+        ? ` · 🌐 <a href="${w}" target="_blank" rel="noopener" style="color:var(--c-accent); text-decoration:none;">site</a>`
+        : '';
+    const renderRow = it => `
+        <li style="margin-bottom:6px;">
+            <strong>${it.name || '(sans nom)'}</strong>${it.icao ? ' <code style="background:#eef3fb; color:var(--c-primary); padding:1px 5px; border-radius:3px; font-size:11px;">' + it.icao + '</code>' : ''}
+            <span style="color:var(--c-muted); font-size:11px;"> · ${fmtDist(it.dist)}</span>
+            <div style="font-size:12px;">📞 ${fmtPhone(it.phone)}${fmtEmail(it.email)}${fmtWeb(it.website)}</div>
+        </li>`;
+
+    const samuLabel = `SAMU ${dept}${deptName ? ' — ' + deptName : ''}`;
+    const samuSearchUrl = `https://www.google.com/search?q=${encodeURIComponent('SAMU ' + dept + ' ' + deptName + ' coordonnées hélicoptère')}`;
+
+    box.innerHTML = `
+        <div style="padding:12px 14px; background:linear-gradient(180deg,#fef3c7 0%, #fef9e7 100%); border:1px solid #fde68a; border-left:4px solid var(--c-warning); border-radius:6px; font-size:12px; line-height:1.6;">
+            <div style="font-weight:700; color:#92400e; text-transform:uppercase; letter-spacing:.5px; font-size:11px; margin-bottom:8px;">Mission hors DIPN 42 — contacts du département ${dept}${deptName ? ' (' + deptName + ')' : ''}</div>
+
+            <div style="margin-bottom:10px; padding:8px 10px; background:#fff; border:1px solid var(--c-border); border-radius:5px;">
+                <div><strong style="color:var(--c-primary);">${samuLabel}</strong></div>
+                <div>📞 <a href="tel:15" style="color:var(--c-accent); text-decoration:none; font-weight:600;">15</a> <span style="color:var(--c-muted); font-size:11px;">(numéro d'urgence national SAMU — à composer pour aviser le SAMU territorialement compétent)</span></div>
+                <div style="font-size:11px; margin-top:3px;">🔎 <a href="${samuSearchUrl}" target="_blank" rel="noopener" style="color:var(--c-accent); text-decoration:none;">Rechercher les coordonnées directes du SAMU ${dept} (mail / TCM hélico)</a></div>
+            </div>
+
+            <div style="margin-bottom:10px; padding:8px 10px; background:#fff; border:1px solid var(--c-border); border-radius:5px;">
+                <strong style="color:var(--c-primary);">CHU / hôpitaux avec service d'urgence à proximité&nbsp;:</strong>
+                <ul style="margin:6px 0 0 18px; padding:0;">${hospitals.slice(0, 5).map(renderRow).join('') || '<li style="color:var(--c-muted);">aucun établissement avec balise <code>emergency=yes</code> trouvé dans un rayon de 60 km (OSM)</li>'}</ul>
+            </div>
+
+            <div style="padding:8px 10px; background:#fff; border:1px solid var(--c-border); border-radius:5px;">
+                <strong style="color:var(--c-primary);">Aérodromes &amp; tours de contrôle à proximité&nbsp;:</strong>
+                <ul style="margin:6px 0 0 18px; padding:0;">${[...towers, ...aerodromes].slice(0, 6).map(renderRow).join('') || '<li style="color:var(--c-muted);">aucun aérodrome / tour de contrôle trouvé dans un rayon de 60 km (OSM)</li>'}</ul>
+                <div style="font-size:11px; margin-top:6px;">Pour la déclaration Clearance, utiliser <a href="https://clearance.aero" target="_blank" rel="noopener" style="color:var(--c-accent);">clearance.aero</a>.</div>
+            </div>
+
+            <div class="hint" style="margin-top:8px; font-size:11px; color:#7c2d12;">Sources&nbsp;: OpenStreetMap (Overpass) · geo.api.gouv.fr — les coordonnées proviennent des données publiques et doivent être <strong>vérifiées avant tout contact opérationnel</strong>.</div>
+        </div>`;
 }
 
 function addAuthDrone() {
