@@ -852,6 +852,10 @@
             .field-group span[style*="background"] { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 
             .empty-state { color: #555; }
+            /* Captation §2 : sous-bloc replié à l'écran, mais toujours dévoilé au PDF */
+            #captation-content { display: block !important; }
+            #captation-toggle-btn { display: none !important; }
+            label.lbl.print-only { display: block !important; }
         }
     </style>
 </head>
@@ -1524,25 +1528,32 @@
                     </div>
                 </div>
                 <div id="captation-box" style="display:none;" class="field-group">
-                    <label class="lbl">Zone de captation autorisée (arrêté préfectoral)</label>
-                    <div class="no-print" style="display:flex; gap:14px; margin-bottom:8px; font-size:12px;">
-                        <label style="cursor:pointer;"><input type="radio" name="captation-mode" value="cercle" checked onchange="setCaptationMode('cercle')" style="accent-color:var(--c-primary);"> Cercle (point + périmètre)</label>
-                        <label style="cursor:pointer;"><input type="radio" name="captation-mode" value="polygone" onchange="setCaptationMode('polygone')" style="accent-color:var(--c-primary);"> Polygone de rues</label>
-                    </div>
-                    <div id="captation-circle-controls" class="no-print" style="display:flex; align-items:center; gap:10px; margin-bottom:8px; font-size:12px; flex-wrap:wrap;">
-                        <span style="white-space:nowrap;">Périmètre : <strong><span id="captation-radius-num">500</span> m</strong></span>
-                        <input type="range" id="captation-radius" min="50" max="5000" step="50" value="500" oninput="setCaptationRadius(this.value)" style="flex:1; min-width:140px;">
-                        <button type="button" onclick="clearCaptation()" style="background:#fef3c7; color:#92400e; border:1px solid #fcd34d; border-radius:5px; padding:4px 10px; font-size:12px; font-weight:600; cursor:pointer;">Effacer</button>
-                    </div>
-                    <div id="captation-polygon-controls" class="no-print" style="display:none; margin-bottom:8px;">
-                        <div id="captation-polygon-status" style="font-size:12px; color:var(--c-text-soft); padding:6px 9px; background:#f7f9fc; border:1px solid var(--c-border); border-radius:5px;">Cliquez sur la carte pour démarrer le tracé.</div>
-                        <div style="display:flex; gap:8px; margin-top:8px;">
-                            <button type="button" id="captation-undo-btn" onclick="undoCaptationVertex()" style="flex:1; background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; border-radius:5px; padding:6px 10px; font-size:12px; font-weight:600; cursor:pointer;">↩ Retirer dernier point</button>
-                            <button type="button" onclick="clearCaptation()" style="flex:1; background:#fef3c7; color:#92400e; border:1px solid #fcd34d; border-radius:5px; padding:6px 10px; font-size:12px; font-weight:600; cursor:pointer;">Effacer</button>
+                    <button type="button" id="captation-toggle-btn" class="no-print" onclick="toggleCaptationSubBlock()" style="background:#eef3fb; border:1px solid #cdd9ee; border-radius:6px; padding:9px 12px; width:100%; text-align:left; cursor:pointer; display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--c-primary);">
+                        <span id="captation-chevron" style="display:inline-block; transition:transform .2s; font-size:11px;">▶</span>
+                        <span>🗺 Zone de captation autorisée (arrêté préfectoral)</span>
+                        <span style="margin-left:auto; font-size:11px; color:var(--c-muted); font-weight:400;">cliquer pour définir</span>
+                    </button>
+                    <label class="lbl print-only" style="display:none;">Zone de captation autorisée (arrêté préfectoral)</label>
+                    <div id="captation-content" style="display:none; margin-top:10px;">
+                        <div class="no-print" style="display:flex; gap:14px; margin-bottom:8px; font-size:12px;">
+                            <label style="cursor:pointer;"><input type="radio" name="captation-mode" value="cercle" checked onchange="setCaptationMode('cercle')" style="accent-color:var(--c-primary);"> Cercle (point + périmètre)</label>
+                            <label style="cursor:pointer;"><input type="radio" name="captation-mode" value="polygone" onchange="setCaptationMode('polygone')" style="accent-color:var(--c-primary);"> Polygone de rues</label>
                         </div>
+                        <div id="captation-circle-controls" class="no-print" style="display:flex; align-items:center; gap:10px; margin-bottom:8px; font-size:12px; flex-wrap:wrap;">
+                            <span style="white-space:nowrap;">Périmètre : <strong><span id="captation-radius-num">500</span> m</strong></span>
+                            <input type="range" id="captation-radius" min="50" max="5000" step="50" value="500" oninput="setCaptationRadius(this.value)" style="flex:1; min-width:140px;">
+                            <button type="button" onclick="clearCaptation()" style="background:#fef3c7; color:#92400e; border:1px solid #fcd34d; border-radius:5px; padding:4px 10px; font-size:12px; font-weight:600; cursor:pointer;">Effacer</button>
+                        </div>
+                        <div id="captation-polygon-controls" class="no-print" style="display:none; margin-bottom:8px;">
+                            <div id="captation-polygon-status" style="font-size:12px; color:var(--c-text-soft); padding:6px 9px; background:#f7f9fc; border:1px solid var(--c-border); border-radius:5px;">Cliquez sur la carte pour démarrer le tracé.</div>
+                            <div style="display:flex; gap:8px; margin-top:8px;">
+                                <button type="button" id="captation-undo-btn" onclick="undoCaptationVertex()" style="flex:1; background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; border-radius:5px; padding:6px 10px; font-size:12px; font-weight:600; cursor:pointer;">↩ Retirer dernier point</button>
+                                <button type="button" onclick="clearCaptation()" style="flex:1; background:#fef3c7; color:#92400e; border:1px solid #fcd34d; border-radius:5px; padding:6px 10px; font-size:12px; font-weight:600; cursor:pointer;">Effacer</button>
+                            </div>
+                        </div>
+                        <div id="captation-map" style="height:300px; width:100%; border-radius:6px; border:1px solid var(--c-border); overflow:hidden; cursor:crosshair;"></div>
+                        <div class="hint" id="captation-hint" style="margin-top:4px;">Cliquez sur la carte pour placer le centre de la zone de captation, puis ajustez le périmètre.</div>
                     </div>
-                    <div id="captation-map" style="height:300px; width:100%; border-radius:6px; border:1px solid var(--c-border); overflow:hidden; cursor:crosshair;"></div>
-                    <div class="hint" id="captation-hint" style="margin-top:4px;">Cliquez sur la carte pour placer le centre de la zone de captation, puis ajustez le périmètre.</div>
                 </div>
                 <div id="finalite-box" style="display:none;" class="field-group">
                     <label class="lbl">Finalité(s) de la mission (cadre administratif)</label>
@@ -2621,7 +2632,8 @@ function toggleArrete() {
     const capBox = document.getElementById('captation-box');
     if (capBox) {
         capBox.style.display = isAdmin ? "block" : "none";
-        if (isAdmin) setTimeout(() => initCaptationMap(), 60);   // (ré)initialise la carte quand le bloc devient visible
+        // Le contenu (radio + carte) reste replié par défaut ; l'utilisateur clique
+        // sur le bouton « 🗺 Zone de captation … » pour le déplier au besoin.
     }
     document.getElementById('finalite-box').style.display = isAdmin ? "block" : "none";
     document.getElementById('judiciaire-box').style.display = isAdmin ? "none" : "block";
@@ -2701,6 +2713,34 @@ function recenterCaptationMap() {
         setTimeout(() => hideMapLoader(el), 900);
     }
     captationMap.setView([STATE.lat, STATE.lon], 14);
+}
+
+// Sous-bloc replié par défaut : on n'initialise / on n'invalide la taille
+// de la carte qu'au premier dépliage (sinon Leaflet ne connaît pas les dimensions).
+function toggleCaptationSubBlock() {
+    const c = document.getElementById('captation-content');
+    const chev = document.getElementById('captation-chevron');
+    const btn = document.getElementById('captation-toggle-btn');
+    if (!c) return;
+    const open = c.style.display !== 'none';
+    c.style.display = open ? 'none' : 'block';
+    if (chev) chev.style.transform = open ? 'rotate(0deg)' : 'rotate(90deg)';
+    if (btn) {
+        const hint = btn.querySelector('span:last-child');
+        if (hint) hint.textContent = open ? 'cliquer pour définir' : 'cliquer pour replier';
+    }
+    if (!open) {
+        // Premier dépliage : init carte ; suivants : invalidate pour redessiner
+        setTimeout(() => {
+            if (typeof initCaptationMap === 'function') initCaptationMap();
+            if (typeof captationMap !== 'undefined' && captationMap) {
+                try { captationMap.invalidateSize(); } catch (e) {}
+                if (STATE.lat != null) {
+                    try { captationMap.setView([STATE.lat, STATE.lon], 14); } catch (e) {}
+                }
+            }
+        }, 80);
+    }
 }
 
 function setCaptationMode(mode) {
