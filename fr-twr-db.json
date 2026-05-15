@@ -49,7 +49,7 @@
   "LFJL": { "name": "Metz-Nancy Lorraine",                    "phone": "0387385266", "address": "BP 02, 57420 Verny" },
   "LFLN": { "name": "Saint-Yan",                              "phone": "0385266050", "address": "71600 Saint-Yan" },
   "LFST": { "name": "Strasbourg Entzheim",                    "phone": "0388596480", "address": "67836 Tanneries Cedex" },
-  "LFLP": { "name": "Annecy Meythet",                         "phone": "",           "email": "sna-ce.calflp@aviation-civile.gouv.fr", "address": "8 route de Côte Merle, 74370 Metz-Tessy" },
+  "LFLP": { "name": "Annecy Meythet",                         "phone": "0450322322", "email": "sna-ce.calflp@aviation-civile.gouv.fr", "address": "8 route de Côte Merle, 74370 Metz-Tessy" },
   "LFLB": { "name": "Chambéry Aix-les-Bains",                 "phone": "0485440950", "email": "sna-ce.calflb@aviation-civile.gouv.fr", "address": "73420 Voglans" },
   "LFLC": { "name": "Clermont-Ferrand Auvergne",              "phone": "0473627202", "email": "sna-ce-clermont-ca@aviation-civile.gouv.fr", "address": "1 rue Adrienne Bolland, 63510 Aulnat" },
   "LFLS": { "name": "Grenoble Alpes Isère",                   "phone": "0485880880", "email": "sna-ce.calfls@aviation-civile.gouv.fr", "address": "38590 Saint-Étienne-de-Saint-Geoirs" },
@@ -97,5 +97,16 @@
   "LFEY": { "name": "Île d'Yeu Le Grand Phare",               "phone": "0251583822", "email": "yeu.aero@orange.fr",             "address": "85350 L'Île d'Yeu" },
   "LFKS": { "name": "Solenzara (BA 126)",                     "phone": "0495568484", "address": "20240 Ventiseri" },
   "LFCC": { "name": "Cahors Lalbenque",                       "phone": "0565215212", "email": "afis.cahors@orange.fr",          "address": "46230 Lalbenque" },
-  "LFLW": { "name": "Aurillac Tronquières",                   "phone": "0471645000", "email": "aeroport@caba.fr",               "address": "15000 Aurillac" }
+  "LFLW": { "name": "Aurillac Tronquières",                   "phone": "0471645000", "email": "aeroport@caba.fr",               "address": "15000 Aurillac" },
+
+  "LFOV": { "name": "Laval Entrammes",                        "phone": "0243537130", "address": "Route d'Angers, 53000 Laval" },
+  "LFMQ": { "name": "Le Castellet",                           "phone": "0494983999", "address": "3100 Route des Hauts du Camp, 83330 Le Castellet" },
+  "LFOJ": { "name": "Orléans Bricy (BA 123)",                 "phone": "0238426655", "address": "BA 123, BP 30130, 45143 Saint-Jean-de-la-Ruelle Cedex" },
+  "LFDH": { "name": "Auch Lamothe (Gers)",                    "phone": "0562630607", "address": "Route d'Agen, 32000 Auch" },
+  "LFNB": { "name": "Mende Brénoux",                          "phone": "0466651461", "email": "aerodrome@lozere.cci.fr",        "address": "48000 Brenoux" },
+  "LFLD": { "name": "Bourges",                                "phone": "0248205564", "email": "afis.bourges@edeis.com",         "address": "18000 Bourges" },
+  "LFCY": { "name": "Royan Médis",                            "phone": "0546395656", "address": "17600 Médis" },
+  "LFOE": { "name": "Évreux Fauville (BA 105)",               "phone": "0232678507", "address": "BA 105, 27930 Évreux" },
+  "LFSI": { "name": "Saint-Dizier Robinson (BA 113)",         "phone": "0325077005", "address": "BA 113, 52100 Saint-Dizier" },
+  "LFAB": { "name": "Dieppe Saint-Aubin",                     "phone": "0235841440", "address": "76550 Saint-Aubin-sur-Scie" }
 }
