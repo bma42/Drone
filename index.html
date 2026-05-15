@@ -8286,18 +8286,20 @@ function updateAircraftLive(aircraft) {
 }
 
 // Filtre d'affichage des aéronefs. Objectifs :
+//   · masquer les aéronefs au sol (pas d'altitude reportée → ADS-B « ground »)
 //   · masquer les gros porteurs > 500 m qui ne représentent aucun conflit drone
-//   · toujours montrer hélicoptères, SAMU/Dragon, urgences, basses altitudes,
-//     et les cibles sans altitude connue (par précaution)
+//   · toujours montrer hélicoptères, SAMU/Dragon, urgences, basses altitudes
 //   · en PLEIN ÉCRAN : on force le filtre <500 m strict (focus zone de conflit)
 let _aircraftFullscreen = false;
 function _visibleAircraft(list) {
     if (!Array.isArray(list)) return [];
+    // Sans altitude → aéronef au sol → on ne l'affiche jamais (quel que soit le mode)
+    const flying = list.filter(a => a.altM != null);
     if (_aircraftFullscreen) {
-        return list.filter(a => a.altM == null || a.altM < 500);
+        return flying.filter(a => a.altM < 500);
     }
-    if (aircraftShowHighAlt) return list;
-    return list.filter(a => a.isHelicopter || a.isPriority || a.emergency || a.altM == null || a.altM < 500);
+    if (aircraftShowHighAlt) return flying;
+    return flying.filter(a => a.isHelicopter || a.isPriority || a.emergency || a.altM < 500);
 }
 function toggleAircraftHighAlt(checked) {
     aircraftShowHighAlt = !!checked;
