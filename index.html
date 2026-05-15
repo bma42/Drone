@@ -10679,6 +10679,10 @@ function enterLiveMode() {
         overlay.id = 'live-mode-overlay';
         overlay.innerHTML = _liveModeHtml();
         document.body.appendChild(overlay);
+        // Branche les gestionnaires APRÈS insertion dans le DOM (plus robuste
+        // que onclick="..." inline qui peut casser sur certains navigateurs
+        // selon l'échappement HTML).
+        _liveBindHandlers(overlay);
     }
     overlay.style.display = 'flex';
     document.body.style.overflow = 'hidden';
@@ -10690,6 +10694,29 @@ function enterLiveMode() {
     _liveAdsbInterval = setInterval(_liveRefreshAdsb, 30000);
     _liveMeteoInterval = setInterval(_liveRefreshMeteo, 5 * 60000);
     _liveTickInterval = setInterval(_liveTickActiveFlights, 1000);
+}
+
+function _liveBindHandlers(overlay) {
+    const q = sel => overlay.querySelector(sel);
+    q('#lm-btn-config') && q('#lm-btn-config').addEventListener('click', _liveOpenPilotsConfig);
+    q('#lm-btn-stopall') && q('#lm-btn-stopall').addEventListener('click', _liveStopAllFlights);
+    q('#lm-btn-exit') && q('#lm-btn-exit').addEventListener('click', exitLiveMode);
+    q('#lm-btn-add-pilot') && q('#lm-btn-add-pilot').addEventListener('click', _liveAddPilot);
+    q('#lm-btn-close-config') && q('#lm-btn-close-config').addEventListener('click', () => {
+        q('#lm-pilots-config').style.display = 'none';
+    });
+    ['lm-new-pilot-mat', 'lm-new-pilot-nom'].forEach(id => {
+        const el = q('#' + id);
+        if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') _liveAddPilot(); });
+    });
+    // Délégation pour les boutons générés dynamiquement (supprimer agent, décoller/stop)
+    overlay.addEventListener('click', (e) => {
+        const t = e.target.closest('button[data-action]');
+        if (!t) return;
+        const a = t.dataset.action;
+        if (a === 'remove-pilot') _liveRemovePilot(parseInt(t.dataset.idx, 10));
+        else if (a === 'toggle-flight') _liveToggleFlight(t.dataset.mat);
+    });
 }
 
 function exitLiveMode() {
@@ -10747,10 +10774,10 @@ function _liveModeHtml() {
     </style>
     <div class="lm-bar">
         <div class="lm-title"><span class="lm-dot"></span> LIVE MODE</div>
-        <button onclick="_liveOpenPilotsConfig()">⚙ Configurer agents</button>
-        <button onclick="_liveStopAllFlights()">⏹ Tout arrêter</button>
+        <button id="lm-btn-config" type="button">⚙ Configurer agents</button>
+        <button id="lm-btn-stopall" type="button">⏹ Tout arrêter</button>
         <div class="lm-clock" id="lm-clock">--:--:--</div>
-        <button class="lm-exit" onclick="exitLiveMode()">✕ Quitter</button>
+        <button id="lm-btn-exit" class="lm-exit" type="button">✕ Quitter</button>
     </div>
     <div class="lm-grid">
         <div class="lm-panel lm-adsb">
@@ -10770,15 +10797,15 @@ function _liveModeHtml() {
             <div class="lm-totals" id="lm-totals"></div>
         </div>
     </div>
-    <div id="lm-pilots-config" style="display:none; position:absolute; inset:60px 30% 30px 30%; background:#0f172a; border:1px solid #334155; border-radius:8px; padding:18px; z-index:100; overflow:auto;">
+    <div id="lm-pilots-config" style="display:none; position:fixed; top:80px; left:50%; transform:translateX(-50%); width:min(560px, 92vw); max-height:80vh; background:#0f172a; border:1px solid #334155; border-radius:8px; padding:18px; z-index:100000; overflow:auto; box-shadow:0 12px 40px rgba(0,0,0,.6);">
         <h3 style="margin:0 0 10px; color:#93c5fd; font-size:13px; letter-spacing:.8px;">CONFIGURATION DES TÉLÉPILOTES</h3>
         <div id="lm-pilots-list" style="display:flex; flex-direction:column; gap:5px;"></div>
         <div class="lm-add-pilot">
-            <input type="text" id="lm-new-pilot-mat" placeholder="Matricule" style="max-width:90px;">
-            <input type="text" id="lm-new-pilot-nom" placeholder="Nom Prénom">
-            <button onclick="_liveAddPilot()">+ Ajouter</button>
+            <input type="text" id="lm-new-pilot-mat" placeholder="Matricule" style="max-width:120px;" autocomplete="off">
+            <input type="text" id="lm-new-pilot-nom" placeholder="Nom Prénom" autocomplete="off">
+            <button id="lm-btn-add-pilot" type="button">+ Ajouter</button>
         </div>
-        <button onclick="document.getElementById('lm-pilots-config').style.display='none'" style="margin-top:10px; background:#1e293b; color:#e2e8f0; border:1px solid #334155; padding:6px 12px; border-radius:4px; font-size:12px; cursor:pointer;">Fermer</button>
+        <button id="lm-btn-close-config" type="button" style="margin-top:10px; background:#1e293b; color:#e2e8f0; border:1px solid #334155; padding:6px 12px; border-radius:4px; font-size:12px; cursor:pointer;">Fermer</button>
     </div>
     `;
 }
@@ -10794,8 +10821,8 @@ function _liveRenderPilotsConfig() {
     list.innerHTML = pilots.length ? pilots.map((p, idx) => `
         <div style="display:flex; gap:6px; align-items:center; background:#1e293b; padding:5px 8px; border-radius:4px;">
             <span style="font-family:ui-monospace,monospace; color:#fbbf24; font-weight:700; min-width:80px;">${p.mat}</span>
-            <span style="flex:1; color:#e2e8f0;">${p.nom}</span>
-            <button onclick="_liveRemovePilot(${idx})" style="background:#7f1d1d; color:#fff; border:0; padding:3px 8px; border-radius:3px; font-size:11px; cursor:pointer;">×</button>
+            <span style="flex:1; color:#e2e8f0;">${p.nom}${p.drone ? ' · <span style=\"color:#93c5fd;\">' + p.drone + '</span>' : ''}</span>
+            <button type="button" data-action="remove-pilot" data-idx="${idx}" style="background:#7f1d1d; color:#fff; border:0; padding:3px 8px; border-radius:3px; font-size:11px; cursor:pointer;">×</button>
         </div>`).join('') : '<div style="color:#64748b; font-size:12px; padding:8px;">Aucun télépilote configuré.</div>';
 }
 function _liveAddPilot() {
@@ -10818,38 +10845,88 @@ function _liveRemovePilot(idx) {
     _liveRenderFlights();
 }
 
+// Récupère les pilotes cochés dans §3 (Moyens). Source de vérité prioritaire.
+function _liveMissionPilots() {
+    const pilots = [];
+    document.querySelectorAll('input[type=checkbox][id^="p"]:checked').forEach(cb => {
+        if (!/^p\d+$/.test(cb.id)) return;
+        const labelEl = document.querySelector(`label[for="${cb.id}"]`);
+        if (!labelEl) return;
+        // L'élément frère contient le radio redac avec les data-attributes propres.
+        const matRadio = labelEl.parentElement.querySelector('input[name="redac"][data-matricule]');
+        if (matRadio && matRadio.dataset.matricule && matRadio.dataset.name) {
+            pilots.push({ mat: matRadio.dataset.matricule, nom: matRadio.dataset.name });
+        }
+    });
+    return pilots;
+}
+
+// Récupère les drones cochés dans §3.
+function _liveMissionDrones() {
+    const drones = [];
+    document.querySelectorAll('.vector-cb:checked').forEach(cb => {
+        const labelEl = document.querySelector(`label[for="${cb.id}"]`);
+        if (!labelEl) return;
+        const clone = labelEl.cloneNode(true);
+        clone.querySelectorAll('span').forEach(s => s.remove());
+        const name = clone.textContent.trim().replace(/\s+/g, ' ');
+        if (name) drones.push(name);
+    });
+    return drones;
+}
+
+// Liste effective utilisée par le Live Mode : §3 d'abord, sinon liste localStorage.
+function _liveEffectivePilots() {
+    const mission = _liveMissionPilots();
+    return mission.length ? mission : _livePilots();
+}
+
 function _liveRenderPilots() {
-    // Si aucun télépilote, on ouvre directement le configurateur.
-    if (!_livePilots().length) _liveOpenPilotsConfig();
+    // Si aucun pilote (ni §3, ni localStorage) on ouvre le configurateur manuel.
+    if (!_liveEffectivePilots().length) _liveOpenPilotsConfig();
 }
 
 function _liveRenderFlights() {
     const wrap = document.getElementById('lm-flights-list');
     if (!wrap) return;
-    const pilots = _livePilots();
+    const pilots = _liveEffectivePilots();
+    const drones = _liveMissionDrones();
+    const isMissionSource = _liveMissionPilots().length > 0;
     if (!pilots.length) {
-        wrap.innerHTML = '<div style="color:#64748b; font-size:12px; padding:10px; text-align:center;">⚙ Ajoute d\'abord des télépilotes via « Configurer agents ».</div>';
+        wrap.innerHTML = '<div style="color:#64748b; font-size:12px; padding:10px; text-align:center;">⚙ Ajoute des télépilotes via « Configurer agents » ou coche-les dans le module 3 (Moyens) de la mission.</div>';
         document.getElementById('lm-totals').innerHTML = '';
         return;
     }
     const flights = _liveFlights();
     const today = new Date().toISOString().slice(0, 10);
-    wrap.innerHTML = pilots.map(p => {
+    const droneOpts = drones.length
+        ? drones.map(d => `<option value="${d}">${d}</option>`).join('')
+        : '<option value="">— aucun drone coché en §3 —</option>';
+    const headerTag = isMissionSource
+        ? '<div style="font-size:10px; color:#22c55e; margin-bottom:6px;">● Source : pilotes &amp; drones du module 3</div>'
+        : '<div style="font-size:10px; color:#94a3b8; margin-bottom:6px;">● Source : configuration manuelle (aucun pilote coché en §3)</div>';
+    wrap.innerHTML = headerTag + pilots.map(p => {
         const active = flights.find(f => f.mat === p.mat && !f.stoppedAt);
         const todays = flights.filter(f => f.mat === p.mat && f.startedAt.startsWith(today) && f.stoppedAt);
         const totalMs = todays.reduce((s, f) => s + (new Date(f.stoppedAt) - new Date(f.startedAt)), 0);
         const totalStr = _liveFormatDuration(totalMs);
         const liveStr = active ? _liveFormatDuration(Date.now() - new Date(active.startedAt)) : '00:00:00';
+        const activeDrone = active && active.drone ? active.drone : '';
+        // Sélecteur de drone : verrouillé sur le drone du vol actif, sinon liste des drones §3
+        const droneCell = active
+            ? `<div style="font-size:10px; color:#fbbf24; font-weight:600;">🛩 ${activeDrone || '(non précisé)'}</div>`
+            : `<select data-mat="${p.mat}" style="background:#0f172a; color:#e2e8f0; border:1px solid #334155; padding:2px 4px; border-radius:3px; font-size:11px; max-width:130px;">${droneOpts}</select>`;
         return `<div class="lm-flight-row ${active ? 'active' : ''}">
-            <div>
+            <div style="min-width:0;">
                 <div class="lm-mat">${p.mat}</div>
                 <div class="lm-pilot">${p.nom}</div>
+                ${droneCell}
             </div>
             <div style="margin-left:auto; text-align:right;">
                 <div class="lm-time" data-mat="${p.mat}">${liveStr}</div>
                 <div style="font-size:10px; color:#94a3b8;">cumul jour : ${totalStr}</div>
             </div>
-            <button onclick="_liveToggleFlight('${p.mat.replace(/'/g, "\\'")}')">
+            <button type="button" data-action="toggle-flight" data-mat="${p.mat}">
                 ${active ? '⏹ Stop' : '▶ Décoller'}
             </button>
         </div>`;
@@ -10872,7 +10949,10 @@ function _liveToggleFlight(mat) {
     if (active) {
         active.stoppedAt = new Date().toISOString();
     } else {
-        flights.push({ mat, startedAt: new Date().toISOString(), stoppedAt: null });
+        // Récupère le drone choisi dans le select de la ligne (s'il y en a un)
+        const sel = document.querySelector(`#lm-flights-list select[data-mat="${mat}"]`);
+        const drone = sel ? sel.value : '';
+        flights.push({ mat, drone, startedAt: new Date().toISOString(), stoppedAt: null });
     }
     _setLiveFlights(flights);
     _liveRenderFlights();
@@ -10921,33 +11001,34 @@ async function _liveRefreshAdsb() {
         L.marker([STATE.lat, STATE.lon]).addTo(_liveAdsbMap);
         _liveAdsbMap._planes = L.layerGroup().addTo(_liveAdsbMap);
     }
-    try {
-        const url = `https://api.adsb.lol/v2/lat/${STATE.lat}/lon/${STATE.lon}/dist/15`;
-        const r = await fetchWithTimeout(url, {}, 10000);
-        if (!r.ok) throw new Error(r.status);
-        const j = await r.json();
-        const planes = (j.ac || []).filter(a => a.lat != null && a.lon != null);
-        if (_liveAdsbMap && _liveAdsbMap._planes) {
-            _liveAdsbMap._planes.clearLayers();
-            planes.forEach(a => {
-                const alt = a.alt_baro || a.alt_geom || 0;
-                const color = alt < 1000 ? '#dc2626' : alt < 3000 ? '#f59e0b' : '#22c55e';
-                const icon = L.divIcon({
-                    className: '',
-                    html: `<div style="background:${color}; color:#fff; padding:1px 6px; border-radius:6px; font-size:10px; font-weight:700; border:1.5px solid #fff; transform:rotate(${a.track || 0}deg); white-space:nowrap;">✈ ${a.flight || a.hex || '?'}</div>`,
-                    iconAnchor: [20, 8]
-                });
-                L.marker([a.lat, a.lon], { icon })
-                    .bindPopup(`<b>${a.flight || a.hex}</b><br>Alt: ${alt} ft<br>Speed: ${a.gs || '?'} kt`)
-                    .addTo(_liveAdsbMap._planes);
+    // On délègue le fetch à la fonction principale fetchAircraft() qui utilise
+    // une cascade de 3 fournisseurs (ADSB.lol → airplanes.live → OpenSky) et
+    // remplit STATE.aircraft. C'est exactement ce que fait la page principale.
+    try { await fetchAircraft(STATE.lat, STATE.lon); } catch (e) { /* fetchAircraft gère ses erreurs */ }
+    const planes = (STATE.aircraft || []).filter(a => a.lat != null && a.lon != null);
+    if (_liveAdsbMap && _liveAdsbMap._planes) {
+        _liveAdsbMap._planes.clearLayers();
+        planes.forEach(a => {
+            const altFt = a.alt_baro || a.alt_geom || (a.altM != null ? a.altM * 3.281 : 0);
+            const color = altFt < 1000 ? '#dc2626' : altFt < 3000 ? '#f59e0b' : '#22c55e';
+            const icon = L.divIcon({
+                className: '',
+                html: `<div style="background:${color}; color:#fff; padding:1px 6px; border-radius:6px; font-size:10px; font-weight:700; border:1.5px solid #fff; white-space:nowrap;">${a.isHelicopter ? '🚁' : '✈'} ${a.flight || a.r || a.hex || '?'}</div>`,
+                iconAnchor: [20, 8]
             });
+            L.marker([a.lat, a.lon], { icon })
+                .bindPopup(`<b>${a.flight || a.r || a.hex || '—'}</b><br>${a.t || a.desc || ''}<br>Alt: ${Math.round(altFt)} ft · Vit: ${a.gs || '?'} kt`)
+                .addTo(_liveAdsbMap._planes);
+        });
+    }
+    if (info) {
+        if (!planes.length) {
+            info.innerHTML = `<span style="color:#fbbf24;">●</span> Aucun aéronef détecté · ↻ ${new Date().toLocaleTimeString('fr-FR').slice(0, 5)}`;
+        } else {
+            const low = planes.filter(a => ((a.alt_baro || a.alt_geom || 0) < 2000)).length;
+            const src = STATE.aircraftSource ? ' · ' + STATE.aircraftSource : '';
+            info.innerHTML = `<span style="color:#22c55e;">●</span> ${planes.length} aéronef${planes.length > 1 ? 's' : ''} · <span style="color:#dc2626;">${low}</span> sous 2000 ft · ↻ ${new Date().toLocaleTimeString('fr-FR').slice(0, 5)}${src}`;
         }
-        if (info) {
-            const low = planes.filter(a => (a.alt_baro || 0) < 2000).length;
-            info.innerHTML = `<span style="color:#22c55e;">●</span> ${planes.length} aéronef${planes.length > 1 ? 's' : ''} · <span style="color:#dc2626;">${low}</span> sous 2000 ft · ↻ ${new Date().toLocaleTimeString('fr-FR').slice(0, 5)}`;
-        }
-    } catch (e) {
-        if (info) info.innerHTML = '<span style="color:#ef4444;">●</span> ADS-B indisponible';
     }
 }
 
