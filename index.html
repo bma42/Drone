@@ -1343,6 +1343,40 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
                     Supprimer
                 </button>
+                <button type="button" id="github-commit-btn" class="act-btn act-btn-success" onclick="commitMissionsToGithub()" title="Pousser missions.json sur GitHub (requiert un token configuré)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+                    Commit GitHub
+                </button>
+                <button type="button" class="act-btn act-btn-neutral" onclick="openGithubConfig()" title="Configurer le token GitHub (PAT fine-grained)" style="padding:6px 9px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </button>
+            </div>
+            <div id="github-config-panel" style="display:none; margin-top:10px; padding:12px 14px; background:#f7f9fc; border:1px solid var(--c-border); border-radius:6px; font-size:12px;">
+                <div style="font-weight:700; color:var(--c-primary); margin-bottom:8px;">⚙️ Configuration GitHub (fine-grained PAT)</div>
+                <div style="display:grid; grid-template-columns:120px 1fr; gap:6px 10px; align-items:center;">
+                    <label for="gh-owner">Propriétaire</label>
+                    <input type="text" id="gh-owner" placeholder="bma42">
+                    <label for="gh-repo">Repo</label>
+                    <input type="text" id="gh-repo" placeholder="Drone">
+                    <label for="gh-branch">Branche</label>
+                    <input type="text" id="gh-branch" placeholder="main">
+                    <label for="gh-token">Token (PAT)</label>
+                    <input type="password" id="gh-token" placeholder="github_pat_..." autocomplete="off">
+                </div>
+                <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+                    <button type="button" class="act-btn act-btn-info act-btn-sm" onclick="saveGithubConfig()">Enregistrer la config</button>
+                    <button type="button" class="act-btn act-btn-warning act-btn-sm" onclick="clearGithubConfig()">Effacer le token</button>
+                    <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener" style="color:var(--c-accent); font-size:11px; align-self:center;">↗ Générer un PAT fine-grained</a>
+                </div>
+                <div style="margin-top:8px; padding:8px 10px; background:#fef3c7; border:1px solid #fde68a; border-radius:5px; font-size:11px; line-height:1.5; color:#7c2d12;">
+                    <strong>⚠ Sécurité :</strong> le token est stocké en clair dans le <code>localStorage</code> du navigateur. Toute personne accédant à cet onglet (devtools) peut le lire. Recommandations :
+                    <ul style="margin:4px 0 0 18px; padding:0;">
+                        <li>PAT <strong>fine-grained</strong> limité à ce seul repo</li>
+                        <li>Permission <strong>Contents : Read &amp; write</strong> uniquement</li>
+                        <li>Expiration ≤ 90 jours</li>
+                        <li>Révoquer immédiatement si l'appareil est compromis</li>
+                    </ul>
+                </div>
             </div>
         </section>
 
@@ -10135,6 +10169,129 @@ function importMissionsFile(file) {
         } catch (err) { alert('JSON invalide : ' + err.message); }
     };
     reader.readAsText(file);
+}
+
+/* ----- Commit direct sur GitHub via PAT (option A, token côté client) -----
+   Le token est stocké en localStorage. L'utilisateur en assume le risque
+   (cf. encart de sécurité dans le panneau de config). */
+
+const GH_CONFIG_KEY = 'drone-github-config';
+
+function _getGithubConfig() {
+    try {
+        const c = JSON.parse(localStorage.getItem(GH_CONFIG_KEY) || '{}');
+        return {
+            owner: c.owner || 'bma42',
+            repo: c.repo || 'Drone',
+            branch: c.branch || 'main',
+            token: c.token || ''
+        };
+    } catch (e) { return { owner: 'bma42', repo: 'Drone', branch: 'main', token: '' }; }
+}
+
+function openGithubConfig() {
+    const panel = document.getElementById('github-config-panel');
+    if (!panel) return;
+    const visible = panel.style.display !== 'none';
+    if (!visible) {
+        const c = _getGithubConfig();
+        document.getElementById('gh-owner').value = c.owner;
+        document.getElementById('gh-repo').value = c.repo;
+        document.getElementById('gh-branch').value = c.branch;
+        document.getElementById('gh-token').value = c.token;
+    }
+    panel.style.display = visible ? 'none' : 'block';
+}
+
+function saveGithubConfig() {
+    const cfg = {
+        owner: document.getElementById('gh-owner').value.trim() || 'bma42',
+        repo: document.getElementById('gh-repo').value.trim() || 'Drone',
+        branch: document.getElementById('gh-branch').value.trim() || 'main',
+        token: document.getElementById('gh-token').value.trim()
+    };
+    localStorage.setItem(GH_CONFIG_KEY, JSON.stringify(cfg));
+    alert('Configuration enregistrée.');
+    document.getElementById('github-config-panel').style.display = 'none';
+}
+
+function clearGithubConfig() {
+    if (!confirm('Effacer le token GitHub stocké dans le navigateur ?')) return;
+    localStorage.removeItem(GH_CONFIG_KEY);
+    ['gh-owner', 'gh-repo', 'gh-branch', 'gh-token'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
+    alert('Token supprimé.');
+}
+
+// Encode une string UTF-8 en base64 (compatible navigateur — caractères accentués OK).
+function _utf8ToBase64(str) {
+    return btoa(unescape(encodeURIComponent(str)));
+}
+
+async function commitMissionsToGithub() {
+    const cfg = _getGithubConfig();
+    if (!cfg.token) {
+        openGithubConfig();
+        alert('Aucun token configuré. Renseigne un PAT fine-grained dans le panneau ouvert.');
+        return;
+    }
+    // Construit le JSON final identique à downloadMissionsJson
+    const map = new Map();
+    _missionsRemote.forEach(m => map.set(m.id, m));
+    _readLocalMissions().forEach(m => map.set(m.id, m));
+    const merged = {
+        _meta: {
+            description: 'Missions de vol drone — fichier versionné dans git, mis à jour depuis l\'app.',
+            format_version: 1,
+            exportedAt: new Date().toISOString()
+        },
+        missions: Array.from(map.values()).sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''))
+    };
+    const contentB64 = _utf8ToBase64(JSON.stringify(merged, null, 2) + '\n');
+
+    const btn = document.getElementById('github-commit-btn');
+    const orig = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Commit…'; }
+
+    const apiBase = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/missions.json`;
+    const headers = {
+        'Authorization': 'Bearer ' + cfg.token,
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28'
+    };
+    try {
+        // 1) GET le sha actuel (nécessaire pour PUT en mise à jour)
+        let sha = null;
+        const getResp = await fetch(apiBase + '?ref=' + encodeURIComponent(cfg.branch), { headers });
+        if (getResp.ok) {
+            const j = await getResp.json();
+            sha = j.sha;
+        } else if (getResp.status !== 404) {
+            throw new Error('GET ' + getResp.status + ' ' + (await getResp.text()).slice(0, 200));
+        }
+        // 2) PUT le nouveau contenu
+        const body = {
+            message: 'Update missions.json (via app) — ' + new Date().toISOString().slice(0, 16),
+            content: contentB64,
+            branch: cfg.branch
+        };
+        if (sha) body.sha = sha;
+        const putResp = await fetch(apiBase, { method: 'PUT', headers, body: JSON.stringify(body) });
+        if (!putResp.ok) {
+            throw new Error('PUT ' + putResp.status + ' ' + (await putResp.text()).slice(0, 300));
+        }
+        const result = await putResp.json();
+        // Recharge la liste pour intégrer les nouvelles missions comme "remote"
+        await loadMissionsList();
+        alert('✅ missions.json commité sur ' + cfg.owner + '/' + cfg.repo + '@' + cfg.branch
+            + '\nSHA : ' + (result.commit && result.commit.sha ? result.commit.sha.slice(0, 7) : '?'));
+    } catch (e) {
+        console.error('GitHub commit failed:', e);
+        alert('❌ Échec du commit : ' + e.message + '\nVérifie le token (permission Contents:write sur ' + cfg.owner + '/' + cfg.repo + ').');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+    }
 }
 
 // Charge la liste au démarrage
