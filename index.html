@@ -1860,6 +1860,19 @@
             </div>
         </section>
 
+        <!-- Vigilance Météo-France (départementale) -->
+        <section class="card">
+            <div class="card-head">
+                <div class="card-num">⚠</div>
+                <div class="card-title">Vigilance Météo-France<span class="sub">Niveau d'alerte officiel du département (J + J+1) · 8 phénomènes · source data.gouv / opendatasoft</span></div>
+                <button type="button" class="no-print" onclick="if(STATE.dept) fetchVigilance(STATE.dept)" title="Rafraîchir" style="background:transparent; border:1px solid var(--c-border-strong); border-radius:4px; padding:3px 9px; cursor:pointer; font-size:11px; color:var(--c-text-soft); margin-right:8px;">↻ Rafraîchir</button>
+                <span class="card-status" id="status-vigilance">en attente</span>
+            </div>
+            <div class="card-body" id="vigilance-body">
+                <div class="empty-state">Sélectionnez une adresse pour récupérer la vigilance Météo-France du département.</div>
+            </div>
+        </section>
+
         <!-- §5 METAR / TAF aéronautique (NOAA + fallback CheckWX) -->
         <section class="card">
             <div class="card-head">
@@ -3565,8 +3578,106 @@ function refreshAuto() {
         fetchMetarTaf(STATE.lat, STATE.lon),
         fetchElevation(STATE.lat, STATE.lon, STATE.radius),
         fetchKp(),
-        fetchAircraft(STATE.lat, STATE.lon)
+        fetchAircraft(STATE.lat, STATE.lon),
+        fetchVigilance(STATE.dept)
     ]).then(populateRiskTable);
+}
+
+/* ===================================================================
+   VIGILANCE MÉTÉO-FRANCE DÉPARTEMENTALE
+   Source : opendatasoft public — weatherref-france-vigilance-meteo-departement
+   (mise à jour temps réel par Météo-France). Niveaux 1=vert, 2=jaune,
+   3=orange, 4=rouge × 8 phénomènes (vent, pluie, orages, neige, canicule,
+   grand froid, avalanches, vagues-submersion).
+   =================================================================== */
+
+const _VIGI_COLORS = {
+    1: { name: 'Vert',   bg: '#16a34a', label: 'Pas de vigilance particulière' },
+    2: { name: 'Jaune',  bg: '#eab308', label: 'Soyez attentif' },
+    3: { name: 'Orange', bg: '#f97316', label: 'Soyez très vigilant' },
+    4: { name: 'Rouge',  bg: '#dc2626', label: 'Vigilance absolue' }
+};
+
+async function fetchVigilance(dept) {
+    const body = document.getElementById('vigilance-body');
+    if (!dept) {
+        if (body) body.innerHTML = `<div class="empty-state">Sélectionnez une adresse pour récupérer la vigilance Météo-France du département.</div>`;
+        setStatus('vigilance', 'load', 'en attente');
+        return;
+    }
+    setStatus('vigilance', 'load');
+    if (body) body.innerHTML = `<div class="empty-state">⏳ Récupération de la vigilance Météo-France pour le département ${dept}…</div>`;
+    // Le nom exact du champ département varie selon les datasets opendatasoft —
+    // on essaie plusieurs variantes pour rester robuste si le schéma évolue.
+    const tries = [
+        `code_insee_dep="${dept}"`,
+        `code_insee="${dept}"`,
+        `dep_code="${dept}"`,
+        `code_dept="${dept}"`,
+        `departement="${dept}"`
+    ];
+    let records = [];
+    for (const w of tries) {
+        try {
+            const url = `https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/weatherref-france-vigilance-meteo-departement/records?where=${encodeURIComponent(w)}&limit=30`;
+            const r = await fetchWithTimeout(url, {}, 8000);
+            if (r.ok) {
+                const j = await r.json();
+                if ((j.results || []).length) { records = j.results; break; }
+            }
+        } catch (e) { /* essai suivant */ }
+    }
+    _renderVigilance(records, dept);
+}
+
+function _renderVigilance(records, dept) {
+    const body = document.getElementById('vigilance-body');
+    if (!body) return;
+    if (!records.length) {
+        body.innerHTML = `<div class="empty-state" style="padding:14px; background:#dcfce7; border:1px solid #86efac; border-radius:6px; color:#166534;"><strong>Aucune vigilance active</strong> pour le département ${dept} (Météo-France).</div>`;
+        setStatus('vigilance', 'ok', 'vert');
+        return;
+    }
+    // Normalisation tolérante : on accepte plusieurs noms de champ possibles.
+    const norm = records.map(r => ({
+        niveau: parseInt(r.couleur || r.niveau || r.color_id || r.niveau_couleur || r.color || 1, 10),
+        phenomene: r.phenomene || r.nom_phenomene || r.type_risque || r.phenomenon || r.libelle_phenomene || 'Phénomène',
+        debut: r.debut_validite || r.date_debut || r.dt_debut_evt || r.date_debut_validite || '',
+        fin: r.fin_validite || r.date_fin || r.dt_fin_evt || r.date_fin_validite || ''
+    })).filter(r => r.niveau >= 1 && r.niveau <= 4);
+    if (!norm.length) {
+        body.innerHTML = `<div class="empty-state">Format de données inattendu. <code>${records.length}</code> enregistrement(s) reçu(s) mais aucun niveau exploitable.</div>`;
+        setStatus('vigilance', 'warn', 'format');
+        return;
+    }
+    norm.sort((a, b) => b.niveau - a.niveau);
+    const maxNiv = norm[0].niveau;
+    const col = _VIGI_COLORS[maxNiv];
+    const fmtDate = s => s ? s.replace('T', ' ').slice(0, 16) : '—';
+    const rows = norm.map(r => {
+        const c = _VIGI_COLORS[r.niveau];
+        return `<tr>
+            <td><span style="background:${c.bg}; color:#fff; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700;">${c.name}</span></td>
+            <td><strong>${r.phenomene}</strong></td>
+            <td style="font-size:11px; color:var(--c-muted);">${fmtDate(r.debut)}${r.fin ? '<br>→ ' + fmtDate(r.fin) : ''}</td>
+        </tr>`;
+    }).join('');
+    body.innerHTML = `
+        <div style="display:flex; align-items:center; gap:14px; padding:12px 16px; background:${col.bg}; color:#fff; border-radius:6px; margin-bottom:10px;">
+            <div style="font-size:24px; font-weight:800; letter-spacing:.5px;">${col.name.toUpperCase()}</div>
+            <div style="font-size:13px; line-height:1.45;">
+                <strong>${col.label}</strong><br>
+                <span style="opacity:.9; font-size:12px;">Département ${dept} · niveau max sur ${norm.length} phénomène${norm.length > 1 ? 's' : ''}</span>
+            </div>
+        </div>
+        <table class="tbl">
+            <thead><tr><th style="width:90px;">Niveau</th><th>Phénomène</th><th style="width:180px;">Validité</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+        <div style="font-size:11px; color:var(--c-muted); margin-top:6px;">Source : Météo-France via opendatasoft <code>weatherref-france-vigilance-meteo-departement</code> · temps réel · <a href="https://vigilance.meteofrance.fr/" target="_blank" rel="noopener" style="color:var(--c-accent);">carte officielle ↗</a></div>
+    `;
+    const tag = maxNiv >= 3 ? 'err' : (maxNiv === 2 ? 'warn' : 'ok');
+    setStatus('vigilance', tag, col.name.toLowerCase());
 }
 
 // Rafraîchissement manuel (bouton topbar) : on invalide les caches localStorage
