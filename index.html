@@ -9515,35 +9515,40 @@ async function populateHorsCircoInfo() {
         if (r.ok) { const j = await r.json(); deptName = j.nom || ''; }
     } catch (e) { /* fallback : code seul */ }
 
-    // 1bis. SAMU officiel via l'API Annuaire de l'administration (DILA / service-public.fr)
-    // dataset api-lannuaire-administration · filtre pivot=samu et code département.
-    // Renvoie nom, téléphone, e-mail, site, adresse — données officielles maintenues.
-    let samuRecords = [];
+    // 1bis. CHU / CH du département via FINESS (Fichier National des Établissements
+    // Sanitaires, dataset healthref-france-finess publié sur public.opendatasoft.com).
+    // categetab 101 = CHR/CHU · 355 = CH. On garde uniquement ceux avec téléphone,
+    // on les trie par distance au point de mission. Le premier sert pour le SAMU
+    // (rattachement opérationnel), les suivants peuplent la liste « hôpitaux ».
+    let finessChu = [];
     try {
-        const where = encodeURIComponent(`pivot LIKE "samu" AND code_insee_commune LIKE "${dept}%"`);
-        const url = `https://api-lannuaire.service-public.fr/api/explore/v2.1/catalog/datasets/api-lannuaire-administration/records?select=nom,telephone,adresse_courriel,site_internet,adresse&where=${where}&limit=10`;
+        const where = encodeURIComponent(`dep_code="${dept}" AND (categetab=101 OR categetab=355)`);
+        const url = `https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/healthref-france-finess/records?select=rs,rslongue,address,com_name,telephone,categetab,libcategetab,coord&where=${where}&limit=50`;
         const r = await fetchWithTimeout(url, {}, 8000);
         if (r.ok) {
             const j = await r.json();
-            samuRecords = (j.results || []).map(rec => {
-                const tel = (rec.telephone || []).map(t => (typeof t === 'string' ? t : (t && t.valeur) || '')).filter(Boolean);
-                const mail = (rec.adresse_courriel || []).filter(Boolean);
-                const site = (rec.site_internet || []).map(s => (typeof s === 'string' ? s : (s && s.valeur) || '')).filter(Boolean);
-                const adr = (rec.adresse || []).map(a => {
-                    if (typeof a === 'string') return a;
-                    if (!a) return '';
-                    return [a.numero_voie, a.complement1, a.complement2, a.code_postal, a.nom_commune].filter(Boolean).join(' ');
-                }).filter(Boolean);
-                return { nom: rec.nom || '', tel, mail, site, adr };
+            finessChu = (j.results || []).filter(x => x.telephone).map(x => {
+                const eLat = x.coord && x.coord.lat, eLon = x.coord && x.coord.lon;
+                return {
+                    name: x.rslongue || x.rs || '',
+                    category: x.libcategetab || '',
+                    isChr: x.categetab === 101,
+                    address: [x.address, x.com_name].filter(Boolean).join(', '),
+                    phone: x.telephone,
+                    lat: eLat, lon: eLon,
+                    dist: (eLat != null && eLon != null) ? haversine(lat, lon, eLat, eLon) : Infinity
+                };
             });
+            // Priorise les CHR/CHU puis trie par distance.
+            finessChu.sort((a, b) => (b.isChr - a.isChr) || (a.dist - b.dist));
         }
-    } catch (e) { console.warn('API annuaire SAMU indisponible:', e); }
+    } catch (e) { console.warn('FINESS indisponible:', e); }
 
-    // 2. Overpass : aérodromes + hôpitaux d'urgence dans 60 km
+    // 2. Overpass : aérodromes + tours de contrôle dans 60 km (FINESS ne couvre
+    // pas l'aviation civile, on garde OSM pour cette partie).
     const q = `[out:json][timeout:25];(`
         + `nwr["aeroway"="aerodrome"](around:60000,${lat},${lon});`
         + `nwr["aeroway"="control_tower"](around:60000,${lat},${lon});`
-        + `nwr["amenity"="hospital"]["emergency"="yes"](around:60000,${lat},${lon});`
         + `);out center tags;`;
     const endpoints = [
         'https://overpass-api.de/api/interpreter',
@@ -9562,7 +9567,7 @@ async function populateHorsCircoInfo() {
     try { elements = await Promise.any(endpoints.map(tryOne)); }
     catch (e) { console.warn('Overpass hors-circo indisponible:', e); }
 
-    const aerodromes = [], towers = [], hospitals = [];
+    const aerodromes = [], towers = [];
     for (const el of elements) {
         const t = el.tags || {}; const c = el.center || el;
         const eLat = c.lat ?? el.lat, eLon = c.lon ?? el.lon;
@@ -9578,11 +9583,9 @@ async function populateHorsCircoInfo() {
         };
         if (t.aeroway === 'aerodrome') aerodromes.push(item);
         else if (t.aeroway === 'control_tower') towers.push(item);
-        else if (t.amenity === 'hospital') hospitals.push(item);
     }
     aerodromes.sort((a, b) => a.dist - b.dist);
     towers.sort((a, b) => a.dist - b.dist);
-    hospitals.sort((a, b) => a.dist - b.dist);
 
     const fmtPhone = p => p
         ? `<a href="tel:${p.replace(/\s/g, '')}" style="color:var(--c-accent); text-decoration:none;">${p}</a>`
@@ -9603,52 +9606,35 @@ async function populateHorsCircoInfo() {
     const samuLabel = `SAMU ${dept}${deptName ? ' — ' + deptName : ''}`;
     const samuSearchUrl = `https://www.google.com/search?q=${encodeURIComponent('SAMU ' + dept + ' ' + deptName + ' coordonnées hélicoptère')}`;
 
-    // Priorité 1 : données officielles DILA (API annuaire service-public.fr).
-    // Priorité 2 (fallback) : détection CHU via Overpass (regex sur nom).
-    // Priorité 3 (fallback) : centre hospitalier le plus proche avec téléphone.
-    const isChu = h => /\b(CHU|CHRU|Hospitalier\s+Universitaire|Universitaire)\b/i.test(h.name || '');
-    const chuList = hospitals.filter(isChu);
-    const chuWithPhone = chuList.filter(h => h.phone);
-    const fallbackChu = chuWithPhone.length ? [] : hospitals.filter(h => h.phone).slice(0, 2);
+    const renderHospital = h => `
+        <li style="margin-bottom:6px;">
+            <strong>${h.name}</strong>${h.isChr ? ' <span style="background:#eef3fb; color:var(--c-primary); padding:1px 6px; border-radius:3px; font-size:10px; font-weight:700;">CHR/CHU</span>' : ''}
+            <span style="color:var(--c-muted); font-size:11px;"> · ${h.dist !== Infinity ? fmtDist(h.dist) : ''}</span>
+            ${h.address ? '<div style="font-size:11px; color:var(--c-muted);">' + h.address + '</div>' : ''}
+            <div style="font-size:12px;">📞 ${fmtPhone(h.phone)}</div>
+        </li>`;
 
-    let samuSource = '';
-    let samuContactsHtml = '';
-    if (samuRecords.length) {
-        samuSource = 'service-public.fr (DILA — annuaire officiel)';
-        samuContactsHtml = samuRecords.slice(0, 3).map(r => `
-            <div style="margin-top:6px;">
-                <strong>${r.nom}</strong>
-                ${r.adr.length ? '<div style="font-size:11px; color:var(--c-muted);">' + r.adr[0] + '</div>' : ''}
-                ${r.tel.length ? '<div style="font-size:12px;">📞 ' + r.tel.map(t => `<a href="tel:${t.replace(/\s/g,'')}" style="color:var(--c-accent); text-decoration:none;">${t}</a>`).join(' · ') + '</div>' : ''}
-                ${r.mail.length ? '<div style="font-size:12px;">✉️ ' + r.mail.map(m => `<a href="mailto:${m}" style="color:var(--c-accent); text-decoration:none;">${m}</a>`).join(' · ') + '</div>' : ''}
-                ${r.site.length ? '<div style="font-size:12px;">🌐 ' + r.site.map(s => `<a href="${s}" target="_blank" rel="noopener" style="color:var(--c-accent); text-decoration:none;">${s}</a>`).join(' · ') + '</div>' : ''}
-            </div>`).join('');
-    } else {
-        const samuTargets = chuWithPhone.length ? chuWithPhone.slice(0, 3) : fallbackChu;
-        if (samuTargets.length) {
-            samuSource = chuWithPhone.length ? 'OpenStreetMap — CHU à proximité' : 'OpenStreetMap — centre hospitalier de référence';
-            samuContactsHtml = samuTargets.map(h => `
-                <div style="margin-top:4px;">
-                    <strong>${h.name}</strong> <span style="color:var(--c-muted); font-size:11px;">· ${fmtDist(h.dist)}</span><br>
-                    📞 ${fmtPhone(h.phone)}${fmtEmail(h.email)}${fmtWeb(h.website)}
-                </div>`).join('');
-        } else {
-            samuContactsHtml = `<div style="margin-top:4px; color:var(--c-muted); font-size:12px;">Aucun contact trouvé automatiquement (annuaire DILA + OSM 60 km).<br>🔎 <a href="${samuSearchUrl}" target="_blank" rel="noopener" style="color:var(--c-accent);">Rechercher les coordonnées du SAMU ${dept}</a></div>`;
-        }
-    }
+    const samuTarget = finessChu[0];
+    const samuContactsHtml = samuTarget
+        ? `<div style="margin-top:4px;">
+              <strong>${samuTarget.name}</strong>${samuTarget.isChr ? ' <span style="background:#eef3fb; color:var(--c-primary); padding:1px 6px; border-radius:3px; font-size:10px; font-weight:700;">CHR/CHU</span>' : ''}
+              ${samuTarget.address ? '<div style="font-size:11px; color:var(--c-muted);">' + samuTarget.address + '</div>' : ''}
+              <div>📞 ${fmtPhone(samuTarget.phone)} <span style="color:var(--c-muted); font-size:11px;">(standard — demander la régulation SAMU)</span></div>
+          </div>`
+        : `<div style="margin-top:4px; color:var(--c-muted); font-size:12px;">Aucun CHR/CHU avec téléphone trouvé dans FINESS pour le département ${dept}.<br>🔎 <a href="${samuSearchUrl}" target="_blank" rel="noopener" style="color:var(--c-accent);">Rechercher les coordonnées du SAMU ${dept}</a></div>`;
 
     box.innerHTML = `
         <div style="padding:12px 14px; background:linear-gradient(180deg,#fef3c7 0%, #fef9e7 100%); border:1px solid #fde68a; border-left:4px solid var(--c-warning); border-radius:6px; font-size:12px; line-height:1.6;">
             <div style="font-weight:700; color:#92400e; text-transform:uppercase; letter-spacing:.5px; font-size:11px; margin-bottom:8px;">Mission hors DIPN 42 — contacts du département ${dept}${deptName ? ' (' + deptName + ')' : ''}</div>
 
             <div style="margin-bottom:10px; padding:8px 10px; background:#fff; border:1px solid var(--c-border); border-radius:5px;">
-                <div><strong style="color:var(--c-primary);">${samuLabel}</strong>${samuSource ? '<span style="font-size:10px; color:var(--c-muted); margin-left:6px;">source : ' + samuSource + '</span>' : ''}</div>
+                <div><strong style="color:var(--c-primary);">${samuLabel}</strong> <span style="font-size:10px; color:var(--c-muted); margin-left:6px;">source : FINESS (data.gouv.fr)</span></div>
                 ${samuContactsHtml}
             </div>
 
             <div style="margin-bottom:10px; padding:8px 10px; background:#fff; border:1px solid var(--c-border); border-radius:5px;">
-                <strong style="color:var(--c-primary);">CHU / hôpitaux avec service d'urgence à proximité&nbsp;:</strong>
-                <ul style="margin:6px 0 0 18px; padding:0;">${hospitals.slice(0, 5).map(renderRow).join('') || '<li style="color:var(--c-muted);">aucun établissement avec balise <code>emergency=yes</code> trouvé dans un rayon de 60 km (OSM)</li>'}</ul>
+                <strong style="color:var(--c-primary);">Autres centres hospitaliers du département&nbsp;:</strong>
+                <ul style="margin:6px 0 0 18px; padding:0;">${finessChu.slice(1, 6).map(renderHospital).join('') || '<li style="color:var(--c-muted);">aucun autre établissement référencé (FINESS).</li>'}</ul>
             </div>
 
             <div style="padding:8px 10px; background:#fff; border:1px solid var(--c-border); border-radius:5px;">
@@ -9657,7 +9643,7 @@ async function populateHorsCircoInfo() {
                 <div style="font-size:11px; margin-top:6px;">Pour la déclaration Clearance, utiliser <a href="https://clearance.aero" target="_blank" rel="noopener" style="color:var(--c-accent);">clearance.aero</a>.</div>
             </div>
 
-            <div class="hint" style="margin-top:8px; font-size:11px; color:#7c2d12;">Sources&nbsp;: OpenStreetMap (Overpass) · geo.api.gouv.fr — les coordonnées proviennent des données publiques et doivent être <strong>vérifiées avant tout contact opérationnel</strong>.</div>
+            <div class="hint" style="margin-top:8px; font-size:11px; color:#7c2d12;">Sources&nbsp;: FINESS (data.gouv.fr) · OpenStreetMap (Overpass) · geo.api.gouv.fr — les coordonnées proviennent des données publiques et doivent être <strong>vérifiées avant tout contact opérationnel</strong>.</div>
         </div>`;
 }
 
