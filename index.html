@@ -9624,8 +9624,36 @@ async function populateHorsCircoInfo() {
         }
     } catch (e) { console.warn('FINESS indisponible:', e); }
 
-    // 2. Overpass : aérodromes + tours de contrôle dans 60 km (FINESS ne couvre
-    // pas l'aviation civile, on garde OSM pour cette partie).
+    // 2. Aérodromes : source prioritaire = base statique FR_TWR_DB (SIA AIP).
+    // Le JSON n'a pas de coordonnées propres : on les récupère via FR_AIRPORTS
+    // (OurAirports, déjà embarquée) en croisant par code OACI. Filtre 60 km.
+    if (!populateHorsCircoInfo._icaoIdx) {
+        const idx = {};
+        for (const a of FR_AIRPORTS) {
+            const ident = a[0];
+            if (/^LF[A-Z]{2}$/.test(ident)) idx[ident] = { lat: a[3], lon: a[4] };
+        }
+        populateHorsCircoInfo._icaoIdx = idx;
+    }
+    const _icaoIdx = populateHorsCircoInfo._icaoIdx;
+    const siaTwrs = [];
+    for (const icao of Object.keys(FR_TWR_DB)) {
+        const c = _icaoIdx[icao];
+        if (!c) continue;
+        const d = haversine(lat, lon, c.lat, c.lon);
+        if (d > 60000) continue;
+        const e = FR_TWR_DB[icao];
+        siaTwrs.push({
+            name: e.name, icao, dist: d,
+            phone: e.phone || '', email: e.email || '',
+            address: e.address || '', website: '',
+            operator: '', source: 'SIA AIP'
+        });
+    }
+    siaTwrs.sort((a, b) => a.dist - b.dist);
+
+    // 3. Overpass (complément, best-effort) : récupère les aérodromes/tours non
+    // référencés dans FR_TWR_DB (petits terrains, ULM…) + les tours de contrôle.
     const q = `[out:json][timeout:25];(`
         + `nwr["aeroway"="aerodrome"](around:60000,${lat},${lon});`
         + `nwr["aeroway"="control_tower"](around:60000,${lat},${lon});`
@@ -9647,25 +9675,27 @@ async function populateHorsCircoInfo() {
     try { elements = await Promise.any(endpoints.map(tryOne)); }
     catch (e) { console.warn('Overpass hors-circo indisponible:', e); }
 
-    const aerodromes = [], towers = [];
+    // OACI déjà couverts par FR_TWR_DB (pour dédupliquer avec Overpass).
+    const siaIcaoSet = new Set(siaTwrs.map(t => t.icao));
+    const aerodromes = [...siaTwrs];
+    const towers = [];
     for (const el of elements) {
         const t = el.tags || {}; const c = el.center || el;
         const eLat = c.lat ?? el.lat, eLon = c.lon ?? el.lon;
         if (eLat == null) continue;
         const icao = t.icao || t['ref:icao'] || '';
-        // Enrichissement : si l'OACI est connue dans FR_TWR_DB, on remplace
-        // les coordonnées OSM (souvent vides) par celles de la SIA AIP.
-        const twrRef = (icao && FR_TWR_DB[icao]) || null;
+        // Si l'OACI est dans FR_TWR_DB, on saute (déjà en liste avec données SIA officielles).
+        if (icao && siaIcaoSet.has(icao)) continue;
         const item = {
-            name: (twrRef && twrRef.name) || t.name || t['operator'] || '',
+            name: t.name || t['operator'] || '',
             dist: haversine(lat, lon, eLat, eLon),
-            phone: (twrRef && twrRef.phone) || t.phone || t['contact:phone'] || '',
-            email: (twrRef && twrRef.email) || t.email || t['contact:email'] || '',
-            address: (twrRef && twrRef.address) || '',
+            phone: t.phone || t['contact:phone'] || '',
+            email: t.email || t['contact:email'] || '',
+            address: '',
             website: t.website || t['contact:website'] || '',
             icao: icao,
             operator: t.operator || '',
-            source: twrRef ? 'SIA AIP' : 'OSM'
+            source: 'OSM'
         };
         if (t.aeroway === 'aerodrome') aerodromes.push(item);
         else if (t.aeroway === 'control_tower') towers.push(item);
