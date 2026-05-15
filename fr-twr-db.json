@@ -75,5 +75,16 @@
   "LFPO": { "name": "Paris Orly",                             "phone": "0149756575", "address": "Bâtiment 401 - 103 Aérogare sud, CS 90055, 94396 Orly Aérogare Cedex" },
   "LFPT": { "name": "Pontoise Cormeilles-en-Vexin",           "phone": "0130311325", "address": "95650 Boissy-l'Aillerie" },
   "LFPZ": { "name": "Saint-Cyr l'École",                      "phone": "0130581260", "address": "78210 Saint-Cyr-l'École" },
-  "LFPN": { "name": "Toussus-le-Noble",                       "phone": "0139563475", "address": "78117 Toussus-le-Noble" }
+  "LFPN": { "name": "Toussus-le-Noble",                       "phone": "0139563475", "address": "78117 Toussus-le-Noble" },
+
+  "LFOH": { "name": "Le Havre Octeville",                     "phone": "0235546500", "address": "Rue Maurice Le Corre, 76620 Le Havre" },
+  "LFCK": { "name": "Castres Mazamet",                        "phone": "0563703477", "email": "tour@aeroport81.fr",            "address": "81290 Labruguière" },
+  "LFCI": { "name": "Albi Le Séquestre",                      "phone": "0563491525", "email": "twr@aerodrome-albi.fr",         "address": "81990 Le Sequestre" },
+  "LFAC": { "name": "Calais Dunkerque",                       "phone": "0321352266", "address": "Avenue Henri Sainsard, 62730 Marck" },
+  "LFAY": { "name": "Amiens Glisy",                           "phone": "0322971598", "address": "80440 Glisy" },
+  "LFRM": { "name": "Le Mans Arnage",                         "phone": "0243843485", "address": "72100 Le Mans" },
+  "LFOQ": { "name": "Blois Le Breuil",                        "phone": "0254201718", "address": "41330 Le Breuil" },
+  "LFRC": { "name": "Cherbourg Maupertus",                    "phone": "0233225137", "address": "50330 Maupertus-sur-Mer" },
+  "LFRI": { "name": "La Roche-sur-Yon Les Ajoncs",            "phone": "0251374603", "email": "larochesuryon.aerodrome@vendee.cci.fr", "address": "85000 La Roche-sur-Yon" },
+  "LFOZ": { "name": "Orléans Saint-Denis-de-l'Hôtel",         "phone": "0238463333", "email": "contact@orleans.aeroport.fr",   "address": "45550 Saint-Denis-de-l'Hôtel" }
 }
