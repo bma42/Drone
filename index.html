@@ -2030,6 +2030,7 @@
                         <li>BAN api-adresse — adresses · api.geo.api.gouv.fr — communes INSEE (densité de population)</li>
                         <li>GéoRisques — sites Seveso · SNCF Navitia — gares · MNHN — Natura 2000 / Ramsar / réserves</li>
                         <li>SIA / IGN — restrictions drones (UAS) · SGDSN — ZICAD (arrêté 10/04/2017, CT L. 6224-1)</li>
+                        <li>SIA AZBA / SOFIA-Briefing — RTBA (Réseaux Très Basse Altitude) · AIP ENR 5.2</li>
                     </ul>
                 </div>
                 <div>
@@ -6217,6 +6218,69 @@ function aspcColor(t, cls) {
     return '#6b7280';
 }
 
+// ---- RTBA — Réseau de Très Basse Altitude (chasseurs militaires basse altitude) ----
+// Détection : zone réglementée (type=1) avec plafond bas (≤ FL060 / ≤ 1500 ft AGL / ≤ 500 m)
+// ET nom matchant un préfixe RTBA (LF-R suivi d'un numéro, ou contenant « RTBA »).
+function _isLikelyRtba(z) {
+    if (!z || z.type !== 1) return false;
+    const name = (z.name || '').toUpperCase();
+    if (/RTBA/.test(name)) return true;
+    if (!/^LF-?R\s?\d{2,4}/.test(name)) return false;
+    const up = z.upperLimit;
+    if (!up) return false;
+    const u = ASPC_UNITS[up.unit] || '';
+    if (u === 'FL' && up.value <= 60) return true;       // ≤ FL060
+    if (u === 'ft' && up.value <= 1500) return true;     // ≤ 1500 ft
+    if (u === 'm' && up.value <= 500) return true;        // ≤ 500 m
+    return false;
+}
+
+// Tente de récupérer la liste des RTBA ACTIVES aujourd'hui depuis le service AZBA du SIA.
+// AZBA = Activité Zone Basse Altitude (publication quotidienne DSNA/SIA).
+// Plusieurs endpoints publics sont tentés via proxy CORS — best-effort, tolérant aux échecs.
+// Retourne { date, segments: [{ name, from, to, raw }] } ou null si indisponible.
+const _CORS_PROXIES = ['https://corsproxy.io/?', 'https://api.allorigins.win/raw?url='];
+async function _fetchRtbaActivation() {
+    const cacheKey = 'rtba_azba_' + new Date().toISOString().slice(0, 10);
+    try {
+        const raw = sessionStorage.getItem(cacheKey);
+        if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    // Endpoint public SIA AZBA (HTML quotidien : on parse les segments « LF-R xxx » + horaires)
+    const SIA_URLS = [
+        'https://www.sia.aviation-civile.gouv.fr/aip/enr/5_2.htm',
+        'https://www.sia.aviation-civile.gouv.fr/azba.htm'
+    ];
+    for (const baseUrl of SIA_URLS) {
+        for (const proxy of _CORS_PROXIES) {
+            try {
+                const r = await fetchWithTimeout(proxy + encodeURIComponent(baseUrl), {}, 10000);
+                if (!r.ok) continue;
+                const txt = await r.text();
+                // Cherche les mentions « LF-R XXX » suivies d'horaires « HHMM-HHMM » ou « HHHH UTC »
+                const segRe = /(LF-?R\s?\d{2,4}[A-Z0-9]*)\s*[^\d]{0,40}?(\d{2}h?\d{2})\s*[-àaà–]\s*(\d{2}h?\d{2})/gi;
+                const segments = [];
+                let m;
+                while ((m = segRe.exec(txt)) !== null) {
+                    segments.push({
+                        name: m[1].toUpperCase().replace(/\s+/g, ' '),
+                        from: m[2].replace('h', ':'),
+                        to: m[3].replace('h', ':'),
+                        raw: m[0]
+                    });
+                    if (segments.length > 80) break;
+                }
+                if (segments.length > 0) {
+                    const result = { date: new Date().toISOString().slice(0, 10), segments, source: baseUrl };
+                    try { sessionStorage.setItem(cacheKey, JSON.stringify(result)); } catch (e) {}
+                    return result;
+                }
+            } catch (e) { /* tentative suivante */ }
+        }
+    }
+    return null;
+}
+
 function fmtAlt(limit) {
     if (!limit) return '?';
     const u = ASPC_UNITS[limit.unit] || '?';
@@ -6288,6 +6352,49 @@ function renderAirspaces(items, lat, lon) {
     const prd = enriched.filter(z => z.type === 1 || z.type === 2 || z.type === 3);
     const sfcZones = inFlight.filter(z => z.startsSFC);
 
+    // ---- RTBA : zones très basse altitude chasseurs militaires ----
+    const rtbaZones = enriched.filter(_isLikelyRtba);
+    const rtbaInFlight = rtbaZones.filter(z => z.inside || z.minDist <= flightRadius);
+    const rtbaNearby   = rtbaZones.filter(z => !z.inside && z.minDist > flightRadius && z.minDist <= 30000);
+    STATE.rtba = rtbaZones;
+    STATE.rtbaInFlight = rtbaInFlight;
+    const sofiaUrl = 'https://sofia-briefing.aviation-civile.gouv.fr/';
+    const aipUrl   = 'https://www.sia.aviation-civile.gouv.fr/aip/enr/5_2.htm';
+    let rtbaBanner = '';
+    if (rtbaInFlight.length > 0 || rtbaNearby.length > 0) {
+        const headSev = rtbaInFlight.some(z => z.inside) ? 'danger' : rtbaInFlight.length > 0 ? 'high' : 'warn';
+        const bg = headSev === 'danger' ? '#fee2e2' : headSev === 'high' ? '#fef2f2' : '#fff7ed';
+        const border = headSev === 'danger' ? '#dc2626' : headSev === 'high' ? '#ea580c' : '#f59e0b';
+        const title = headSev === 'danger'
+            ? '🛩 RTBA — Point de mission DANS un Réseau de Très Basse Altitude (chasseurs militaires)'
+            : rtbaInFlight.length > 0
+                ? '🛩 RTBA dans la zone d\'évolution — chasseurs militaires basse altitude'
+                : '🛩 RTBA à proximité (< 30 km) — chasseurs militaires basse altitude';
+        const chips = rtbaInFlight.concat(rtbaNearby).map(z =>
+            `<span style="display:inline-block; background:#fff; color:${border}; border:1.5px solid ${border}; padding:2px 9px; border-radius:6px; font-size:11px; font-weight:700; margin:2px 3px;">
+                ${z.name || '?'}${z.inside ? ' · SUR ZONE' : ' · ' + fmtDist(z.minDist)} · plafond ${fmtAlt(z.upperLimit)}
+            </span>`).join('');
+        rtbaBanner = `
+        <div id="rtba-banner" style="background:${bg}; border:2px solid ${border}; padding:12px 14px; border-radius:8px; margin-bottom:12px;">
+            <div style="font-weight:800; color:${border}; margin-bottom:6px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                ${title}
+            </div>
+            <div style="margin-bottom:8px;">${chips}</div>
+            <div style="font-size:11.5px; line-height:1.55; color:#451a03; margin-bottom:8px;">
+                Les RTBA sont des couloirs où l'<strong>Armée de l'air</strong> entraîne ses chasseurs à très basse altitude (250-500 ft AGL) et à grande vitesse (450-540 kt). Risque d'abordage majeur. Vol drone fortement déconseillé pendant l'activation, ou strict cantonnement &lt; 30 m AGL avec atterrissage immédiat en cas de bruit.
+            </div>
+            <div id="rtba-activation" style="font-size:12px; padding:8px 10px; background:rgba(255,255,255,0.6); border:1px dashed ${border}; border-radius:6px;">
+                ⏳ Vérification de l'activation du jour sur AZBA…
+            </div>
+            <div class="no-print" style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; font-size:11px;">
+                <a href="${sofiaUrl}" target="_blank" rel="noopener" style="background:${border}; color:#fff; padding:4px 10px; border-radius:5px; text-decoration:none; font-weight:600;">SOFIA-Briefing (NOTAM) ↗</a>
+                <a href="${aipUrl}" target="_blank" rel="noopener" style="background:#fff; color:${border}; border:1px solid ${border}; padding:4px 10px; border-radius:5px; text-decoration:none; font-weight:600;">AIP ENR 5.2 — Liste RTBA ↗</a>
+            </div>
+        </div>`;
+        // Lance la requête d'activation en arrière-plan (parseur best-effort)
+        setTimeout(() => _refreshRtbaActivationDisplay(rtbaInFlight, rtbaNearby), 200);
+    }
+
     const chipFor = z => `<button type="button" class="aspc-chip no-print" data-uid="${z._uid}" data-active="on" onclick="toggleAirspaceLayer('${z._uid}', this)" title="Cliquer pour masquer / afficher cette zone sur la carte" style="background:rgba(255,255,255,0.92); color:#991b1b; border:1.5px solid ${z.color}; border-radius:6px; padding:3px 9px; font-size:11px; font-weight:700; cursor:pointer; margin:2px 3px; display:inline-flex; align-items:center; gap:4px; transition:opacity .15s;"><span style="display:inline-block; width:8px; height:8px; border-radius:2px; background:${z.color};"></span>${z.typeLabel}${z.cls!=='?'?' '+z.cls:''} « ${(z.name||'').slice(0,28)} »</button>`;
     // Version statique (pour le PDF) : juste le texte des zones, sans bouton
     const chipPrint = z => `<span class="print-only" style="display:none; margin-right:8px;">${z.typeLabel}${z.cls!=='?'?' '+z.cls:''} « ${(z.name||'').slice(0,28)} »${insideZones.indexOf(z) < insideZones.length - 1 ? ' ·' : ''}</span>`;
@@ -6316,6 +6423,7 @@ function renderAirspaces(items, lat, lon) {
         }).join('');
 
     document.getElementById('airspace-body').innerHTML = `
+        ${rtbaBanner}
         ${insideBanner}
         <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px;">
             <div class="metric ${sfcZones.length ? 'danger' : ''}"><div class="v">${sfcZones.length}</div><div class="k">⬇ Plancher SFC (vol)</div></div>
@@ -6349,7 +6457,38 @@ function renderAirspaces(items, lat, lon) {
 
     let st = 'ok';
     if (insideZones.length || sfcZones.length || prd.length || ctr.length || tma.length) st = 'warn';
-    setStatus('airspace', st, insideZones.length ? `SUR ZONE` : sfcZones.length ? `${sfcZones.length} SFC` : `${enriched.length} esp.`);
+    if (rtbaInFlight.length > 0) st = 'err';
+    setStatus('airspace', st, insideZones.length ? `SUR ZONE` : rtbaInFlight.length ? `${rtbaInFlight.length} RTBA` : sfcZones.length ? `${sfcZones.length} SFC` : `${enriched.length} esp.`);
+}
+
+// Parseur d'activation RTBA (best-effort) : interroge AZBA via CORS proxy et met à
+// jour le bandeau RTBA. Si indisponible, affiche un lien vers SOFIA/AZBA en fallback.
+async function _refreshRtbaActivationDisplay(inFlight, nearby) {
+    const el = document.getElementById('rtba-activation');
+    if (!el) return;
+    let result = null;
+    try { result = await _fetchRtbaActivation(); } catch (e) {}
+    if (!result || !result.segments || result.segments.length === 0) {
+        el.innerHTML = '⚠ <strong>Activation non récupérée automatiquement</strong> — vérifier manuellement les NOTAM sur SOFIA-Briefing (lien ci-dessous) ou contacter le CRNA territorialement compétent avant la mission.';
+        return;
+    }
+    // Cherche dans les segments du jour ceux qui correspondent aux RTBA de la zone
+    const norm = s => (s || '').toUpperCase().replace(/[\s-]/g, '');
+    const localNames = new Set([...inFlight, ...nearby].map(z => norm(z.name)));
+    const matches = result.segments.filter(seg => {
+        const segN = norm(seg.name);
+        // Match exact ou préfixe (« LF-R 45 » match « LF-R 45A1 »)
+        return [...localNames].some(n => segN === n || segN.startsWith(n) || n.startsWith(segN));
+    });
+    if (matches.length > 0) {
+        const list = matches.map(m =>
+            `<span style="display:inline-block; background:#dc2626; color:#fff; padding:2px 8px; border-radius:5px; font-size:11px; font-weight:700; margin:2px 3px;">${m.name} · ${m.from}–${m.to}</span>`
+        ).join('');
+        el.innerHTML = `🔴 <strong>RTBA ACTIVE${matches.length>1?'S':''} aujourd'hui</strong> dans la zone — vol drone à proscrire pendant ces créneaux :<br><div style="margin-top:4px;">${list}</div>
+            <div style="font-size:10.5px; color:var(--c-text-soft); margin-top:6px; font-style:italic;">⚠ Données parsées depuis AIP ENR 5.2 (best-effort, à recouper avec NOTAM SOFIA).</div>`;
+    } else {
+        el.innerHTML = `🟢 <strong>Pas d'activation détectée aujourd'hui</strong> pour les RTBA en zone (${result.segments.length} segments scannés sur AIP ENR 5.2). À vérifier sur SOFIA-Briefing pour confirmation NOTAM.`;
+    }
 }
 
 // Map des couches polygones par _uid → permet de toggler chacune via les chips du bandeau
@@ -8789,9 +8928,35 @@ function populateRiskTable() {
     if (STATE.elev && STATE.elev.range > 100)
         rows.push([`Dénivelé important (${STATE.elev.range.toFixed(0)} m)`, 'Modérée', 'Modérée', "Le relief de la zone présente un dénivelé significatif (plus de 100 m d'amplitude). Le télépilote effectue une reconnaissance préalable de la topographie afin d'identifier les points hauts, les obstacles naturels et les zones susceptibles de masquer la liaison radio. L'altitude de référence du drone est calée sur le point de décollage : toute manœuvre vers une partie plus basse du terrain augmente la hauteur réelle vol/sol et peut entraîner un dépassement de la limite réglementaire AGL si le drone est suivi à altitude constante. Le télépilote conserve donc une marge de sécurité en hauteur, surveille en continu la lecture barométrique et GNSS pendant la translation, et adapte la trajectoire en privilégiant un suivi de terrain plutôt qu'un suivi d'altitude absolue lors des transitions de relief."]);
 
+    // Risque RTBA — Réseau Très Basse Altitude (chasseurs militaires basse altitude)
+    if (Array.isArray(STATE.rtba) && STATE.rtba.length > 0 && STATE.lat != null) {
+        const inZone = STATE.rtba.filter(z => z.inside);
+        const flightR = STATE.radius || 1000;
+        const near    = STATE.rtba.filter(z => !z.inside && z.minDist <= Math.max(flightR, 2000));
+        const zoneCenter = z => { const c = naturalCenter(z.geometry); return c ? { lat: c.lat, lon: c.lon } : null; };
+        if (inZone.length > 0) {
+            const z = inZone[0];
+            rows.push([
+                `Point en RTBA « ${(z.name || '').slice(0, 30)} » (chasseurs militaires basse altitude)`,
+                'Élevée', 'Élevée',
+                "Le point de mission est situé dans un Réseau de Très Basse Altitude (RTBA), couloir d'entraînement de l'Armée de l'air française où les chasseurs évoluent à 250-500 ft AGL et 450-540 kt. Le risque d'abordage est majeur et la marge de réaction du télépilote nulle. Avant la mission, l'activation de la zone est obligatoirement vérifiée sur SOFIA-Briefing (NOTAM du jour) et auprès du CRNA territorialement compétent. Si la zone est active, le vol drone est purement et simplement reporté ou annulé. Si la zone est inactive et que la mission est néanmoins conduite, le drone est cantonné en permanence sous 30 m AGL, une veille auditive est maintenue par tout l'équipage, et l'atterrissage est immédiat à la moindre perception sonore d'un aéronef rapide. L'événement est consigné au compte-rendu avec horaires et références AZBA.",
+                zoneCenter(z)
+            ]);
+        } else if (near.length > 0) {
+            const z = near[0];
+            rows.push([
+                `RTBA « ${(z.name || '').slice(0, 30)} » à ${fmtDist(z.minDist)} (chasseurs militaires)`,
+                'Modérée', 'Élevée',
+                "Un Réseau de Très Basse Altitude (RTBA) est situé à proximité immédiate de la zone d'évolution. Bien que le point de mission n'y soit pas inclus, une dérive (vent, GPS, fausse manœuvre) ou une trajectoire d'aéronef hors gabarit peuvent générer un risque d'abordage avec des chasseurs militaires opérant à 250-500 ft AGL et grande vitesse. L'activation de la RTBA est vérifiée sur SOFIA-Briefing avant le décollage. Le télépilote cantonne le drone sous 30 m AGL pendant toute la mission, maintient une marge latérale strictement supérieure à 500 m du périmètre RTBA, et reste prêt à atterrir immédiatement à la moindre perception sonore d'un aéronef rapide en approche.",
+                zoneCenter(z)
+            ]);
+        }
+    }
+
     // Risque réglementaire : espace aérien contrôlé (CTR/TMA/P/R/D OpenAIP)
+    // (les RTBA sont traitées séparément ci-dessus — on les exclut pour ne pas dupliquer)
     if (Array.isArray(STATE.airspaces) && STATE.lat != null) {
-        const inside = STATE.airspaces.filter(z => pointInGeometry(STATE.lat, STATE.lon, z.geometry));
+        const inside = STATE.airspaces.filter(z => pointInGeometry(STATE.lat, STATE.lon, z.geometry) && !_isLikelyRtba(z));
         const prohibited = inside.find(z => z.type === 3);
         const restricted = inside.find(z => z.type === 1 || z.type === 2);
         const ctr = inside.find(z => z.type === 4);
