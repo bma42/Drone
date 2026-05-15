@@ -9493,9 +9493,12 @@ function toggleNoChefMission() {
 
 function toggleHorsCircuit() {
     const off = document.getElementById('hors-circo').checked;
-    // Le bloc « SAMU 42 / tour de contrôle » reste visible et lisible même hors
-    // circonscription : les contacts SAMU 42 (saf-helico, TCM, pilotes) servent
-    // de référence opérationnelle. On ne désactive que les cases d'obligation.
+    // Hors circonscription : on masque entièrement les blocs SAMU 42 et Tour de
+    // contrôle DIPN 42 (ils n'ont aucun sens hors zone) et on affiche le bloc
+    // des contacts du département de la mission. Réaffichés si la case est
+    // décochée (mission redevenue en DIPN 42).
+    const circoBlock = document.getElementById('circo-block');
+    if (circoBlock) circoBlock.style.display = off ? 'none' : '';
     ['samu-check', 'clearance-late'].forEach(id => {
         const cb = document.getElementById(id);
         if (!cb) return;
