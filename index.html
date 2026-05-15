@@ -10656,6 +10656,7 @@ const LIVE_PILOTS_KEY = 'drone-live-pilots';
 const LIVE_FLIGHTS_KEY = 'drone-live-flights';
 let _liveAdsbInterval = null, _liveMeteoInterval = null, _liveTickInterval = null;
 let _liveAdsbMap = null;
+let _liveSavedAdsb = null;   // backup avant d'imposer auto+alertes
 
 function _livePilots() {
     try { return JSON.parse(localStorage.getItem(LIVE_PILOTS_KEY) || '[]'); }
@@ -10687,11 +10688,26 @@ function enterLiveMode() {
     overlay.style.display = 'flex';
     document.body.style.overflow = 'hidden';
     try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); } catch (e) {}
+    // Aligne le Live Mode sur le schéma ADS-B de la page principale :
+    // auto-refresh (intervalle court) + alertes vocales actives. On sauvegarde
+    // l'état antérieur pour le restaurer en sortie.
+    _liveSavedAdsb = {
+        auto: aircraftAutoRefresh,
+        alert: aircraftAlertSound,
+        sec: aircraftRefreshSec
+    };
+    aircraftRefreshSec = 5;
+    try { localStorage.setItem('drone_aircraft_refresh_sec', '5'); } catch (e) {}
+    toggleAircraftAuto(true);
+    toggleAircraftAlert(true);
     _liveRenderPilots();
     _liveRenderFlights();
     _liveRefreshAdsb();
     _liveRefreshMeteo();
-    _liveAdsbInterval = setInterval(_liveRefreshAdsb, 30000);
+    // L'interval ne fait plus de fetch (la page principale s'en charge via
+    // scheduleAircraftRefresh) — il ne fait que rafraîchir les marqueurs depuis
+    // STATE.aircraft. Refresh visuel toutes les 2 s pour fluidité.
+    _liveAdsbInterval = setInterval(_liveUpdateAdsbMarkers, 2000);
     _liveMeteoInterval = setInterval(_liveRefreshMeteo, 5 * 60000);
     _liveTickInterval = setInterval(_liveTickActiveFlights, 1000);
 }
@@ -10728,6 +10744,14 @@ function exitLiveMode() {
     if (_liveMeteoInterval) { clearInterval(_liveMeteoInterval); _liveMeteoInterval = null; }
     if (_liveTickInterval) { clearInterval(_liveTickInterval); _liveTickInterval = null; }
     if (_liveAdsbMap) { try { _liveAdsbMap.remove(); } catch (e) {} _liveAdsbMap = null; }
+    // Restaure l'état ADS-B antérieur (auto / alertes / intervalle).
+    if (_liveSavedAdsb) {
+        aircraftRefreshSec = _liveSavedAdsb.sec;
+        try { localStorage.setItem('drone_aircraft_refresh_sec', String(_liveSavedAdsb.sec)); } catch (e) {}
+        toggleAircraftAuto(_liveSavedAdsb.auto);
+        toggleAircraftAlert(_liveSavedAdsb.alert);
+        _liveSavedAdsb = null;
+    }
 }
 
 function _liveModeHtml() {
@@ -10996,39 +11020,104 @@ async function _liveRefreshAdsb() {
     if (!_liveAdsbMap && typeof L !== 'undefined') {
         _liveAdsbMap = L.map('lm-adsb-map', { zoomControl: true, attributionControl: false })
             .setView([STATE.lat, STATE.lon], 11);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(_liveAdsbMap);
-        L.circle([STATE.lat, STATE.lon], { radius: 8000, color: '#fbbf24', weight: 2, fillOpacity: .05 }).addTo(_liveAdsbMap);
-        L.marker([STATE.lat, STATE.lon]).addTo(_liveAdsbMap);
+        // Fond sombre adapté au thème live (CARTO Dark Matter, fallback OSM)
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 18,
+            subdomains: 'abcd'
+        }).addTo(_liveAdsbMap);
+        // Anneaux de portée style radar (rayon ADS-B paramétré dans la page principale)
+        const R = (aircraftSearchRadiusKm || 20) * 1000;
+        for (let i = 1; i <= 4; i++) {
+            L.circle([STATE.lat, STATE.lon], {
+                radius: (R * i) / 4,
+                color: '#22c55e', weight: 1, fillOpacity: 0,
+                dashArray: '4 4', opacity: .45
+            }).addTo(_liveAdsbMap);
+        }
+        // Point central
+        L.circleMarker([STATE.lat, STATE.lon], {
+            radius: 6, color: '#fbbf24', fillColor: '#fbbf24', fillOpacity: 1, weight: 2
+        }).addTo(_liveAdsbMap);
         _liveAdsbMap._planes = L.layerGroup().addTo(_liveAdsbMap);
+        // Balayage radar SVG superposé, centré sur le point de mission
+        _liveAttachRadarSweep(_liveAdsbMap, R);
     }
-    // On délègue le fetch à la fonction principale fetchAircraft() qui utilise
-    // une cascade de 3 fournisseurs (ADSB.lol → airplanes.live → OpenSky) et
-    // remplit STATE.aircraft. C'est exactement ce que fait la page principale.
+    // Le fetch initial est délégué à la fonction principale fetchAircraft() qui
+    // remplit STATE.aircraft (cascade ADSB.lol → airplanes.live → OpenSky).
     try { await fetchAircraft(STATE.lat, STATE.lon); } catch (e) { /* fetchAircraft gère ses erreurs */ }
+    _liveUpdateAdsbMarkers();
+}
+
+// Lit STATE.aircraft (déjà rempli par fetchAircraft de la page principale) et
+// met à jour les marqueurs sur la carte du Live Mode. Appelé toutes les 2 s
+// par _liveAdsbInterval ; ne fait JAMAIS de fetch lui-même (le rafraîchissement
+// réseau est piloté par scheduleAircraftRefresh de la page principale).
+function _liveUpdateAdsbMarkers() {
+    if (!_liveAdsbMap || !_liveAdsbMap._planes) return;
+    const info = document.getElementById('lm-adsb-info');
     const planes = (STATE.aircraft || []).filter(a => a.lat != null && a.lon != null);
-    if (_liveAdsbMap && _liveAdsbMap._planes) {
-        _liveAdsbMap._planes.clearLayers();
-        planes.forEach(a => {
-            const altFt = a.alt_baro || a.alt_geom || (a.altM != null ? a.altM * 3.281 : 0);
-            const color = altFt < 1000 ? '#dc2626' : altFt < 3000 ? '#f59e0b' : '#22c55e';
-            const icon = L.divIcon({
-                className: '',
-                html: `<div style="background:${color}; color:#fff; padding:1px 6px; border-radius:6px; font-size:10px; font-weight:700; border:1.5px solid #fff; white-space:nowrap;">${a.isHelicopter ? '🚁' : '✈'} ${a.flight || a.r || a.hex || '?'}</div>`,
-                iconAnchor: [20, 8]
-            });
-            L.marker([a.lat, a.lon], { icon })
-                .bindPopup(`<b>${a.flight || a.r || a.hex || '—'}</b><br>${a.t || a.desc || ''}<br>Alt: ${Math.round(altFt)} ft · Vit: ${a.gs || '?'} kt`)
-                .addTo(_liveAdsbMap._planes);
+    _liveAdsbMap._planes.clearLayers();
+    planes.forEach(a => {
+        const altFt = a.altFt || a.alt_baro || a.alt_geom || (a.altM != null ? a.altM * 3.281 : 0);
+        const color = a.emergency ? '#fb7185' : (a.isPriority ? '#a855f7' : (altFt < 1000 ? '#dc2626' : altFt < 3000 ? '#f59e0b' : '#22c55e'));
+        const icon = L.divIcon({
+            className: '',
+            html: `<div style="background:${color}; color:#fff; padding:1px 6px; border-radius:6px; font-size:10px; font-weight:700; border:1.5px solid #fff; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,.5);">${a.isHelicopter ? '🚁' : '✈'} ${a.callsign || a.flight || a.reg || a.r || a.hex || '?'}</div>`,
+            iconAnchor: [20, 8]
         });
-    }
+        L.marker([a.lat, a.lon], { icon })
+            .bindPopup(`<b>${a.callsign || a.flight || a.reg || a.hex || '—'}</b><br>${a.type || a.t || a.desc || ''}<br>Alt: ${Math.round(altFt)} ft · Vit: ${a.gs || '?'} kt${a.emergency ? '<br><b style=\"color:#dc2626;\">URGENCE</b>' : ''}`)
+            .addTo(_liveAdsbMap._planes);
+    });
     if (info) {
         if (!planes.length) {
-            info.innerHTML = `<span style="color:#fbbf24;">●</span> Aucun aéronef détecté · ↻ ${new Date().toLocaleTimeString('fr-FR').slice(0, 5)}`;
+            info.innerHTML = `<span style="color:#fbbf24;">●</span> Aucun aéronef · auto-refresh ${aircraftRefreshSec}s${aircraftAlertSound ? ' · 🔔' : ''}`;
         } else {
-            const low = planes.filter(a => ((a.alt_baro || a.alt_geom || 0) < 2000)).length;
+            const low = planes.filter(a => ((a.altFt || a.alt_baro || a.alt_geom || 0) < 2000)).length;
+            const heli = planes.filter(a => a.isHelicopter).length;
             const src = STATE.aircraftSource ? ' · ' + STATE.aircraftSource : '';
-            info.innerHTML = `<span style="color:#22c55e;">●</span> ${planes.length} aéronef${planes.length > 1 ? 's' : ''} · <span style="color:#dc2626;">${low}</span> sous 2000 ft · ↻ ${new Date().toLocaleTimeString('fr-FR').slice(0, 5)}${src}`;
+            info.innerHTML = `<span style="color:#22c55e;">●</span> ${planes.length} ac · ${heli} 🚁 · <span style="color:#dc2626;">${low}</span> &lt;2000ft · ${aircraftRefreshSec}s${aircraftAlertSound ? ' · 🔔' : ''}${src}`;
         }
+    }
+}
+
+// Superpose une animation de balayage radar (SVG) au-dessus de la carte Leaflet,
+// centrée sur le point de mission. L'angle tourne via @keyframes CSS.
+function _liveAttachRadarSweep(map, radiusM) {
+    const container = map.getContainer();
+    let svg = container.querySelector('.lm-radar-sweep-svg');
+    if (svg) svg.remove();
+    svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'lm-radar-sweep-svg');
+    svg.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:400;';
+    container.appendChild(svg);
+    const draw = () => {
+        const center = map.latLngToContainerPoint([STATE.lat, STATE.lon]);
+        const edge = map.latLngToContainerPoint(L.latLng(STATE.lat, STATE.lon).toBounds(radiusM * 2).getNorthEast());
+        const px = Math.hypot(edge.x - center.x, edge.y - center.y);
+        svg.innerHTML = `
+            <defs>
+                <radialGradient id="lm-sweep-grad" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stop-color="rgba(34,197,94,0.55)"/>
+                    <stop offset="60%" stop-color="rgba(34,197,94,0.10)"/>
+                    <stop offset="100%" stop-color="rgba(34,197,94,0)"/>
+                </radialGradient>
+            </defs>
+            <g transform="translate(${center.x} ${center.y})" style="transform-origin:0 0; transform-box:fill-box; animation: lm-radar-rotate 4s linear infinite;">
+                <path d="M 0 0 L ${px} 0 A ${px} ${px} 0 0 1 ${(px * Math.cos(Math.PI / 4)).toFixed(2)} ${(px * Math.sin(Math.PI / 4)).toFixed(2)} Z"
+                      fill="url(#lm-sweep-grad)" opacity="0.85"/>
+            </g>
+            <circle cx="${center.x}" cy="${center.y}" r="3" fill="#fbbf24"/>
+        `;
+    };
+    draw();
+    map.on('move zoom resize', draw);
+    // Animation key (ajoutée une seule fois au head)
+    if (!document.getElementById('lm-radar-anim-style')) {
+        const st = document.createElement('style');
+        st.id = 'lm-radar-anim-style';
+        st.textContent = '@keyframes lm-radar-rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
+        document.head.appendChild(st);
     }
 }
 
