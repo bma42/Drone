@@ -9143,19 +9143,40 @@ function addStepMap(containerId) {
     container.appendChild(wrap);
     const canvas = wrap.querySelector('.step-map-canvas');
     const coordsLabel = wrap.querySelector('.step-map-coords');
-    const center = (STATE.lat != null) ? [STATE.lat, STATE.lon] : [46.6, 2.4];
-    const stepMap = L.map(canvas, { scrollWheelZoom: false }).setView(center, STATE.lat != null ? 14 : 6);
+    // Si une mission est déjà définie (Fast Fly ou adresse saisie) → on pré-centre dessus
+    // et on pose un marker à l'emplacement de la mission. Sinon → vue France par défaut,
+    // pas de marker pré-placé : l'utilisateur clique sur la carte pour en poser un.
+    const hasMission = STATE.lat != null;
+    const center = hasMission ? [STATE.lat, STATE.lon] : [46.6, 2.4];
+    const stepMap = L.map(canvas, { scrollWheelZoom: false }).setView(center, hasMission ? 14 : 6);
     _frTileLayer().addTo(stepMap);
-    const m = L.marker(center, { draggable: true, autoPan: true, title: 'Glisser ou cliquer sur la carte pour repositionner le point' }).addTo(stepMap);
+
+    let m = null;
     const updateCoords = () => {
+        if (!m) {
+            coordsLabel.textContent = 'Cliquez sur la carte pour poser un point.';
+            wrap.dataset.lat = '';
+            wrap.dataset.lon = '';
+            return;
+        }
         const ll = m.getLatLng();
         coordsLabel.textContent = `📍 ${ll.lat.toFixed(6)}, ${ll.lng.toFixed(6)} — glisser le marqueur ou cliquer sur la carte pour ajuster`;
         wrap.dataset.lat = ll.lat;
         wrap.dataset.lon = ll.lng;
     };
-    m.on('dragend', updateCoords);
-    stepMap.on('click', (e) => { m.setLatLng(e.latlng); updateCoords(); });
-    updateCoords();
+    const placeMarker = (latlng) => {
+        if (!m) {
+            m = L.marker(latlng, { draggable: true, autoPan: true, title: 'Glisser ou cliquer sur la carte pour repositionner le point' }).addTo(stepMap);
+            m.on('dragend', updateCoords);
+        } else {
+            m.setLatLng(latlng);
+        }
+        updateCoords();
+    };
+    if (hasMission) placeMarker(center);
+    else updateCoords();
+    stepMap.on('click', (e) => placeMarker(e.latlng));
+
     if (typeof addFullscreenControl === 'function') addFullscreenControl(stepMap);
     setTimeout(() => stepMap.invalidateSize(), 200);
 }
