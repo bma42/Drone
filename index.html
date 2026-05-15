@@ -5540,7 +5540,7 @@ function initNaturalMap(items, lat, lon) {
     const el = document.getElementById('natural-map');
     if (!el) return;
     if (naturalMap) { naturalMap.remove(); naturalMap = null; }
-    naturalMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 12);
+    naturalMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 14);
     _frTileLayer().addTo(naturalMap);
 
     items.forEach(x => {
@@ -5555,7 +5555,8 @@ function initNaturalMap(items, lat, lon) {
     naturalElongationCircle = STATE.radius
         ? L.circle([lat, lon], { radius: STATE.radius, color: '#d97706', fillColor: '#fbbf24', fillOpacity: .15, weight: 2 }).addTo(naturalMap).bindPopup(`<b>Élongation de vol</b><br>${STATE.radius} m`)
         : null;
-    fitMapToRadius(naturalMap, lat, lon, 5000);
+    // Cadrage ~2 km autour du point (zoom ≈ 14) → meilleur niveau de détail
+    fitMapToRadius(naturalMap, lat, lon, 2000);
     setTimeout(() => naturalMap.invalidateSize(), 100);
 }
 
