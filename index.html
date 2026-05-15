@@ -216,6 +216,9 @@
             50%      { box-shadow: 0 0 0 8px rgba(251,191,36,0); }
         }
         #fast-fly-btn:hover { background:#f59e0b !important; }
+        /* Rafraîchir : icône tourne pendant le fetch manuel */
+        #refresh-btn.refresh-spinning svg { animation: refresh-spin 0.8s linear infinite; transform-origin: 50% 50%; }
+        @keyframes refresh-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         /* Veille aérienne : actif → fond rouge pulsé pour signaler le tracking en cours */
         #air-watch-btn.active {
             background: #dc2626 !important;
@@ -1193,7 +1196,7 @@
             <span class="pill" id="pill-elev"><span class="dot"></span>Altimétrie</span>
             <span class="pill" id="pill-kp"><span class="dot"></span>KP</span>
         </div>
-        <button class="btn btn-ghost" onclick="refreshAuto()" title="Relancer la collecte des données automatiques">
+        <button class="btn btn-ghost" id="refresh-btn" onclick="manualRefresh()" title="Rafraîchir tous les modules pour l'adresse actuelle (ignore le cache météo / altimétrie)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.5-6.4L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.4L3 16"/><path d="M3 21v-5h5"/></svg>
             Rafraîchir
         </button>
@@ -3379,6 +3382,31 @@ function refreshAuto() {
         fetchKp(),
         fetchAircraft(STATE.lat, STATE.lon)
     ]).then(populateRiskTable);
+}
+
+// Rafraîchissement manuel (bouton topbar) : on invalide les caches localStorage
+// (météo 1 h, altimétrie 24 h) pour forcer un vrai fetch, et on garde l'adresse
+// inchangée — on ne fait que relancer la collecte sur STATE.lat / STATE.lon actuels.
+function manualRefresh() {
+    if (STATE.lat == null) {
+        alert('Sélectionnez d\'abord une adresse avant de rafraîchir.');
+        return;
+    }
+    try {
+        const keys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && (k.startsWith('cache_meteo_') || k.startsWith('cache_elev_'))) keys.push(k);
+        }
+        keys.forEach(k => localStorage.removeItem(k));
+    } catch (e) {}
+    const btn = document.getElementById('refresh-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.classList.add('refresh-spinning');
+        setTimeout(() => { btn.disabled = false; btn.classList.remove('refresh-spinning'); }, 1500);
+    }
+    refreshAuto();
 }
 
 /* ===================================================================
