@@ -231,6 +231,27 @@
             0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,.55); }
             50%      { box-shadow: 0 0 0 8px rgba(220,38,38,0); }
         }
+        /* Boutons GPS §1 — dégradés colorés + SVG blancs nets */
+        .gps-btn {
+            flex: 1; padding: 11px 14px;
+            border: 0; border-radius: 8px;
+            font-size: 13px; font-weight: 700;
+            color: #fff; cursor: pointer;
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            box-shadow: 0 2px 6px rgba(15,23,42,.12);
+            transition: transform .12s ease, box-shadow .15s ease, filter .15s ease;
+            letter-spacing: .15px;
+        }
+        .gps-btn svg { width: 17px; height: 17px; flex-shrink: 0; filter: drop-shadow(0 1px 1px rgba(0,0,0,.18)); }
+        .gps-btn:hover  { filter: brightness(1.07); box-shadow: 0 4px 12px rgba(15,23,42,.18); transform: translateY(-1px); }
+        .gps-btn:active { transform: translateY(0); box-shadow: 0 1px 3px rgba(15,23,42,.18); }
+        .gps-btn-manual { background: linear-gradient(135deg, #0b3d91 0%, #1d4ed8 100%); }
+        .gps-btn-geoloc { background: linear-gradient(135deg, #0e7490 0%, #0891b2 100%); }
+        .gps-btn-locate {
+            flex: 0 0 auto;
+            background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+            padding: 9px 14px; font-size: 12px;
+        }
         /* Barre de progression Fast Fly */
         #fastfly-progress {
             position: fixed; top: 120px; left: 50%; transform: translateX(-50%);
@@ -1284,9 +1305,15 @@
                     <label class="lbl">Lieu de l'opération</label>
                     <input type="text" id="addr-input" placeholder="Saisir une adresse, un lieu-dit…" oninput="searchAddress(this.value)" autocomplete="off">
                     <div id="address-list" class="no-print"></div>
-                    <div class="no-print" style="margin-top:8px; display:flex; gap:8px; width:100%;">
-                        <button type="button" onclick="document.getElementById('manual-gps').style.display = document.getElementById('manual-gps').style.display === 'flex' ? 'none' : 'flex';" style="flex:1; background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:9px 10px; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">📍 Saisie GPS manuelle</button>
-                        <button type="button" onclick="useGeolocation()" style="flex:1; background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:9px 10px; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">🛰 Ma position</button>
+                    <div class="no-print" style="margin-top:8px; display:flex; gap:10px; width:100%;">
+                        <button type="button" class="gps-btn gps-btn-manual" onclick="document.getElementById('manual-gps').style.display = document.getElementById('manual-gps').style.display === 'flex' ? 'none' : 'flex';">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                            <span>Saisie GPS manuelle</span>
+                        </button>
+                        <button type="button" class="gps-btn gps-btn-geoloc" onclick="useGeolocation()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
+                            <span>Ma position</span>
+                        </button>
                     </div>
                     <div id="manual-gps" style="display:none; gap:8px; margin-top:8px; flex-wrap:wrap; align-items:flex-end;">
                         <div style="flex:1; min-width:120px;">
@@ -1297,7 +1324,10 @@
                             <label class="lbl" style="margin-bottom:2px;">Longitude</label>
                             <input type="number" id="manual-lon" step="0.000001" placeholder="4.3872">
                         </div>
-                        <button type="button" onclick="useManualGPS()" class="btn btn-ghost" style="background:var(--c-primary); color:#fff; border:0; padding:8px 14px; font-size:12px;">Localiser</button>
+                        <button type="button" class="gps-btn gps-btn-locate" onclick="useManualGPS()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 11 12 18 19 11"/><line x1="12" y1="3" x2="12" y2="18"/></svg>
+                            <span>Localiser</span>
+                        </button>
                     </div>
                     <div id="gps-display" class="hint" style="display:none; margin-top:6px; font-size:12px; color:var(--c-text); background:#f7f9fc; border:1px solid var(--c-border); padding:6px 10px; border-radius:6px; display:flex; gap:14px; flex-wrap:wrap; align-items:center;"></div>
                 </div>
