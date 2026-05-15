@@ -721,57 +721,112 @@
 
         @page {
             size: A4 portrait;
-            margin: 12mm 10mm 14mm 10mm;
+            margin: 14mm 12mm 14mm 12mm;
         }
         @media print {
-            html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
+            html, body {
+                background: #fff !important;
+                margin: 0 !important; padding: 0 !important;
+                font-size: 11px; line-height: 1.4;
+                -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+                orphans: 3; widows: 3;
+            }
             .no-print { display: none !important; }
             .print-only { display: inline !important; }
             .container { max-width: none !important; padding: 0 !important; margin: 0 !important; width: 100% !important; }
             #pdf-area { padding: 0 !important; max-width: none !important; width: 100% !important; }
             #fastfly-progress { display: none !important; }
+
+            /* Modules — anti-coupure entre 2 pages */
             .card {
-                box-shadow: none !important; border: 1px solid #94a3b8 !important;
+                box-shadow: none !important;
+                border: 1px solid #cbd5e1 !important;
                 border-radius: 4px !important;
                 page-break-inside: avoid; break-inside: avoid;
                 margin-bottom: 8px;
             }
-            .card-head { page-break-after: avoid; break-after: avoid; }
             #pdf-area > .card { page-break-inside: avoid; break-inside: avoid; }
-            /* Cartes Leaflet : éviter la coupure et fixer la hauteur */
-            #map, #lines-map, #antennas-map, #ighmap, #ighMap, #ighmap, #seveso-map, #uas-map, #airspace-map, #rail-map, #natural-map, #lines-map {
-                page-break-inside: avoid !important; break-inside: avoid !important;
-                max-height: 240px;
+            .card-head {
+                page-break-after: avoid; break-after: avoid;
+                background: #f1f5fb !important;
+                padding: 8px 14px;
             }
+            .card-body { padding: 12px 14px; }
+            .doc-header {
+                page-break-after: avoid; break-after: avoid;
+                box-shadow: none !important;
+                border: 2px solid var(--c-primary) !important;
+            }
+            .lbl { page-break-after: avoid; break-after: avoid; }
+
+            /* Toutes les cartes Leaflet — taille max + anti-coupure */
+            #map, #map-sat, #lines-map, #antennas-map, #igh-map,
+            #seveso-map, #uas-map, #airspace-map, #rail-map, #natural-map,
+            #captation-map, #zicad-map, #traffic-map, #elev-sat-map,
+            .step-map-canvas, .risk-mini-map {
+                page-break-inside: avoid !important; break-inside: avoid !important;
+                max-height: 240px !important;
+            }
+            /* Contrôles Leaflet masqués (zoom, plein écran, polygone) ; attribution conservée discrète */
+            .leaflet-control-zoom, .leaflet-bar { display: none !important; }
+            .leaflet-control-attribution { font-size: 8px !important; opacity: 0.55 !important; background: transparent !important; }
+
             /* Photos : ne jamais couper une image entre 2 pages */
             img, .step-photos > div { page-break-inside: avoid !important; break-inside: avoid !important; }
-            .step-photos { page-break-inside: avoid; }
-            /* Tables responsives : éviter de couper une ligne */
-            table.tbl tr, .risk-card { page-break-inside: avoid; break-inside: avoid; }
+            .step-photos, .step-maps, .step-map { page-break-inside: avoid; break-inside: avoid; }
+
+            /* Sections internes — anti-coupure */
+            .field-group, .step-item, .sig-box, .elev-svg-card, .metric,
+            .risk-card, .check-option {
+                page-break-inside: avoid; break-inside: avoid;
+            }
+            /* Préservation couleurs frames §21 + dégradés altimétrie */
+            .risk-card, .elev-svg-card { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+            /* Tableaux : entête répété sur chaque page si débordement */
+            table { page-break-inside: auto; }
+            table.tbl tr { page-break-inside: avoid; break-inside: avoid; }
+            thead { display: table-header-group; }
+            tfoot { display: table-footer-group; }
+
             /* SVG (graphes météo, altimétrie) intacts */
             svg { page-break-inside: avoid; break-inside: avoid; }
-            /* Évite que la doc-header se retrouve seule */
-            .doc-header { page-break-after: avoid; break-after: avoid; }
-            .card-head { background: #f1f5fb !important; padding: 8px 14px; }
-            .card-body { padding: 12px 14px; }
-            .doc-header { box-shadow: none !important; border: 2px solid var(--c-primary) !important; }
+
+            /* Inputs / selects / textarea — propre et lisible (style underline neutre) */
             input, select, textarea {
-                border: 0 !important; border-bottom: 1px solid #475569 !important;
-                border-radius: 0 !important; padding: 1px 2px !important; background: transparent !important;
+                border: 0 !important;
+                border-bottom: 1px solid #475569 !important;
+                border-radius: 0 !important;
+                padding: 2px 4px !important;
+                background: transparent !important;
                 box-shadow: none !important;
+                color: #1a2332 !important;
+                font-weight: 500;
             }
+            /* Selects : on supprime le chevron natif et le fond gris des navigateurs */
+            select {
+                appearance: none !important;
+                -webkit-appearance: none !important;
+                -moz-appearance: none !important;
+                background-image: none !important;
+                padding-right: 4px !important;
+            }
+            textarea { min-height: auto !important; resize: none !important; }
+
+            /* Cases à cocher : on n'imprime que celles cochées (avec un ✓ vert) */
             input[type="checkbox"] { display: none; }
             .check-option:has(input[type="checkbox"]:not(:checked)) { display: none !important; }
             .check-option { background: transparent !important; padding: 3px 0; }
-            .check-option label::before {
-                content: "✓ "; color: var(--c-success); font-weight: 700;
-            }
+            .check-option label::before { content: "✓ "; color: var(--c-success); font-weight: 700; }
+
             .redac-tool { display: none !important; }
             .redac-tool:has(input:checked) ~ .redac-label-pdf { display: inline !important; }
             .parachute-tool { display: none !important; }
             .parachute-tool:has(input:checked) ~ .parachute-pdf { display: inline !important; }
             .slider-box { background: transparent; }
             .slider-box input[type="range"] { display: none; }
+
+            /* Indicateurs colorés conservés exacts */
             .metric { background: #fff !important; }
             .metric.alert  { background: #fff5e6 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .metric.danger { background: #fef2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -780,7 +835,7 @@
             .card-status { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .field-group[style*="background"] { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
             .field-group span[style*="background"] { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-            #map .leaflet-control-container { display: none; }
+
             .empty-state { color: #555; }
         }
     </style>
