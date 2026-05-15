@@ -4136,23 +4136,18 @@ function bboxFromCircleLines(lat, lon, radiusM) {
 async function fetchLines(lat, lon) {
     setStatus('lines', 'load');
     document.getElementById('lines-body').innerHTML = `<div class="empty-state">⏳ Récupération des lignes électriques…</div>`;
-    const bbox = bboxFromCircleLines(lat, lon, 5000);
-    // IGN Géoplateforme attend l'ordre lon,lat,lon,lat pour EPSG:4326 (et non lat,lon comme spec OGC standard)
-    const params = new URLSearchParams({
-        service: 'WFS', version: '2.0.0', request: 'GetFeature',
-        typenames: 'BDTOPO_V3:ligne_electrique',
-        bbox: `${bbox[0]},${bbox[1]},${bbox[2]},${bbox[3]},EPSG:4326`,
-        count: 300, outputFormat: 'application/json'
-    });
+    const raw = bboxFromCircleLines(lat, lon, 5000);
+    const bbox = [raw[0].toFixed(6), raw[1].toFixed(6), raw[2].toFixed(6), raw[3].toFixed(6)];
+    const url = _buildIgnWfsUrl('BDTOPO_V3:ligne_electrique', bbox, 300);
     try {
-        const r = await fetchWithTimeout('https://data.geopf.fr/wfs/ows?' + params.toString(), {}, 15000);
+        const r = await fetchWithTimeout(url, {}, 15000);
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const j = await r.json();
         renderLines(j.features || [], lat, lon);
     } catch (e) {
-        console.warn('Lines IGN:', e);
+        console.warn('Lines IGN:', e, 'URL:', url);
         setStatus('lines', 'err', 'indisponible');
-        document.getElementById('lines-body').innerHTML = `<div class="empty-state">Lignes électriques indisponibles (${e.message || 'erreur réseau'}). <button class="no-print" onclick="if(STATE.lat) fetchLines(STATE.lat, STATE.lon)" style="background:transparent; border:0; color:var(--c-accent); cursor:pointer; font-weight:600;">↻ Réessayer</button></div>`;
+        document.getElementById('lines-body').innerHTML = `<div class="empty-state">Lignes électriques indisponibles (${(e && e.message) || e || 'erreur réseau'}). <button class="no-print" onclick="if(STATE.lat) fetchLines(STATE.lat, STATE.lon)" style="background:transparent; border:0; color:var(--c-accent); cursor:pointer; font-weight:600;">↻ Réessayer</button></div>`;
     }
 }
 
@@ -4552,39 +4547,33 @@ async function fetchIgh(lat, lon) {
     setStatus('igh', 'load');
     const body = document.getElementById('igh-body');
     if (body) body.innerHTML = `<div class="empty-state">⏳ Récupération des bâtiments hauts (2 km)…</div>`;
-    // Bbox 2 km
     const dLat = 2000 / 111000;
     const dLon = 2000 / (111000 * Math.cos(lat * Math.PI / 180));
-    const bbox = [lon - dLon, lat - dLat, lon + dLon, lat + dLat];
+    const bbox = [(lon - dLon).toFixed(6), (lat - dLat).toFixed(6), (lon + dLon).toFixed(6), (lat + dLat).toFixed(6)];
     const PAGE = 3000;        // taille de page WFS
     const MAX_PAGES = 5;      // garde-fou : max 15 000 bâtiments (zones ultra-denses type Paris centre)
+    let lastUrl = '';
     try {
         let all = [];
         for (let page = 0; page < MAX_PAGES; page++) {
-            const params = new URLSearchParams({
-                service: 'WFS', version: '2.0.0', request: 'GetFeature',
-                typenames: 'BDTOPO_V3:batiment',
-                bbox: `${bbox[0]},${bbox[1]},${bbox[2]},${bbox[3]},EPSG:4326`,
-                srsname: 'EPSG:4326',
-                count: String(PAGE), startIndex: String(page * PAGE),
-                outputFormat: 'application/json'
-            });
-            const r = await fetchWithTimeout('https://data.geopf.fr/wfs/ows?' + params.toString(), {}, 18000);
+            const url = _buildIgnWfsUrl('BDTOPO_V3:batiment', bbox, PAGE, page * PAGE);
+            lastUrl = url;
+            const r = await fetchWithTimeout(url, {}, 18000);
             if (!r.ok) throw new Error('HTTP ' + r.status);
             const j = await r.json();
             const feats = j.features || [];
             all = all.concat(feats);
             if (body && page > 0) body.innerHTML = `<div class="empty-state">⏳ Récupération des bâtiments… (${all.length})</div>`;
-            if (feats.length < PAGE) break;  // dernière page atteinte
+            if (feats.length < PAGE) break;
         }
         renderIgh(all, lat, lon);
         STATE.igh = all;
         return all;
     } catch (e) {
-        console.warn('IGH IGN:', e);
+        console.warn('IGH IGN:', e, 'URL:', lastUrl);
         setStatus('igh', 'err', 'indisponible');
         document.getElementById('igh-body').innerHTML = `
-            <div class="empty-state" style="margin-bottom:10px;">Bâtiments IGN indisponibles (${e.message || 'erreur réseau'}).</div>
+            <div class="empty-state" style="margin-bottom:10px;">Bâtiments IGN indisponibles (${(e && e.message) || e || 'erreur réseau'}).</div>
             <button class="no-print" onclick="if(STATE.lat) fetchIgh(STATE.lat, STATE.lon)" style="background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer;">↻ Réessayer</button>`;
         return null;
     }
@@ -5025,21 +5014,14 @@ async function fetchRail(lat, lon) {
     // Bbox 3 km
     const dLat = 3000 / 111000;
     const dLon = 3000 / (111000 * Math.cos(lat * Math.PI / 180));
-    const bbox = `${(lon - dLon).toFixed(5)},${(lat - dLat).toFixed(5)},${(lon + dLon).toFixed(5)},${(lat + dLat).toFixed(5)}`;
-
-    const ignParams = new URLSearchParams({
-        service: 'WFS', version: '2.0.0', request: 'GetFeature',
-        typenames: 'BDTOPO_V3:troncon_de_voie_ferree',
-        bbox: bbox + ',EPSG:4326',
-        srsname: 'EPSG:4326',
-        count: 300, outputFormat: 'application/json'
-    });
+    const bbox = [(lon - dLon).toFixed(6), (lat - dLat).toFixed(6), (lon + dLon).toFixed(6), (lat + dLat).toFixed(6)];
+    const ignUrl = _buildIgnWfsUrl('BDTOPO_V3:troncon_de_voie_ferree', bbox, 300);
 
     const sncfAuth = 'Basic ' + btoa(SNCF_KEY + ':');
     const sncfUrl = `https://api.sncf.com/v1/coverage/sncf/coord/${lon}%3B${lat}/places_nearby?distance=3000&count=15&type%5B%5D=stop_area`;
 
     const [ignRes, sncfRes] = await Promise.allSettled([
-        fetchWithTimeout('https://data.geopf.fr/wfs/ows?' + ignParams.toString(), {}, 15000).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+        fetchWithTimeout(ignUrl, {}, 15000).then(r => r.ok ? r.json() : Promise.reject(r.status)),
         fetchWithTimeout(sncfUrl, { headers: { 'Authorization': sncfAuth } }, 12000).then(r => r.ok ? r.json() : Promise.reject(r.status))
     ]);
 
@@ -5441,29 +5423,42 @@ async function fetchNaturalSites(lat, lon) {
 
     const dLat = 5000 / 111000;
     const dLon = 5000 / (111000 * Math.cos(lat * Math.PI / 180));
-    const bbox = [lon - dLon, lat - dLat, lon + dLon, lat + dLat];
-    const params = new URLSearchParams({
-        service: 'WFS', version: '2.0.0', request: 'GetFeature',
-        typenames: 'BDTOPO_V3:parc_ou_reserve',
-        bbox: `${bbox[0]},${bbox[1]},${bbox[2]},${bbox[3]},EPSG:4326`,
-        srsname: 'EPSG:4326',
-        count: 200, outputFormat: 'application/json'
-    });
+    // Cap des coordonnées à 6 décimales : évite les erreurs URL Safari sur les flottants
+    // longs (ex. 3.022530000000001) et reste très précis (~11 cm).
+    const bbox = [(lon - dLon).toFixed(6), (lat - dLat).toFixed(6), (lon + dLon).toFixed(6), (lat + dLat).toFixed(6)];
+    const url = _buildIgnWfsUrl('BDTOPO_V3:parc_ou_reserve', bbox, 200);
     try {
-        const r = await fetchWithTimeout('https://data.geopf.fr/wfs/ows?' + params.toString(), {}, 15000);
+        const r = await fetchWithTimeout(url, {}, 15000);
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const j = await r.json();
         renderNaturalSites(j.features || [], lat, lon);
         STATE.natural = j.features || [];
         return j.features || [];
     } catch (e) {
-        console.warn('Natural sites IGN:', e);
+        console.warn('Natural sites IGN:', e, 'URL:', url);
         setStatus('natural', 'err', 'indisponible');
         document.getElementById('natural-body').innerHTML = `
-            <div class="empty-state" style="margin-bottom:10px;">Sites naturels indisponibles (${e.message || 'erreur réseau'}).</div>
+            <div class="empty-state" style="margin-bottom:10px;">Sites naturels indisponibles (${(e && e.message) || e || 'erreur réseau'}).</div>
             <button class="no-print" onclick="if(STATE.lat) fetchNaturalSites(STATE.lat, STATE.lon)" style="background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer;">↻ Réessayer</button>`;
         return null;
     }
+}
+
+// Constructeur d'URL WFS IGN Géoplateforme — toutes les valeurs sont casted en string
+// explicitement (Safari iOS rejette parfois les nombres dans URLSearchParams).
+// typenames est conservé en minuscules (compat) mais typeNames (cap N) est aussi standard.
+function _buildIgnWfsUrl(typeName, bbox, count, startIndex) {
+    const params = new URLSearchParams();
+    params.set('service', 'WFS');
+    params.set('version', '2.0.0');
+    params.set('request', 'GetFeature');
+    params.set('typeNames', String(typeName));
+    params.set('bbox', `${bbox[0]},${bbox[1]},${bbox[2]},${bbox[3]},EPSG:4326`);
+    params.set('srsName', 'EPSG:4326');
+    params.set('count', String(count || 200));
+    if (startIndex != null) params.set('startIndex', String(startIndex));
+    params.set('outputFormat', 'application/json');
+    return 'https://data.geopf.fr/wfs/ows?' + params.toString();
 }
 
 function naturalCenter(geom) {
@@ -5793,26 +5788,20 @@ async function fetchUasZones(lat, lon) {
     // Bbox 10 km autour du point
     const dLat = 10000 / 111000;
     const dLon = 10000 / (111000 * Math.cos(lat * Math.PI / 180));
-    const bbox = [lon - dLon, lat - dLat, lon + dLon, lat + dLat];
-    const params = new URLSearchParams({
-        service: 'WFS', version: '2.0.0', request: 'GetFeature',
-        typenames: 'TRANSPORTS.DRONES.RESTRICTIONS:carte_restriction_drones_lf',
-        bbox: `${bbox[0]},${bbox[1]},${bbox[2]},${bbox[3]},EPSG:4326`,
-        srsname: 'EPSG:4326',
-        count: 200, outputFormat: 'application/json'
-    });
+    const bbox = [(lon - dLon).toFixed(6), (lat - dLat).toFixed(6), (lon + dLon).toFixed(6), (lat + dLat).toFixed(6)];
+    const url = _buildIgnWfsUrl('TRANSPORTS.DRONES.RESTRICTIONS:carte_restriction_drones_lf', bbox, 200);
     try {
-        const r = await fetchWithTimeout('https://data.geopf.fr/wfs/ows?' + params.toString(), {}, 15000);
+        const r = await fetchWithTimeout(url, {}, 15000);
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const j = await r.json();
         renderUasZones(j.features || [], lat, lon);
         STATE.uas = j.features || [];
         return j.features || [];
     } catch (e) {
-        console.warn('UAS zones IGN:', e);
+        console.warn('UAS zones IGN:', e, 'URL:', url);
         setStatus('uas', 'err', 'indisponible');
         document.getElementById('uas-body').innerHTML = `
-            <div class="empty-state" style="margin-bottom:10px;">Zones drones indisponibles (${e.message || 'erreur réseau'}).</div>
+            <div class="empty-state" style="margin-bottom:10px;">Zones drones indisponibles (${(e && e.message) || e || 'erreur réseau'}).</div>
             <button class="no-print" onclick="if(STATE.lat) fetchUasZones(STATE.lat, STATE.lon)" style="background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer;">↻ Réessayer</button>`;
         return null;
     }
