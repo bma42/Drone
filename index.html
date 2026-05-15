@@ -1316,6 +1316,36 @@
             </div>
         </div>
 
+        <!-- Barre missions (sauvegarde / chargement) — exclue du PDF -->
+        <section class="card no-print" id="missions-bar">
+            <div class="card-head">
+                <div class="card-num">📁</div>
+                <div class="card-title">Missions sauvegardées<span class="sub">Charger une mission existante (missions.json + brouillons locaux) ou enregistrer la mission en cours</span></div>
+            </div>
+            <div class="card-body" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                <select id="mission-select" onchange="loadSelectedMission()" style="flex:1; min-width:240px;">
+                    <option value="">— Charger une mission —</option>
+                </select>
+                <button type="button" class="act-btn act-btn-info" onclick="promptSaveMission()" title="Enregistrer la mission actuelle (localStorage + téléchargement JSON)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    Enregistrer
+                </button>
+                <button type="button" class="act-btn act-btn-neutral" onclick="downloadMissionsJson()" title="Télécharger missions.json à committer à la racine du repo">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Exporter
+                </button>
+                <label class="act-btn act-btn-neutral" style="cursor:pointer;" title="Importer un missions.json">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Importer
+                    <input type="file" accept="application/json,.json" style="display:none;" onchange="importMissionsFile(this.files[0]); this.value='';">
+                </label>
+                <button type="button" id="mission-delete-btn" class="act-btn act-btn-warning" onclick="deleteSelectedMission()" disabled title="Supprimer la mission sélectionnée (brouillon local uniquement)" style="opacity:.5;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                    Supprimer
+                </button>
+            </div>
+        </section>
+
         <!-- §1 Zone -->
         <section class="card">
             <div class="card-head">
@@ -9908,6 +9938,211 @@ function _restoreCardNumbers() {
 }
 window.addEventListener('beforeprint', _renumberCardsForPrint);
 window.addEventListener('afterprint', _restoreCardNumbers);
+
+/* ===================================================================
+   SAUVEGARDE / CHARGEMENT DE MISSIONS
+   - Source partagée  : missions.json à la racine du repo (versionné).
+   - Source locale    : localStorage 'drone-missions-local' (brouillons
+     non encore committés). Préfixés « 📝 » dans le sélecteur.
+   - Bouton Enregistrer : ajoute en local + propose le téléchargement
+     du missions.json fusionné pour commit manuel.
+   =================================================================== */
+
+const MISSIONS_LOCAL_KEY = 'drone-missions-local';
+let _missionsRemote = [];   // contenu de missions.json (committé)
+let _missionsLocal = [];    // contenu localStorage (non committé)
+
+function _readLocalMissions() {
+    try { return JSON.parse(localStorage.getItem(MISSIONS_LOCAL_KEY) || '[]'); }
+    catch (e) { return []; }
+}
+function _writeLocalMissions(arr) {
+    try { localStorage.setItem(MISSIONS_LOCAL_KEY, JSON.stringify(arr)); }
+    catch (e) { console.warn('localStorage plein:', e); alert('Stockage local saturé — exporte et nettoie.'); }
+}
+
+async function loadMissionsList() {
+    _missionsLocal = _readLocalMissions();
+    _missionsRemote = [];
+    try {
+        const r = await fetchWithTimeout('missions.json', {}, 6000);
+        if (r.ok) {
+            const j = await r.json();
+            _missionsRemote = (j.missions || []).filter(m => m && m.id);
+        }
+    } catch (e) { /* fichier absent ou cache vide — OK */ }
+    _renderMissionSelect();
+}
+
+function _renderMissionSelect() {
+    const sel = document.getElementById('mission-select');
+    if (!sel) return;
+    const current = sel.value;
+    const remoteOpts = _missionsRemote.map(m =>
+        `<option value="remote:${m.id}">${m.name || m.id}${m.savedAt ? ' — ' + (m.savedAt.slice(0, 16).replace('T', ' ')) : ''}</option>`).join('');
+    const localOpts = _missionsLocal.map(m =>
+        `<option value="local:${m.id}">📝 ${m.name || m.id}${m.savedAt ? ' — ' + (m.savedAt.slice(0, 16).replace('T', ' ')) : ''}</option>`).join('');
+    sel.innerHTML = `<option value="">— Charger une mission —</option>`
+        + (remoteOpts ? `<optgroup label="missions.json (versionné)">${remoteOpts}</optgroup>` : '')
+        + (localOpts ? `<optgroup label="Brouillons locaux">${localOpts}</optgroup>` : '');
+    sel.value = current;
+    const delBtn = document.getElementById('mission-delete-btn');
+    if (delBtn) {
+        const isLocal = sel.value.startsWith('local:');
+        delBtn.disabled = !isLocal;
+        delBtn.style.opacity = isLocal ? '1' : '.5';
+    }
+}
+
+function _findMission(value) {
+    if (!value) return null;
+    const [kind, id] = value.split(':', 2);
+    const src = kind === 'remote' ? _missionsRemote : _missionsLocal;
+    return src.find(m => m.id === id) || null;
+}
+
+/* Capture intégrale de l'état du formulaire + STATE. Inclut le HTML des
+   conteneurs dynamiques (tableaux, étapes, vecteurs custom) pour pouvoir
+   restaurer les lignes ajoutées à la main. */
+function serializeMission() {
+    const data = {
+        version: 1,
+        savedAt: new Date().toISOString(),
+        state: {
+            lat: STATE.lat, lon: STATE.lon, dept: STATE.dept,
+            address: STATE.address, radius: STATE.radius, elev: STATE.elev
+        },
+        fields: {},
+        innerHtml: {}
+    };
+    document.querySelectorAll('input[id], select[id], textarea[id]').forEach(el => {
+        if (el.type === 'file' || el.id === 'mission-select') return;
+        if (el.type === 'checkbox' || el.type === 'radio') data.fields[el.id] = !!el.checked;
+        else data.fields[el.id] = el.value;
+    });
+    // Radios sans id (group par name) — capture du name + value coché
+    document.querySelectorAll('input[type="radio"][name]').forEach(el => {
+        if (el.id) return;
+        if (el.checked) data.fields['__radio__' + el.name] = el.value;
+    });
+    ['auth-drone-tbody', 'custom-vectors', 'dynamic-container', 'risk-tbody'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) data.innerHtml[id] = el.innerHTML;
+    });
+    return data;
+}
+
+function restoreMission(data) {
+    if (!data) return;
+    Object.entries(data.fields || {}).forEach(([id, val]) => {
+        if (id.startsWith('__radio__')) {
+            const name = id.slice(9);
+            document.querySelectorAll(`input[type="radio"][name="${name}"]`).forEach(r => {
+                r.checked = (r.value === val);
+                try { r.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+            });
+            return;
+        }
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!val;
+        else el.value = val;
+        try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+    });
+    Object.entries(data.innerHtml || {}).forEach(([id, html]) => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = html;
+    });
+    const s = data.state || {};
+    if (s.lat != null && s.lon != null && typeof selectAddr === 'function') {
+        selectAddr(s.address || `(${s.lat},${s.lon})`, s.lat, s.lon, s.dept || '');
+    }
+    if (typeof checkAuthEmpty === 'function') checkAuthEmpty();
+}
+
+function loadSelectedMission() {
+    const sel = document.getElementById('mission-select');
+    if (!sel || !sel.value) return;
+    const m = _findMission(sel.value);
+    if (!m) { alert('Mission introuvable.'); return; }
+    restoreMission(m);
+    _renderMissionSelect();
+}
+
+function promptSaveMission() {
+    const def = (STATE.address || '') + ' — ' + new Date().toLocaleString('fr-FR');
+    const name = prompt('Nom de la mission :', def);
+    if (!name) return;
+    const data = serializeMission();
+    data.id = 'm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+    data.name = name;
+    _missionsLocal = _readLocalMissions();
+    _missionsLocal.push(data);
+    _writeLocalMissions(_missionsLocal);
+    _renderMissionSelect();
+    document.getElementById('mission-select').value = 'local:' + data.id;
+    alert('Mission enregistrée en local. Utilise « Exporter » puis commit missions.json pour la partager.');
+}
+
+function deleteSelectedMission() {
+    const sel = document.getElementById('mission-select');
+    if (!sel || !sel.value.startsWith('local:')) return;
+    if (!confirm('Supprimer ce brouillon local ?')) return;
+    const id = sel.value.slice(6);
+    _missionsLocal = _readLocalMissions().filter(m => m.id !== id);
+    _writeLocalMissions(_missionsLocal);
+    _renderMissionSelect();
+}
+
+function downloadMissionsJson() {
+    // Fusionne remote + local en dédupliquant par id (les local écrasent les remote homonymes).
+    const map = new Map();
+    _missionsRemote.forEach(m => map.set(m.id, m));
+    _readLocalMissions().forEach(m => map.set(m.id, m));
+    const merged = {
+        _meta: {
+            description: 'Missions de vol drone — fichier versionné dans git, à committer à la racine du repo.',
+            format_version: 1,
+            exportedAt: new Date().toISOString()
+        },
+        missions: Array.from(map.values()).sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''))
+    };
+    const blob = new Blob([JSON.stringify(merged, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'missions.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+function importMissionsFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const j = JSON.parse(e.target.result);
+            const arr = (j.missions || []).filter(m => m && m.id);
+            if (!arr.length) { alert('Aucune mission valide trouvée dans ce fichier.'); return; }
+            // On les ajoute aux brouillons locaux pour que l'utilisateur puisse les
+            // re-exporter (rien n'écrase missions.json sans son action).
+            const local = _readLocalMissions();
+            const existing = new Set(local.map(m => m.id));
+            arr.forEach(m => { if (!existing.has(m.id)) local.push(m); });
+            _writeLocalMissions(local);
+            _missionsLocal = local;
+            _renderMissionSelect();
+            alert(`${arr.length} mission(s) importée(s) en local.`);
+        } catch (err) { alert('JSON invalide : ' + err.message); }
+    };
+    reader.readAsText(file);
+}
+
+// Charge la liste au démarrage
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadMissionsList);
+} else {
+    loadMissionsList();
+}
 
 // Impression / sauvegarde PDF native du navigateur — pagination correcte, pas de coupure
 function exportPDF() {
