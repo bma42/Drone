@@ -6890,6 +6890,13 @@ const ELEV_GRADIENT_DEFS = `<defs>
         <stop offset="60%"  stop-color="rgba(255,255,255,0.18)"/>
         <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
     </linearGradient>
+    <!-- Backdrop bleu→vert intégré au SVG (résiste à l'export PDF, qui peut sinon
+         stripper le background CSS du parent et laisser le dégradé blanc sur fond blanc). -->
+    <linearGradient id="elev-card-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%"   stop-color="#0b3d91"/>
+        <stop offset="45%"  stop-color="#082f70"/>
+        <stop offset="100%" stop-color="#1a8754"/>
+    </linearGradient>
 </defs>`;
 // Debounce du refresh complet de §16 quand on bouge le slider Hauteur max
 let _elevHeightDebounce = null;
@@ -7313,6 +7320,9 @@ function renderElevation(elevs, radius) {
                 </div>
                 <svg viewBox="0 0 ${W} ${H + 38}" style="display:block; width:100%; height:auto; overflow:visible;">
                     ${ELEV_GRADIENT_DEFS}
+                    <!-- Backdrop bleu→vert intégré au SVG → garantit le dégradé même
+                         si l'export PDF supprime le background CSS du parent. -->
+                    <rect x="0" y="0" width="${W}" height="${H + 38}" fill="url(#elev-card-bg)" rx="0"/>
                     ${takeoff}
                     ${polyline}
                     ${ceilLine}
@@ -7413,6 +7423,7 @@ function renderElevPreview(series, radius) {
             </div>
             <svg viewBox="0 0 ${W} ${H}" style="display:block; width:100%; height:auto; overflow:visible;">
                 ${ELEV_GRADIENT_DEFS}
+                <rect x="0" y="0" width="${W}" height="${H}" fill="url(#elev-card-bg)"/>
                 <path d="${fillPathDown}" fill="url(#elev-fill-grad)" stroke="none"/>
                 <path d="${path}" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" class="elev-real-path" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5));"/>
                 <line x1="${W/2}" y1="${PT}" x2="${W/2}" y2="${H-PB}" stroke="#fca5a5" stroke-width="1" stroke-dasharray="3,2" opacity="0.85"/>
