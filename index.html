@@ -1251,6 +1251,10 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px; height:14px;"><path d="M3 19h18"/><path d="M5 19l7-12 7 12"/><circle cx="12" cy="13" r="1.5" fill="currentColor"/></svg>
             Veille aérienne
         </button>
+        <button class="btn" id="live-mode-btn" onclick="enterLiveMode()" title="Mode plein écran : ADS-B + météo + chrono vols par télépilote" style="background:#0b3d91; color:#fff; font-weight:700;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px; height:14px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Live Mode
+        </button>
         <button class="btn" id="fast-fly-btn" onclick="fastFly()" title="Position GPS + heure actuelle (vol immédiat)" style="background:#fbbf24; color:#1f2937; font-weight:800; box-shadow:0 0 0 0 rgba(251,191,36,.6); animation:fastfly-pulse 2s ease-in-out infinite;">
             <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px; height:14px;"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
             Fast Fly
@@ -10643,6 +10647,391 @@ window.addEventListener('load', () => {
 
     fetchKp().catch(() => {});
 });
+
+/* ===================================================================
+   LIVE MODE — Plein écran : ADS-B + météo live + chrono vols par agent
+   =================================================================== */
+
+const LIVE_PILOTS_KEY = 'drone-live-pilots';
+const LIVE_FLIGHTS_KEY = 'drone-live-flights';
+let _liveAdsbInterval = null, _liveMeteoInterval = null, _liveTickInterval = null;
+let _liveAdsbMap = null;
+
+function _livePilots() {
+    try { return JSON.parse(localStorage.getItem(LIVE_PILOTS_KEY) || '[]'); }
+    catch (e) { return []; }
+}
+function _setLivePilots(arr) {
+    localStorage.setItem(LIVE_PILOTS_KEY, JSON.stringify(arr));
+}
+function _liveFlights() {
+    try { return JSON.parse(localStorage.getItem(LIVE_FLIGHTS_KEY) || '[]'); }
+    catch (e) { return []; }
+}
+function _setLiveFlights(arr) {
+    localStorage.setItem(LIVE_FLIGHTS_KEY, JSON.stringify(arr));
+}
+
+function enterLiveMode() {
+    let overlay = document.getElementById('live-mode-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'live-mode-overlay';
+        overlay.innerHTML = _liveModeHtml();
+        document.body.appendChild(overlay);
+    }
+    overlay.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); } catch (e) {}
+    _liveRenderPilots();
+    _liveRenderFlights();
+    _liveRefreshAdsb();
+    _liveRefreshMeteo();
+    _liveAdsbInterval = setInterval(_liveRefreshAdsb, 30000);
+    _liveMeteoInterval = setInterval(_liveRefreshMeteo, 5 * 60000);
+    _liveTickInterval = setInterval(_liveTickActiveFlights, 1000);
+}
+
+function exitLiveMode() {
+    const overlay = document.getElementById('live-mode-overlay');
+    if (overlay) overlay.style.display = 'none';
+    document.body.style.overflow = '';
+    try { document.exitFullscreen && document.exitFullscreen(); } catch (e) {}
+    if (_liveAdsbInterval) { clearInterval(_liveAdsbInterval); _liveAdsbInterval = null; }
+    if (_liveMeteoInterval) { clearInterval(_liveMeteoInterval); _liveMeteoInterval = null; }
+    if (_liveTickInterval) { clearInterval(_liveTickInterval); _liveTickInterval = null; }
+    if (_liveAdsbMap) { try { _liveAdsbMap.remove(); } catch (e) {} _liveAdsbMap = null; }
+}
+
+function _liveModeHtml() {
+    return `
+    <style>
+        #live-mode-overlay { position: fixed; inset: 0; z-index: 99999; background: #0a1224; color: #e2e8f0; display: none; flex-direction: column; font-family: inherit; }
+        #live-mode-overlay .lm-bar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: #050a16; border-bottom: 1px solid #1e293b; }
+        #live-mode-overlay .lm-bar .lm-title { font-weight: 700; font-size: 14px; letter-spacing: .5px; color: #fff; display: flex; align-items: center; gap: 8px; }
+        #live-mode-overlay .lm-bar .lm-title .lm-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: lm-pulse 1.4s infinite; }
+        @keyframes lm-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(.85); } }
+        #live-mode-overlay .lm-bar .lm-clock { color: #fbbf24; font-weight: 700; font-variant-numeric: tabular-nums; font-size: 14px; margin-left: auto; }
+        #live-mode-overlay .lm-bar button { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 6px 12px; border-radius: 5px; font-size: 12px; cursor: pointer; font-weight: 600; }
+        #live-mode-overlay .lm-bar button:hover { background: #334155; }
+        #live-mode-overlay .lm-bar .lm-exit { background: #dc2626; border-color: #dc2626; color: #fff; }
+        #live-mode-overlay .lm-bar .lm-exit:hover { background: #b91c1c; }
+        #live-mode-overlay .lm-grid { flex: 1; display: grid; grid-template-columns: 1fr 420px; grid-template-rows: 1fr 1fr; gap: 8px; padding: 8px; overflow: hidden; }
+        #live-mode-overlay .lm-panel { background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; padding: 12px; overflow: auto; }
+        #live-mode-overlay .lm-adsb { grid-row: 1 / 3; padding: 0; position: relative; overflow: hidden; }
+        #live-mode-overlay .lm-adsb-map { width: 100%; height: 100%; }
+        #live-mode-overlay .lm-panel h3 { margin: 0 0 10px; font-size: 13px; color: #93c5fd; text-transform: uppercase; letter-spacing: .8px; border-bottom: 1px solid #1e293b; padding-bottom: 6px; }
+        #live-mode-overlay .lm-meteo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+        #live-mode-overlay .lm-tile { background: #1e293b; border-radius: 6px; padding: 8px 10px; }
+        #live-mode-overlay .lm-tile-k { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
+        #live-mode-overlay .lm-tile-v { font-size: 22px; font-weight: 800; color: #fff; line-height: 1.1; margin-top: 2px; font-variant-numeric: tabular-nums; }
+        #live-mode-overlay .lm-tile-u { font-size: 11px; color: #cbd5e1; font-weight: 500; margin-left: 2px; }
+        #live-mode-overlay .lm-tile-t { font-size: 10px; color: #fbbf24; margin-top: 2px; }
+        #live-mode-overlay .lm-tile.ok { border-left: 3px solid #16a34a; }
+        #live-mode-overlay .lm-tile.warn { border-left: 3px solid #eab308; }
+        #live-mode-overlay .lm-tile.danger { border-left: 3px solid #dc2626; }
+        #live-mode-overlay .lm-flight-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 5px; margin-bottom: 5px; background: #1e293b; font-size: 12px; }
+        #live-mode-overlay .lm-flight-row.active { background: #15803d; }
+        #live-mode-overlay .lm-flight-row .lm-pilot { flex: 1; font-weight: 600; color: #fff; }
+        #live-mode-overlay .lm-flight-row .lm-time { font-family: ui-monospace, monospace; font-weight: 700; color: #fbbf24; font-variant-numeric: tabular-nums; }
+        #live-mode-overlay .lm-flight-row .lm-mat { font-size: 10px; color: #94a3b8; }
+        #live-mode-overlay .lm-flight-row button { background: #0f172a; color: #fbbf24; border: 1px solid #334155; padding: 4px 9px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 700; }
+        #live-mode-overlay .lm-flight-row.active button { background: #fbbf24; color: #1f2937; }
+        #live-mode-overlay .lm-flight-row button:hover { filter: brightness(1.15); }
+        #live-mode-overlay .lm-add-pilot { display: flex; gap: 6px; margin-top: 8px; }
+        #live-mode-overlay .lm-add-pilot input { flex: 1; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; padding: 5px 8px; border-radius: 4px; font-size: 12px; }
+        #live-mode-overlay .lm-add-pilot button { background: #0b3d91; color: #fff; border: 0; padding: 5px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 600; }
+        #live-mode-overlay .lm-totals { font-size: 11px; color: #94a3b8; margin-top: 8px; padding-top: 8px; border-top: 1px solid #1e293b; }
+        #live-mode-overlay .lm-adsb-info { position: absolute; top: 10px; left: 10px; background: rgba(15,23,42,.85); color: #fff; padding: 6px 10px; border-radius: 5px; font-size: 11px; z-index: 1000; font-weight: 600; }
+        #live-mode-overlay .lm-meteo-updated { font-size: 10px; color: #64748b; text-align: right; margin-top: 6px; }
+    </style>
+    <div class="lm-bar">
+        <div class="lm-title"><span class="lm-dot"></span> LIVE MODE</div>
+        <button onclick="_liveOpenPilotsConfig()">⚙ Configurer agents</button>
+        <button onclick="_liveStopAllFlights()">⏹ Tout arrêter</button>
+        <div class="lm-clock" id="lm-clock">--:--:--</div>
+        <button class="lm-exit" onclick="exitLiveMode()">✕ Quitter</button>
+    </div>
+    <div class="lm-grid">
+        <div class="lm-panel lm-adsb">
+            <div class="lm-adsb-info" id="lm-adsb-info">Chargement ADS-B…</div>
+            <div class="lm-adsb-map" id="lm-adsb-map"></div>
+        </div>
+        <div class="lm-panel">
+            <h3>Météo live</h3>
+            <div class="lm-meteo-grid" id="lm-meteo-grid">
+                <div class="lm-tile"><div class="lm-tile-k">Chargement…</div></div>
+            </div>
+            <div class="lm-meteo-updated" id="lm-meteo-updated"></div>
+        </div>
+        <div class="lm-panel">
+            <h3>Vols en cours / total du jour</h3>
+            <div id="lm-flights-list"></div>
+            <div class="lm-totals" id="lm-totals"></div>
+        </div>
+    </div>
+    <div id="lm-pilots-config" style="display:none; position:absolute; inset:60px 30% 30px 30%; background:#0f172a; border:1px solid #334155; border-radius:8px; padding:18px; z-index:100; overflow:auto;">
+        <h3 style="margin:0 0 10px; color:#93c5fd; font-size:13px; letter-spacing:.8px;">CONFIGURATION DES TÉLÉPILOTES</h3>
+        <div id="lm-pilots-list" style="display:flex; flex-direction:column; gap:5px;"></div>
+        <div class="lm-add-pilot">
+            <input type="text" id="lm-new-pilot-mat" placeholder="Matricule" style="max-width:90px;">
+            <input type="text" id="lm-new-pilot-nom" placeholder="Nom Prénom">
+            <button onclick="_liveAddPilot()">+ Ajouter</button>
+        </div>
+        <button onclick="document.getElementById('lm-pilots-config').style.display='none'" style="margin-top:10px; background:#1e293b; color:#e2e8f0; border:1px solid #334155; padding:6px 12px; border-radius:4px; font-size:12px; cursor:pointer;">Fermer</button>
+    </div>
+    `;
+}
+
+function _liveOpenPilotsConfig() {
+    document.getElementById('lm-pilots-config').style.display = 'block';
+    _liveRenderPilotsConfig();
+}
+function _liveRenderPilotsConfig() {
+    const list = document.getElementById('lm-pilots-list');
+    if (!list) return;
+    const pilots = _livePilots();
+    list.innerHTML = pilots.length ? pilots.map((p, idx) => `
+        <div style="display:flex; gap:6px; align-items:center; background:#1e293b; padding:5px 8px; border-radius:4px;">
+            <span style="font-family:ui-monospace,monospace; color:#fbbf24; font-weight:700; min-width:80px;">${p.mat}</span>
+            <span style="flex:1; color:#e2e8f0;">${p.nom}</span>
+            <button onclick="_liveRemovePilot(${idx})" style="background:#7f1d1d; color:#fff; border:0; padding:3px 8px; border-radius:3px; font-size:11px; cursor:pointer;">×</button>
+        </div>`).join('') : '<div style="color:#64748b; font-size:12px; padding:8px;">Aucun télépilote configuré.</div>';
+}
+function _liveAddPilot() {
+    const mat = document.getElementById('lm-new-pilot-mat').value.trim();
+    const nom = document.getElementById('lm-new-pilot-nom').value.trim();
+    if (!mat || !nom) return;
+    const pilots = _livePilots();
+    pilots.push({ mat, nom });
+    _setLivePilots(pilots);
+    document.getElementById('lm-new-pilot-mat').value = '';
+    document.getElementById('lm-new-pilot-nom').value = '';
+    _liveRenderPilotsConfig();
+    _liveRenderFlights();
+}
+function _liveRemovePilot(idx) {
+    const pilots = _livePilots();
+    pilots.splice(idx, 1);
+    _setLivePilots(pilots);
+    _liveRenderPilotsConfig();
+    _liveRenderFlights();
+}
+
+function _liveRenderPilots() {
+    // Si aucun télépilote, on ouvre directement le configurateur.
+    if (!_livePilots().length) _liveOpenPilotsConfig();
+}
+
+function _liveRenderFlights() {
+    const wrap = document.getElementById('lm-flights-list');
+    if (!wrap) return;
+    const pilots = _livePilots();
+    if (!pilots.length) {
+        wrap.innerHTML = '<div style="color:#64748b; font-size:12px; padding:10px; text-align:center;">⚙ Ajoute d\'abord des télépilotes via « Configurer agents ».</div>';
+        document.getElementById('lm-totals').innerHTML = '';
+        return;
+    }
+    const flights = _liveFlights();
+    const today = new Date().toISOString().slice(0, 10);
+    wrap.innerHTML = pilots.map(p => {
+        const active = flights.find(f => f.mat === p.mat && !f.stoppedAt);
+        const todays = flights.filter(f => f.mat === p.mat && f.startedAt.startsWith(today) && f.stoppedAt);
+        const totalMs = todays.reduce((s, f) => s + (new Date(f.stoppedAt) - new Date(f.startedAt)), 0);
+        const totalStr = _liveFormatDuration(totalMs);
+        const liveStr = active ? _liveFormatDuration(Date.now() - new Date(active.startedAt)) : '00:00:00';
+        return `<div class="lm-flight-row ${active ? 'active' : ''}">
+            <div>
+                <div class="lm-mat">${p.mat}</div>
+                <div class="lm-pilot">${p.nom}</div>
+            </div>
+            <div style="margin-left:auto; text-align:right;">
+                <div class="lm-time" data-mat="${p.mat}">${liveStr}</div>
+                <div style="font-size:10px; color:#94a3b8;">cumul jour : ${totalStr}</div>
+            </div>
+            <button onclick="_liveToggleFlight('${p.mat.replace(/'/g, "\\'")}')">
+                ${active ? '⏹ Stop' : '▶ Décoller'}
+            </button>
+        </div>`;
+    }).join('');
+    _liveUpdateTotals();
+}
+
+function _liveFormatDuration(ms) {
+    if (!ms || ms < 0) return '00:00:00';
+    const s = Math.floor(ms / 1000);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+}
+
+function _liveToggleFlight(mat) {
+    const flights = _liveFlights();
+    const active = flights.find(f => f.mat === mat && !f.stoppedAt);
+    if (active) {
+        active.stoppedAt = new Date().toISOString();
+    } else {
+        flights.push({ mat, startedAt: new Date().toISOString(), stoppedAt: null });
+    }
+    _setLiveFlights(flights);
+    _liveRenderFlights();
+}
+
+function _liveStopAllFlights() {
+    const flights = _liveFlights();
+    const now = new Date().toISOString();
+    let n = 0;
+    flights.forEach(f => { if (!f.stoppedAt) { f.stoppedAt = now; n++; } });
+    if (n) {
+        _setLiveFlights(flights);
+        _liveRenderFlights();
+    }
+}
+
+function _liveTickActiveFlights() {
+    const clock = document.getElementById('lm-clock');
+    if (clock) clock.textContent = new Date().toLocaleTimeString('fr-FR');
+    const flights = _liveFlights();
+    const now = Date.now();
+    flights.filter(f => !f.stoppedAt).forEach(f => {
+        const el = document.querySelector(`[data-mat="${f.mat}"]`);
+        if (el) el.textContent = _liveFormatDuration(now - new Date(f.startedAt));
+    });
+}
+
+function _liveUpdateTotals() {
+    const flights = _liveFlights();
+    const today = new Date().toISOString().slice(0, 10);
+    const todayFlights = flights.filter(f => f.startedAt.startsWith(today));
+    const completed = todayFlights.filter(f => f.stoppedAt);
+    const totalMs = completed.reduce((s, f) => s + (new Date(f.stoppedAt) - new Date(f.startedAt)), 0);
+    document.getElementById('lm-totals').innerHTML =
+        `Total jour : <strong style="color:#fbbf24;">${_liveFormatDuration(totalMs)}</strong> · ${completed.length} vol(s) terminé(s) · ${todayFlights.filter(f => !f.stoppedAt).length} en cours`;
+}
+
+async function _liveRefreshAdsb() {
+    const info = document.getElementById('lm-adsb-info');
+    if (STATE.lat == null) { if (info) info.textContent = 'Sélectionne une mission avant.'; return; }
+    if (!_liveAdsbMap && typeof L !== 'undefined') {
+        _liveAdsbMap = L.map('lm-adsb-map', { zoomControl: true, attributionControl: false })
+            .setView([STATE.lat, STATE.lon], 11);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(_liveAdsbMap);
+        L.circle([STATE.lat, STATE.lon], { radius: 8000, color: '#fbbf24', weight: 2, fillOpacity: .05 }).addTo(_liveAdsbMap);
+        L.marker([STATE.lat, STATE.lon]).addTo(_liveAdsbMap);
+        _liveAdsbMap._planes = L.layerGroup().addTo(_liveAdsbMap);
+    }
+    try {
+        const url = `https://api.adsb.lol/v2/lat/${STATE.lat}/lon/${STATE.lon}/dist/15`;
+        const r = await fetchWithTimeout(url, {}, 10000);
+        if (!r.ok) throw new Error(r.status);
+        const j = await r.json();
+        const planes = (j.ac || []).filter(a => a.lat != null && a.lon != null);
+        if (_liveAdsbMap && _liveAdsbMap._planes) {
+            _liveAdsbMap._planes.clearLayers();
+            planes.forEach(a => {
+                const alt = a.alt_baro || a.alt_geom || 0;
+                const color = alt < 1000 ? '#dc2626' : alt < 3000 ? '#f59e0b' : '#22c55e';
+                const icon = L.divIcon({
+                    className: '',
+                    html: `<div style="background:${color}; color:#fff; padding:1px 6px; border-radius:6px; font-size:10px; font-weight:700; border:1.5px solid #fff; transform:rotate(${a.track || 0}deg); white-space:nowrap;">✈ ${a.flight || a.hex || '?'}</div>`,
+                    iconAnchor: [20, 8]
+                });
+                L.marker([a.lat, a.lon], { icon })
+                    .bindPopup(`<b>${a.flight || a.hex}</b><br>Alt: ${alt} ft<br>Speed: ${a.gs || '?'} kt`)
+                    .addTo(_liveAdsbMap._planes);
+            });
+        }
+        if (info) {
+            const low = planes.filter(a => (a.alt_baro || 0) < 2000).length;
+            info.innerHTML = `<span style="color:#22c55e;">●</span> ${planes.length} aéronef${planes.length > 1 ? 's' : ''} · <span style="color:#dc2626;">${low}</span> sous 2000 ft · ↻ ${new Date().toLocaleTimeString('fr-FR').slice(0, 5)}`;
+        }
+    } catch (e) {
+        if (info) info.innerHTML = '<span style="color:#ef4444;">●</span> ADS-B indisponible';
+    }
+}
+
+async function _liveRefreshMeteo() {
+    if (STATE.lat == null) {
+        const grid = document.getElementById('lm-meteo-grid');
+        if (grid) grid.innerHTML = '<div class="lm-tile"><div class="lm-tile-k">Aucune mission active</div></div>';
+        return;
+    }
+    try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${STATE.lat}&longitude=${STATE.lon}`
+            + `&current=temperature_2m,relative_humidity_2m,precipitation,surface_pressure,wind_speed_10m,wind_gusts_10m,wind_direction_10m,visibility,weather_code`
+            + `&hourly=temperature_2m,wind_speed_10m,wind_gusts_10m,precipitation`
+            + `&wind_speed_unit=kmh&timezone=auto`;
+        const r = await fetchWithTimeout(url, {}, 8000);
+        if (!r.ok) throw new Error(r.status);
+        const j = await r.json();
+        const c = j.current || {};
+        // Tendance : valeur actuelle vs +1h
+        const h = j.hourly || {};
+        const idx = (h.time || []).findIndex(t => new Date(t) > new Date());
+        const next = idx >= 0 ? {
+            wind: h.wind_speed_10m && h.wind_speed_10m[idx],
+            gust: h.wind_gusts_10m && h.wind_gusts_10m[idx],
+            temp: h.temperature_2m && h.temperature_2m[idx],
+            precip: h.precipitation && h.precipitation[idx]
+        } : {};
+        const arrow = (cur, nxt) => {
+            if (nxt == null || cur == null) return '';
+            const d = nxt - cur;
+            if (Math.abs(d) < 0.5) return ' →';
+            return d > 0 ? ' <span style="color:#fbbf24;">↗</span> ' + nxt.toFixed(0) : ' <span style="color:#22c55e;">↘</span> ' + nxt.toFixed(0);
+        };
+        const cls = (v, warn, danger) => v >= danger ? 'danger' : (v >= warn ? 'warn' : 'ok');
+        const wind = c.wind_speed_10m || 0;
+        const gust = c.wind_gusts_10m || 0;
+        const dir = c.wind_direction_10m || 0;
+        const grid = document.getElementById('lm-meteo-grid');
+        if (!grid) return;
+        grid.innerHTML = `
+            <div class="lm-tile ${cls(wind, 25, 40)}">
+                <div class="lm-tile-k">Vent</div>
+                <div class="lm-tile-v">${wind.toFixed(0)}<span class="lm-tile-u">km/h</span></div>
+                <div class="lm-tile-t">${dir.toFixed(0)}°${arrow(wind, next.wind)}</div>
+            </div>
+            <div class="lm-tile ${cls(gust, 35, 50)}">
+                <div class="lm-tile-k">Rafales</div>
+                <div class="lm-tile-v">${gust.toFixed(0)}<span class="lm-tile-u">km/h</span></div>
+                <div class="lm-tile-t">${arrow(gust, next.gust)}</div>
+            </div>
+            <div class="lm-tile ${cls(c.precipitation || 0, 0.5, 2)}">
+                <div class="lm-tile-k">Pluie</div>
+                <div class="lm-tile-v">${(c.precipitation || 0).toFixed(1)}<span class="lm-tile-u">mm</span></div>
+                <div class="lm-tile-t">${arrow(c.precipitation || 0, next.precip)}</div>
+            </div>
+            <div class="lm-tile ok">
+                <div class="lm-tile-k">Température</div>
+                <div class="lm-tile-v">${(c.temperature_2m || 0).toFixed(1)}<span class="lm-tile-u">°C</span></div>
+                <div class="lm-tile-t">${arrow(c.temperature_2m, next.temp)}</div>
+            </div>
+            <div class="lm-tile ok">
+                <div class="lm-tile-k">Humidité</div>
+                <div class="lm-tile-v">${(c.relative_humidity_2m || 0).toFixed(0)}<span class="lm-tile-u">%</span></div>
+            </div>
+            <div class="lm-tile ok">
+                <div class="lm-tile-k">Pression</div>
+                <div class="lm-tile-v">${(c.surface_pressure || 0).toFixed(0)}<span class="lm-tile-u">hPa</span></div>
+            </div>
+            <div class="lm-tile ${(c.visibility || 99999) < 5000 ? 'warn' : 'ok'}">
+                <div class="lm-tile-k">Visibilité</div>
+                <div class="lm-tile-v">${((c.visibility || 0) / 1000).toFixed(1)}<span class="lm-tile-u">km</span></div>
+            </div>
+            <div class="lm-tile ${(STATE.kp || 0) >= 5 ? 'danger' : (STATE.kp || 0) >= 4 ? 'warn' : 'ok'}">
+                <div class="lm-tile-k">Indice Kp</div>
+                <div class="lm-tile-v">${(STATE.kp || 0).toFixed(1)}</div>
+                <div class="lm-tile-t">${(STATE.kp || 0) >= 5 ? 'GPS perturbé' : 'GPS OK'}</div>
+            </div>
+        `;
+        document.getElementById('lm-meteo-updated').textContent = '↻ ' + new Date().toLocaleTimeString('fr-FR');
+    } catch (e) {
+        console.warn('Live météo:', e);
+    }
+}
+
 </script>
 </body>
 </html>
