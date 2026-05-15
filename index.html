@@ -555,20 +555,18 @@
         /* §15 — Cartes de risque responsives */
         #risk-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
         @media (max-width: 720px) { #risk-grid { grid-template-columns: 1fr; } }
-        /* En mode édition (carte auto dépliée par « Modifier » OU carte saisie manuelle),
-           on étire la carte sur toute la largeur de la grille → le textarea de mitigation
-           prend la pleine largeur disponible (et non plus la moitié). */
-        #risk-grid .risk-card[data-expanded="1"],
-        #risk-grid .risk-card:not([data-auto="1"]) { grid-column: 1 / -1; }
         .risk-card {
-            border: 1px solid var(--c-border); border-radius: 10px;
+            border: 2px solid #e5e7eb; border-radius: 10px;
             background: #fff; padding: 12px 14px;
-            border-left: 5px solid var(--c-muted);
+            border-left-width: 5px;
+            border-left-color: var(--c-muted);
             display: flex; flex-direction: column; gap: 10px;
         }
-        .risk-card.lvl-low    { border-left-color: #16a34a; background: linear-gradient(180deg,#f0fdf4 0%,#fff 30%); }
-        .risk-card.lvl-med    { border-left-color: #d97706; background: linear-gradient(180deg,#fffbeb 0%,#fff 30%); }
-        .risk-card.lvl-high   { border-left-color: #dc2626; background: linear-gradient(180deg,#fef2f2 0%,#fff 30%); }
+        /* Frames colorées en fonction du niveau : tout le contour prend la couleur de
+           sévérité (bordure 2 px + bordure gauche 5 px plus marquée + dégradé subtil). */
+        .risk-card.lvl-low    { border-color: #86efac; border-left-color: #16a34a; background: linear-gradient(180deg,#f0fdf4 0%,#fff 30%); }
+        .risk-card.lvl-med    { border-color: #fcd34d; border-left-color: #d97706; background: linear-gradient(180deg,#fffbeb 0%,#fff 30%); }
+        .risk-card.lvl-high   { border-color: #fca5a5; border-left-color: #dc2626; background: linear-gradient(180deg,#fef2f2 0%,#fff 30%); }
         .risk-card[data-auto="1"]:not([data-expanded="1"]) { cursor: pointer; transition: box-shadow .15s, transform .05s; }
         .risk-card[data-auto="1"]:not([data-expanded="1"]):hover { box-shadow: 0 4px 14px rgba(15,23,42,.08); }
         .risk-card[data-auto="1"]:not([data-expanded="1"]):active { transform: translateY(1px); }
@@ -8520,10 +8518,12 @@ function validateRiskCard(card) {
             <span class="risk-level-badge ${lvlCls}">${score}</span>
             <button type="button" class="risk-row-del no-print" onclick="event.stopPropagation(); this.closest('.risk-card').remove();" title="Supprimer">×</button>
         </div>
-        <div style="display:flex; gap:12px; font-size:12px; color:var(--c-muted); flex-wrap:wrap;">
+        <div style="display:flex; gap:14px; font-size:12px; color:var(--c-muted); flex-wrap:wrap; margin-top:2px;">
             <span><strong>P&nbsp;:</strong> <span data-field="prob">${prob}</span></span>
             <span><strong>G&nbsp;:</strong> <span data-field="sev">${sev}</span></span>
-            <span style="flex:1;"><strong>Mitigation&nbsp;:</strong> <span data-field="mit">${escape(mit)}</span></span>
+        </div>
+        <div style="font-size:12px; color:var(--c-muted); margin-top:3px; line-height:1.45;">
+            <strong>Mitigation&nbsp;:</strong> <span data-field="mit">${escape(mit)}</span>
         </div>
         ${miniMapHtml}
         <div class="risk-card-foot">
