@@ -9600,8 +9600,10 @@ async function populateHorsCircoInfo() {
     // (rattachement opérationnel), les suivants peuplent la liste « hôpitaux ».
     let finessChu = [];
     try {
+        // order_by=categetab : CHR (101) avant CH (355). limit=100 pour les départements
+        // peuplés (59 a 85+ établissements, dont beaucoup de petites antennes sans téléphone).
         const where = encodeURIComponent(`dep_code="${dept}" AND (categetab=101 OR categetab=355)`);
-        const url = `https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/healthref-france-finess/records?select=rs,rslongue,address,com_name,telephone,categetab,libcategetab,coord&where=${where}&limit=50`;
+        const url = `https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/healthref-france-finess/records?select=rs,rslongue,address,com_name,telephone,categetab,libcategetab,coord&where=${where}&order_by=categetab&limit=100`;
         const r = await fetchWithTimeout(url, {}, 8000);
         if (r.ok) {
             const j = await r.json();
