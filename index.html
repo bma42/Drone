@@ -11001,33 +11001,34 @@ async function _liveRefreshAdsb() {
         L.marker([STATE.lat, STATE.lon]).addTo(_liveAdsbMap);
         _liveAdsbMap._planes = L.layerGroup().addTo(_liveAdsbMap);
     }
-    try {
-        const url = `https://api.adsb.lol/v2/lat/${STATE.lat}/lon/${STATE.lon}/dist/15`;
-        const r = await fetchWithTimeout(url, {}, 10000);
-        if (!r.ok) throw new Error(r.status);
-        const j = await r.json();
-        const planes = (j.ac || []).filter(a => a.lat != null && a.lon != null);
-        if (_liveAdsbMap && _liveAdsbMap._planes) {
-            _liveAdsbMap._planes.clearLayers();
-            planes.forEach(a => {
-                const alt = a.alt_baro || a.alt_geom || 0;
-                const color = alt < 1000 ? '#dc2626' : alt < 3000 ? '#f59e0b' : '#22c55e';
-                const icon = L.divIcon({
-                    className: '',
-                    html: `<div style="background:${color}; color:#fff; padding:1px 6px; border-radius:6px; font-size:10px; font-weight:700; border:1.5px solid #fff; transform:rotate(${a.track || 0}deg); white-space:nowrap;">✈ ${a.flight || a.hex || '?'}</div>`,
-                    iconAnchor: [20, 8]
-                });
-                L.marker([a.lat, a.lon], { icon })
-                    .bindPopup(`<b>${a.flight || a.hex}</b><br>Alt: ${alt} ft<br>Speed: ${a.gs || '?'} kt`)
-                    .addTo(_liveAdsbMap._planes);
+    // On délègue le fetch à la fonction principale fetchAircraft() qui utilise
+    // une cascade de 3 fournisseurs (ADSB.lol → airplanes.live → OpenSky) et
+    // remplit STATE.aircraft. C'est exactement ce que fait la page principale.
+    try { await fetchAircraft(STATE.lat, STATE.lon); } catch (e) { /* fetchAircraft gère ses erreurs */ }
+    const planes = (STATE.aircraft || []).filter(a => a.lat != null && a.lon != null);
+    if (_liveAdsbMap && _liveAdsbMap._planes) {
+        _liveAdsbMap._planes.clearLayers();
+        planes.forEach(a => {
+            const altFt = a.alt_baro || a.alt_geom || (a.altM != null ? a.altM * 3.281 : 0);
+            const color = altFt < 1000 ? '#dc2626' : altFt < 3000 ? '#f59e0b' : '#22c55e';
+            const icon = L.divIcon({
+                className: '',
+                html: `<div style="background:${color}; color:#fff; padding:1px 6px; border-radius:6px; font-size:10px; font-weight:700; border:1.5px solid #fff; white-space:nowrap;">${a.isHelicopter ? '🚁' : '✈'} ${a.flight || a.r || a.hex || '?'}</div>`,
+                iconAnchor: [20, 8]
             });
+            L.marker([a.lat, a.lon], { icon })
+                .bindPopup(`<b>${a.flight || a.r || a.hex || '—'}</b><br>${a.t || a.desc || ''}<br>Alt: ${Math.round(altFt)} ft · Vit: ${a.gs || '?'} kt`)
+                .addTo(_liveAdsbMap._planes);
+        });
+    }
+    if (info) {
+        if (!planes.length) {
+            info.innerHTML = `<span style="color:#fbbf24;">●</span> Aucun aéronef détecté · ↻ ${new Date().toLocaleTimeString('fr-FR').slice(0, 5)}`;
+        } else {
+            const low = planes.filter(a => ((a.alt_baro || a.alt_geom || 0) < 2000)).length;
+            const src = STATE.aircraftSource ? ' · ' + STATE.aircraftSource : '';
+            info.innerHTML = `<span style="color:#22c55e;">●</span> ${planes.length} aéronef${planes.length > 1 ? 's' : ''} · <span style="color:#dc2626;">${low}</span> sous 2000 ft · ↻ ${new Date().toLocaleTimeString('fr-FR').slice(0, 5)}${src}`;
         }
-        if (info) {
-            const low = planes.filter(a => (a.alt_baro || 0) < 2000).length;
-            info.innerHTML = `<span style="color:#22c55e;">●</span> ${planes.length} aéronef${planes.length > 1 ? 's' : ''} · <span style="color:#dc2626;">${low}</span> sous 2000 ft · ↻ ${new Date().toLocaleTimeString('fr-FR').slice(0, 5)}`;
-        }
-    } catch (e) {
-        if (info) info.innerHTML = '<span style="color:#ef4444;">●</span> ADS-B indisponible';
     }
 }
 
