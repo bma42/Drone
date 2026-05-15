@@ -9579,14 +9579,30 @@ async function populateHorsCircoInfo() {
     const samuLabel = `SAMU ${dept}${deptName ? ' — ' + deptName : ''}`;
     const samuSearchUrl = `https://www.google.com/search?q=${encodeURIComponent('SAMU ' + dept + ' ' + deptName + ' coordonnées hélicoptère')}`;
 
+    // Identification des CHU parmi les hôpitaux récupérés : on cible en priorité
+    // les établissements dont le nom contient « CHU » ou « universitaire » ;
+    // sinon on retombe sur le centre hospitalier le plus proche avec téléphone.
+    const isChu = h => /\b(CHU|CHRU|Hospitalier\s+Universitaire|Universitaire)\b/i.test(h.name || '');
+    const chuList = hospitals.filter(isChu);
+    const chuWithPhone = chuList.filter(h => h.phone);
+    const fallbackChu = chuWithPhone.length ? [] : hospitals.filter(h => h.phone).slice(0, 2);
+    const samuTargets = chuWithPhone.length ? chuWithPhone.slice(0, 3) : fallbackChu;
+
+    const samuContactsHtml = samuTargets.length
+        ? samuTargets.map(h => `
+            <div style="margin-top:4px;">
+                <strong>${h.name}</strong> <span style="color:var(--c-muted); font-size:11px;">· ${fmtDist(h.dist)}</span><br>
+                📞 ${fmtPhone(h.phone)}${fmtEmail(h.email)}${fmtWeb(h.website)}
+            </div>`).join('')
+        : `<div style="margin-top:4px; color:var(--c-muted); font-size:12px;">Aucun numéro de CHU trouvé automatiquement (OSM, 60 km).<br>🔎 <a href="${samuSearchUrl}" target="_blank" rel="noopener" style="color:var(--c-accent);">Rechercher les coordonnées directes du SAMU ${dept}</a></div>`;
+
     box.innerHTML = `
         <div style="padding:12px 14px; background:linear-gradient(180deg,#fef3c7 0%, #fef9e7 100%); border:1px solid #fde68a; border-left:4px solid var(--c-warning); border-radius:6px; font-size:12px; line-height:1.6;">
             <div style="font-weight:700; color:#92400e; text-transform:uppercase; letter-spacing:.5px; font-size:11px; margin-bottom:8px;">Mission hors DIPN 42 — contacts du département ${dept}${deptName ? ' (' + deptName + ')' : ''}</div>
 
             <div style="margin-bottom:10px; padding:8px 10px; background:#fff; border:1px solid var(--c-border); border-radius:5px;">
-                <div><strong style="color:var(--c-primary);">${samuLabel}</strong></div>
-                <div>📞 <a href="tel:15" style="color:var(--c-accent); text-decoration:none; font-weight:600;">15</a> <span style="color:var(--c-muted); font-size:11px;">(numéro d'urgence national SAMU — à composer pour aviser le SAMU territorialement compétent)</span></div>
-                <div style="font-size:11px; margin-top:3px;">🔎 <a href="${samuSearchUrl}" target="_blank" rel="noopener" style="color:var(--c-accent); text-decoration:none;">Rechercher les coordonnées directes du SAMU ${dept} (mail / TCM hélico)</a></div>
+                <div><strong style="color:var(--c-primary);">${samuLabel}${chuWithPhone.length ? '' : (fallbackChu.length ? ' — centre hospitalier de référence' : '')}</strong></div>
+                ${samuContactsHtml}
             </div>
 
             <div style="margin-bottom:10px; padding:8px 10px; background:#fff; border:1px solid var(--c-border); border-radius:5px;">
