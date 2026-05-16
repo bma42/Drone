@@ -1324,7 +1324,7 @@
         <section class="card no-print" id="missions-bar">
             <div class="card-head">
                 <div class="card-num">📁</div>
-                <div class="card-title">Missions sauvegardées<span class="sub">Enregistrement local (localStorage du navigateur) · export / import JSON pour partage entre postes</span></div>
+                <div class="card-title">Missions sauvegardées<span class="sub">Enregistrement · export / import pour partage entre postes.</span></div>
             </div>
             <div class="card-body" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
                 <select id="mission-select" onchange="loadSelectedMission()" style="flex:1; min-width:240px;">
@@ -1343,7 +1343,7 @@
                     Importer
                     <input type="file" accept="application/json,.json" style="display:none;" onchange="importMissionsFile(this.files[0]); this.value='';">
                 </label>
-                <button type="button" id="mission-delete-btn" class="act-btn act-btn-warning" onclick="deleteSelectedMission()" disabled title="Supprimer la mission sélectionnée (brouillon local uniquement)" style="opacity:.5;">
+                <button type="button" id="mission-delete-btn" class="act-btn act-btn-danger" onclick="deleteSelectedMission()" disabled title="Supprimer la mission sélectionnée" style="opacity:.5;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
                     Supprimer
                 </button>
