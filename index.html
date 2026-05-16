@@ -10585,8 +10585,9 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-adsb-info button#lm-btn-alert { background: #1e293b; border: 1px solid #334155; color: #94a3b8; padding: 3px 6px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; }
         #live-mode-overlay .lm-adsb-info button#lm-btn-alert.on { background: #16a34a; border-color: #22c55e; color: #fff; }
         #live-mode-overlay .lm-adsb-info select#lm-adsb-refresh { background: #1e293b; color: #fff; border: 1px solid #334155; padding: 2px 4px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-        #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #fde047; cursor: pointer; user-select: none; white-space: nowrap; flex: 0 0 auto; }
-        #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly input { accent-color: #fde047; flex: 0 0 auto; }
+        #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #fff; cursor: pointer; user-select: none; white-space: nowrap; flex: 0 0 auto; background: rgba(253,224,71,.18); border: 1px solid rgba(253,224,71,.5); padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+        #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly:hover { background: rgba(253,224,71,.28); }
+        #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly input { accent-color: #fde047; flex: 0 0 auto; margin: 0; }
         /* Ligne « vol en cours » plus lisible : 3 zones distinctes (pilote /
            chrono dominant / bouton land), drone en 2e ligne, SN en petit. */
         #live-mode-overlay .lm-flight-row.lm-flying { padding: 10px 12px; gap: 12px; }
