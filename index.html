@@ -11018,29 +11018,39 @@ async function _liveRefreshAdsb() {
     const info = document.getElementById('lm-adsb-info');
     if (STATE.lat == null) { if (info) info.textContent = 'Sélectionne une mission avant.'; return; }
     if (!_liveAdsbMap && typeof L !== 'undefined') {
-        _liveAdsbMap = L.map('lm-adsb-map', { zoomControl: true, attributionControl: false })
-            .setView([STATE.lat, STATE.lon], 11);
-        // Fond sombre adapté au thème live (CARTO Dark Matter, fallback OSM)
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            maxZoom: 18,
-            subdomains: 'abcd'
-        }).addTo(_liveAdsbMap);
-        // Anneaux de portée style radar (rayon ADS-B paramétré dans la page principale)
-        const R = (aircraftSearchRadiusKm || 20) * 1000;
-        for (let i = 1; i <= 4; i++) {
-            L.circle([STATE.lat, STATE.lon], {
-                radius: (R * i) / 4,
-                color: '#22c55e', weight: 1, fillOpacity: 0,
-                dashArray: '4 4', opacity: .45
+        try {
+            _liveAdsbMap = L.map('lm-adsb-map', { zoomControl: true, attributionControl: false })
+                .setView([STATE.lat, STATE.lon], 11);
+            // Fond sombre (CARTO Dark Matter) avec fallback OSM si le tile renvoie une erreur.
+            const dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                maxZoom: 18, subdomains: 'abcd'
+            });
+            const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 });
+            dark.on('tileerror', () => { try { _liveAdsbMap.removeLayer(dark); osm.addTo(_liveAdsbMap); } catch (e) {} });
+            dark.addTo(_liveAdsbMap);
+            const R = (aircraftSearchRadiusKm || 20) * 1000;
+            for (let i = 1; i <= 4; i++) {
+                L.circle([STATE.lat, STATE.lon], {
+                    radius: (R * i) / 4,
+                    color: '#22c55e', weight: 1, fillOpacity: 0,
+                    dashArray: '4 4', opacity: .45
+                }).addTo(_liveAdsbMap);
+            }
+            L.circleMarker([STATE.lat, STATE.lon], {
+                radius: 6, color: '#fbbf24', fillColor: '#fbbf24', fillOpacity: 1, weight: 2
             }).addTo(_liveAdsbMap);
+            _liveAdsbMap._planes = L.layerGroup().addTo(_liveAdsbMap);
+            // Le balayage radar est cosmétique : si quoi que ce soit foire,
+            // on continue sans, plutôt que de bloquer toute la carte.
+            setTimeout(() => {
+                try { _liveAttachRadarSweep(_liveAdsbMap, R); } catch (e) { console.warn('[radar sweep] désactivé:', e); }
+                try { _liveAdsbMap.invalidateSize(); } catch (e) {}
+            }, 200);
+        } catch (e) {
+            console.warn('[live ADS-B map init]', e);
+            if (info) info.innerHTML = '<span style="color:#ef4444;">●</span> Carte indispo (voir console)';
+            return;
         }
-        // Point central
-        L.circleMarker([STATE.lat, STATE.lon], {
-            radius: 6, color: '#fbbf24', fillColor: '#fbbf24', fillOpacity: 1, weight: 2
-        }).addTo(_liveAdsbMap);
-        _liveAdsbMap._planes = L.layerGroup().addTo(_liveAdsbMap);
-        // Balayage radar SVG superposé, centré sur le point de mission
-        _liveAttachRadarSweep(_liveAdsbMap, R);
     }
     // Le fetch initial est délégué à la fonction principale fetchAircraft() qui
     // remplit STATE.aircraft (cascade ADSB.lol → airplanes.live → OpenSky).
@@ -11081,38 +11091,31 @@ function _liveUpdateAdsbMarkers() {
     }
 }
 
-// Superpose une animation de balayage radar (SVG) au-dessus de la carte Leaflet,
-// centrée sur le point de mission. L'angle tourne via @keyframes CSS.
+// Balayage radar SVG superposé sur la carte. Version simple et défensive :
+// le cône est positionné au centre visuel du conteneur (pas via Leaflet) et
+// reste en place même si le user pan/zoom. Cosmétique uniquement.
 function _liveAttachRadarSweep(map, radiusM) {
     const container = map.getContainer();
-    let svg = container.querySelector('.lm-radar-sweep-svg');
-    if (svg) svg.remove();
-    svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    if (!container) return;
+    container.querySelectorAll('.lm-radar-sweep-svg').forEach(n => n.remove());
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'lm-radar-sweep-svg');
-    svg.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:400;';
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    svg.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:400; overflow:visible;';
+    svg.innerHTML = `
+        <defs>
+            <radialGradient id="lm-sweep-grad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="rgba(34,197,94,0.55)"/>
+                <stop offset="60%" stop-color="rgba(34,197,94,0.10)"/>
+                <stop offset="100%" stop-color="rgba(34,197,94,0)"/>
+            </radialGradient>
+        </defs>
+        <g style="transform-origin:50px 50px; animation: lm-radar-rotate 4s linear infinite;">
+            <path d="M 50 50 L 200 50 A 150 150 0 0 1 156 156 Z" fill="url(#lm-sweep-grad)" opacity="0.85"/>
+        </g>
+    `;
     container.appendChild(svg);
-    const draw = () => {
-        const center = map.latLngToContainerPoint([STATE.lat, STATE.lon]);
-        const edge = map.latLngToContainerPoint(L.latLng(STATE.lat, STATE.lon).toBounds(radiusM * 2).getNorthEast());
-        const px = Math.hypot(edge.x - center.x, edge.y - center.y);
-        svg.innerHTML = `
-            <defs>
-                <radialGradient id="lm-sweep-grad" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stop-color="rgba(34,197,94,0.55)"/>
-                    <stop offset="60%" stop-color="rgba(34,197,94,0.10)"/>
-                    <stop offset="100%" stop-color="rgba(34,197,94,0)"/>
-                </radialGradient>
-            </defs>
-            <g transform="translate(${center.x} ${center.y})" style="transform-origin:0 0; transform-box:fill-box; animation: lm-radar-rotate 4s linear infinite;">
-                <path d="M 0 0 L ${px} 0 A ${px} ${px} 0 0 1 ${(px * Math.cos(Math.PI / 4)).toFixed(2)} ${(px * Math.sin(Math.PI / 4)).toFixed(2)} Z"
-                      fill="url(#lm-sweep-grad)" opacity="0.85"/>
-            </g>
-            <circle cx="${center.x}" cy="${center.y}" r="3" fill="#fbbf24"/>
-        `;
-    };
-    draw();
-    map.on('move zoom resize', draw);
-    // Animation key (ajoutée une seule fois au head)
     if (!document.getElementById('lm-radar-anim-style')) {
         const st = document.createElement('style');
         st.id = 'lm-radar-anim-style';
