@@ -11326,9 +11326,13 @@ async function _liveAddRainOverlay() {
         const last = past[past.length - 1];
         if (!last) return;
         if (_liveRainLayer) { try { _liveAdsbMap.removeLayer(_liveRainLayer); } catch (e) {} }
+        // RainViewer ne sert pas au-delà de z11 → on cap la couche au z11
+        // pour éviter l'erreur « zoom level not supported » + une tile cassée
+        // à fort zoom. La couche disparaît proprement quand l'utilisateur
+        // zoome plus loin et réapparaît dès qu'il dézoome.
         _liveRainLayer = L.tileLayer(`${host}${last.path}/256/{z}/{x}/{y}/2/1_1.png`, {
             opacity: 0.55,
-            maxZoom: 18, maxNativeZoom: 11,   // tiles z>11 scalées par Leaflet
+            maxZoom: 11, maxNativeZoom: 11,
             zIndex: 350,
             errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
             attribution: '© <a href="https://www.rainviewer.com" target="_blank">RainViewer</a>'
