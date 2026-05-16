@@ -10707,16 +10707,35 @@ function _liveMissionPilots() {
     return pilots;
 }
 
-// Récupère les drones cochés dans §3.
+// Récupère les drones cochés dans §3, avec leur numéro de série quand
+// disponible (entre parenthèses dans un span du label, ex. « (N° 1581F5...) »).
 function _liveMissionDrones() {
     const drones = [];
     document.querySelectorAll('.vector-cb:checked').forEach(cb => {
         const labelEl = document.querySelector(`label[for="${cb.id}"]`);
         if (!labelEl) return;
+        // Nom court = label sans le span (N° de série)
         const clone = labelEl.cloneNode(true);
         clone.querySelectorAll('span').forEach(s => s.remove());
         const name = clone.textContent.trim().replace(/\s+/g, ' ');
-        if (name) drones.push(name);
+        // Numéro de série = contenu du span s'il existe (ex. « (N° 1581F5...) »)
+        const span = labelEl.querySelector('span');
+        let serial = '';
+        if (span) {
+            serial = span.textContent.replace(/[()]/g, '').replace(/^N°\s*/i, '').trim();
+        }
+        // Cas des vecteurs custom (vc1, vc2…) qui n'ont pas de label fixe mais
+        // 2 inputs (modèle + n° de série) dans le label.
+        if (!name) {
+            const modelInput = labelEl.querySelector('input[placeholder*="Modèle"]');
+            const serialInput = labelEl.querySelector('input[placeholder*="série"]');
+            const m = modelInput ? modelInput.value.trim() : '';
+            const s = serialInput ? serialInput.value.trim() : '';
+            if (m) drones.push({ name: m, serial: s, label: s ? `${m} · ${s}` : m });
+            return;
+        }
+        const label = serial ? `${name} · ${serial}` : name;
+        drones.push({ name, serial, label });
     });
     return drones;
 }
@@ -10746,7 +10765,7 @@ function _liveRenderFlights() {
     const flights = _liveFlights();
     const today = new Date().toISOString().slice(0, 10);
     const droneOpts = drones.length
-        ? drones.map(d => `<option value="${d}">${d}</option>`).join('')
+        ? drones.map(d => `<option value="${(d.label || d.name).replace(/"/g, '&quot;')}" title="${(d.label || d.name).replace(/"/g, '&quot;')}">${d.label || d.name}</option>`).join('')
         : '<option value="">— aucun drone coché en §3 —</option>';
     const headerTag = isMissionSource
         ? '<div style="font-size:10px; color:#22c55e; margin-bottom:6px;">● Source : pilotes &amp; drones du module 3</div>'
@@ -10761,7 +10780,7 @@ function _liveRenderFlights() {
         // Sélecteur de drone : verrouillé sur le drone du vol actif, sinon liste des drones §3
         const droneCell = active
             ? `<div style="font-size:10px; color:#fbbf24; font-weight:600;">🛩 ${activeDrone || '(non précisé)'}</div>`
-            : `<select data-mat="${p.mat}" style="background:#0f172a; color:#e2e8f0; border:1px solid #334155; padding:2px 4px; border-radius:3px; font-size:11px; max-width:130px;">${droneOpts}</select>`;
+            : `<select data-mat="${p.mat}" style="background:#0f172a; color:#e2e8f0; border:1px solid #334155; padding:2px 4px; border-radius:3px; font-size:11px; max-width:100%; width:100%;">${droneOpts}</select>`;
         return `<div class="lm-flight-row ${active ? 'active' : ''}">
             <div style="min-width:0;">
                 <div class="lm-mat">${p.mat}</div>
