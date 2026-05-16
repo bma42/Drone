@@ -10467,6 +10467,8 @@ window.addEventListener('load', () => {
 const LIVE_PILOTS_KEY = 'drone-live-pilots';
 const LIVE_FLIGHTS_KEY = 'drone-live-flights';
 let _liveAdsbInterval = null, _liveMeteoInterval = null, _liveTickInterval = null;
+let _liveMeteoIntervalMs = 60000;
+let _liveLowOnly = (() => { try { return localStorage.getItem('drone_live_lowonly') === '1'; } catch (e) { return false; } })();
 let _liveAdsbMap = null;
 let _liveSavedAdsb = null;   // backup avant d'imposer auto+alertes
 
@@ -10515,7 +10517,8 @@ function enterLiveMode() {
     try { _liveRefreshAdsb(); } catch (e) { console.warn('[live] refreshAdsb:', e); }
     try { _liveRefreshMeteo(); } catch (e) { console.warn('[live] refreshMeteo:', e); }
     _liveAdsbInterval = setInterval(() => { try { _liveUpdateAdsbMarkers(); } catch (e) {} }, 2000);
-    _liveMeteoInterval = setInterval(() => { try { _liveRefreshMeteo(); } catch (e) {} }, 5 * 60000);
+    _liveMeteoIntervalMs = 60000;   // 1 min par défaut
+    _liveMeteoInterval = setInterval(() => { try { _liveRefreshMeteo(); } catch (e) {} }, _liveMeteoIntervalMs);
     _liveTickInterval = setInterval(() => { try { _liveTickActiveFlights(); } catch (e) {} }, 1000);
     console.log('[live] enterLiveMode done · STATE.lat=', STATE?.lat, '· aircraft=', STATE?.aircraft?.length);
 }
@@ -10552,8 +10555,16 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-tile.ok { border-left: 3px solid #16a34a; }
         #live-mode-overlay .lm-tile.warn { border-left: 3px solid #eab308; }
         #live-mode-overlay .lm-tile.danger { border-left: 3px solid #dc2626; }
-        #live-mode-overlay .lm-flight-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 5px; margin-bottom: 5px; background: #1e293b; font-size: 12px; }
-        #live-mode-overlay .lm-flight-row.active { background: #15803d; }
+        #live-mode-overlay .lm-flight-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 5px; margin-bottom: 5px; background: #1e293b; font-size: 12px; transition: background .15s; }
+        #live-mode-overlay .lm-flight-row.active { background: linear-gradient(135deg, #15803d, #166534); }
+        #live-mode-overlay .lm-flight-row.lm-idle { cursor: pointer; }
+        #live-mode-overlay .lm-flight-row.lm-idle:hover { background: #334155; }
+        #live-mode-overlay .lm-flight-row.lm-choosing { flex-direction: column; align-items: stretch; background: #0f172a; border: 1px solid #1e40af; }
+        #live-mode-overlay .lm-drone-pick { background: linear-gradient(135deg,#1e40af,#1e3a8a); color: #fff; border: 0; padding: 7px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: 600; text-align: left; transition: filter .15s; }
+        #live-mode-overlay .lm-drone-pick:hover { filter: brightness(1.2); }
+        #live-mode-overlay .lm-btn-takeoff { background: linear-gradient(135deg,#16a34a,#15803d) !important; color: #fff !important; border: 0 !important; padding: 6px 12px !important; font-weight: 700 !important; box-shadow: 0 0 0 0 rgba(34,197,94,.5); animation: lm-takeoff-pulse 1.6s ease-in-out infinite; }
+        @keyframes lm-takeoff-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,.5); } 50% { box-shadow: 0 0 0 6px rgba(34,197,94,0); } }
+        #live-mode-overlay .lm-flight-row[data-action="land"], #live-mode-overlay .lm-flight-row button[data-action="land"] { background: linear-gradient(135deg,#dc2626,#b91c1c) !important; color: #fff !important; border: 0 !important; font-weight: 700 !important; }
         #live-mode-overlay .lm-flight-row .lm-pilot { font-weight: 600; color: #fff; }
         #live-mode-overlay .lm-flight-row .lm-time { font-family: ui-monospace, monospace; font-weight: 700; color: #fbbf24; font-variant-numeric: tabular-nums; }
         #live-mode-overlay .lm-flight-row .lm-mat { font-size: 10px; color: #94a3b8; }
@@ -10564,7 +10575,7 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-add-pilot input { flex: 1; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; padding: 5px 8px; border-radius: 4px; font-size: 12px; }
         #live-mode-overlay .lm-add-pilot button { background: #0b3d91; color: #fff; border: 0; padding: 5px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 600; }
         #live-mode-overlay .lm-totals { font-size: 11px; color: #94a3b8; margin-top: 8px; padding-top: 8px; border-top: 1px solid #1e293b; }
-        #live-mode-overlay .lm-adsb-info { position: absolute; top: 10px; left: 10px; right: 60px; display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: rgba(15,23,42,.85); color: #fff; padding: 6px 10px; border-radius: 5px; font-size: 11px; z-index: 1000; font-weight: 600; pointer-events: auto; }
+        #live-mode-overlay .lm-adsb-info { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: rgba(15,23,42,.85); color: #fff; padding: 6px 10px; border-radius: 5px; font-size: 11px; z-index: 1000; font-weight: 600; pointer-events: auto; }
         #live-mode-overlay .lm-adsb-info .lm-stats { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
         #live-mode-overlay .lm-adsb-info .lm-pill { background: #0e7490; color: #fff; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 10px; letter-spacing: .3px; display: inline-flex; align-items: center; gap: 4px; }
         #live-mode-overlay .lm-adsb-info .lm-pill.heli { background: #d97706; }
@@ -10574,12 +10585,27 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-adsb-info button#lm-btn-alert { background: #1e293b; border: 1px solid #334155; color: #94a3b8; padding: 3px 6px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; }
         #live-mode-overlay .lm-adsb-info button#lm-btn-alert.on { background: #16a34a; border-color: #22c55e; color: #fff; }
         #live-mode-overlay .lm-adsb-info select#lm-adsb-refresh { background: #1e293b; color: #fff; border: 1px solid #334155; padding: 2px 4px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-        #live-mode-overlay .lm-adsb-list { position: absolute; bottom: 10px; left: 10px; right: 10px; max-height: 180px; overflow: auto; background: rgba(15,23,42,.88); border: 1px solid #1e293b; border-radius: 6px; z-index: 1000; font-size: 11px; backdrop-filter: blur(2px); }
+        #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #fde047; cursor: pointer; user-select: none; }
+        #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly input { accent-color: #fde047; }
+        #live-mode-overlay .lm-adsb-list { position: absolute; bottom: 10px; left: 10px; right: 78px; max-height: 180px; overflow: auto; background: rgba(15,23,42,.88); border: 1px solid #1e293b; border-radius: 6px; z-index: 1000; font-size: 11px; backdrop-filter: blur(2px); }
         #live-mode-overlay .lm-adsb-list:empty { display: none; }
         #live-mode-overlay .lm-adsb-list table { width: 100%; border-collapse: collapse; }
         #live-mode-overlay .lm-adsb-list td { padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,.04); color: #cbd5e1; vertical-align: middle; }
         #live-mode-overlay .lm-adsb-list tr:last-child td { border-bottom: 0; }
         #live-mode-overlay .lm-adsb-list .lm-badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 9px; font-weight: 700; letter-spacing: .3px; color: #fff; white-space: nowrap; }
+        /* Zoom controls Leaflet — relocalisés bas-droite, sous le bandeau info, et stylés dark. */
+        #live-mode-overlay .leaflet-control-zoom { border: 0 !important; box-shadow: 0 2px 8px rgba(0,0,0,.5) !important; }
+        #live-mode-overlay .leaflet-control-zoom a { background: rgba(15,23,42,.92) !important; color: #e2e8f0 !important; border: 1px solid #334155 !important; width: 32px !important; height: 32px !important; line-height: 30px !important; font-size: 18px !important; font-weight: 700 !important; }
+        #live-mode-overlay .leaflet-control-zoom a:hover { background: #334155 !important; color: #fff !important; }
+        #live-mode-overlay .leaflet-control-zoom-in { border-radius: 5px 5px 0 0 !important; }
+        #live-mode-overlay .leaflet-control-zoom-out { border-radius: 0 0 5px 5px !important; border-top: 0 !important; }
+        /* Flèches d'évolution sur tuiles météo (animation au refresh) */
+        #live-mode-overlay .lm-tile { position: relative; }
+        #live-mode-overlay .lm-trend { position: absolute; top: 4px; right: 6px; font-size: 14px; font-weight: 700; line-height: 1; opacity: 0; transition: opacity .35s; }
+        #live-mode-overlay .lm-trend.up   { color: #ef4444; animation: lm-trend-pop-up   1.2s ease-out forwards; }
+        #live-mode-overlay .lm-trend.down { color: #22c55e; animation: lm-trend-pop-down 1.2s ease-out forwards; }
+        @keyframes lm-trend-pop-up   { 0% { opacity: 0; transform: translateY(8px) scale(.6); } 25% { opacity: 1; transform: translateY(0) scale(1.25); } 100% { opacity: .85; transform: translateY(0) scale(1); } }
+        @keyframes lm-trend-pop-down { 0% { opacity: 0; transform: translateY(-8px) scale(.6); } 25% { opacity: 1; transform: translateY(0) scale(1.25); } 100% { opacity: .85; transform: translateY(0) scale(1); } }
         #live-mode-overlay .lm-meteo-updated { font-size: 10px; color: #64748b; text-align: right; margin-top: 6px; }
         @media (max-width: 900px) {
             #live-mode-overlay .lm-grid { grid-template-columns: 1fr; grid-template-rows: 1fr auto auto; }
@@ -10624,13 +10650,57 @@ function _liveBindHandlers(overlay) {
             }
         });
     }
-    // Délégation pour les boutons générés dynamiquement (supprimer agent, décoller/stop)
+    // Checkbox « < 500 m seulement » — filtre les marqueurs / liste / stats
+    const lowOnly = q('#lm-adsb-lowonly');
+    if (lowOnly) {
+        lowOnly.checked = !!_liveLowOnly;
+        lowOnly.addEventListener('change', () => {
+            _liveLowOnly = lowOnly.checked;
+            try { localStorage.setItem('drone_live_lowonly', _liveLowOnly ? '1' : '0'); } catch (e) {}
+            _liveUpdateAdsbMarkers();
+        });
+    }
+    // Sélecteur de rafraîchissement météo (1 / 5 / 10 min)
+    const meteoSel = q('#lm-meteo-refresh');
+    if (meteoSel) {
+        meteoSel.value = String(_liveMeteoIntervalMs / 1000);
+        meteoSel.addEventListener('change', () => {
+            const v = parseInt(meteoSel.value, 10);
+            if (![60, 300, 600].includes(v)) return;
+            _liveMeteoIntervalMs = v * 1000;
+            if (_liveMeteoInterval) clearInterval(_liveMeteoInterval);
+            _liveMeteoInterval = setInterval(() => { try { _liveRefreshMeteo(); } catch (e) {} }, _liveMeteoIntervalMs);
+            _liveRefreshMeteo();   // refresh immédiat à la sélection
+        });
+    }
+    // Délégation pour les boutons générés dynamiquement (supprimer agent,
+    // ouvrir liste drones, choisir drone, décoller, atterrir, etc.)
     overlay.addEventListener('click', (e) => {
-        const t = e.target.closest('button[data-action]');
+        const t = e.target.closest('[data-action]');
         if (!t) return;
         const a = t.dataset.action;
+        const mat = t.dataset.mat;
         if (a === 'remove-pilot') _liveRemovePilot(parseInt(t.dataset.idx, 10));
-        else if (a === 'toggle-flight') _liveToggleFlight(t.dataset.mat);
+        else if (a === 'start-choose') { _liveRowStateFor(mat).state = 'choosing'; _liveRenderFlights(); }
+        else if (a === 'cancel-choose') { _liveRowStateFor(mat).state = 'idle'; _liveRenderFlights(); }
+        else if (a === 'change-drone') { _liveRowStateFor(mat).state = 'choosing'; _liveRenderFlights(); }
+        else if (a === 'select-drone') {
+            const rs = _liveRowStateFor(mat);
+            rs.drone = t.dataset.drone || '';
+            rs.state = 'ready';
+            _liveRenderFlights();
+        }
+        else if (a === 'takeoff') {
+            const rs = _liveRowStateFor(mat);
+            if (!rs.drone) return;
+            _liveStartFlight(mat, rs.drone);
+        }
+        else if (a === 'land') _liveStopFlight(mat);
+        // Backward compat : ancien data-action « toggle-flight »
+        else if (a === 'toggle-flight') {
+            const fls = _liveFlights();
+            if (fls.find(f => f.mat === mat && !f.stoppedAt)) _liveStopFlight(mat);
+        }
     });
 }
 
@@ -10667,6 +10737,9 @@ function _liveModeHtml() {
             <div class="lm-adsb-info" id="lm-adsb-info">
                 <span class="lm-stats" id="lm-adsb-stats">Chargement ADS-B…</span>
                 <span class="lm-adsb-ctrl">
+                    <label class="lm-adsb-lowonly" title="N'afficher que les aéronefs sous 500 m">
+                        <input type="checkbox" id="lm-adsb-lowonly"> &lt; 500 m
+                    </label>
                     <button id="lm-btn-alert" type="button" title="Alertes vocales aéronefs hélico / basse altitude / urgence">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
                     </button>
@@ -10682,7 +10755,14 @@ function _liveModeHtml() {
             <div class="lm-adsb-map" id="lm-adsb-map"></div>
         </div>
         <div class="lm-panel">
-            <h3>Météo live</h3>
+            <h3 style="display:flex; align-items:center; gap:8px;">
+                Météo live
+                <select id="lm-meteo-refresh" style="margin-left:auto; background:#1e293b; color:#e2e8f0; border:1px solid #334155; padding:2px 4px; border-radius:4px; font-size:11px; font-weight:600; text-transform:none; letter-spacing:0;">
+                    <option value="60" selected>↻ 1 min</option>
+                    <option value="300">↻ 5 min</option>
+                    <option value="600">↻ 10 min</option>
+                </select>
+            </h3>
             <div class="lm-meteo-grid" id="lm-meteo-grid">
                 <div class="lm-tile"><div class="lm-tile-k">Chargement…</div></div>
             </div>
@@ -10802,12 +10882,22 @@ function _liveRenderPilots() {
     if (!_liveEffectivePilots().length) _liveOpenPilotsConfig();
 }
 
+// État éphémère par pilote (non persisté) : pilote → { state, drone }
+//   'idle'     : nom seul, clic ouvre la liste des drones
+//   'choosing' : liste des drones cochés en §3 visible à la place du nom
+//   'ready'    : drone choisi, bouton « Décoller » prêt
+// L'état « flying » est déduit de _liveFlights() (présence d'un vol actif).
+let _liveRowState = {};
+function _liveRowStateFor(mat) {
+    if (!_liveRowState[mat]) _liveRowState[mat] = { state: 'idle', drone: '' };
+    return _liveRowState[mat];
+}
+
 function _liveRenderFlights() {
     const wrap = document.getElementById('lm-flights-list');
     if (!wrap) return;
     const pilots = _liveEffectivePilots();
     const drones = _liveMissionDrones();
-    const isMissionSource = _liveMissionPilots().length > 0;
     if (!pilots.length) {
         wrap.innerHTML = '<div style="color:#64748b; font-size:12px; padding:10px; text-align:center;">⚙ Ajoute des télépilotes via « Configurer agents » ou coche-les dans le module 3 (Moyens) de la mission.</div>';
         document.getElementById('lm-totals').innerHTML = '';
@@ -10815,39 +10905,99 @@ function _liveRenderFlights() {
     }
     const flights = _liveFlights();
     const today = new Date().toISOString().slice(0, 10);
-    const droneOpts = drones.length
-        ? drones.map(d => `<option value="${(d.label || d.name).replace(/"/g, '&quot;')}" title="${(d.label || d.name).replace(/"/g, '&quot;')}">${d.label || d.name}</option>`).join('')
-        : '<option value="">— aucun drone coché en §3 —</option>';
-    const headerTag = isMissionSource
-        ? '<div style="font-size:10px; color:#22c55e; margin-bottom:6px;">● Source : pilotes &amp; drones du module 3</div>'
-        : '<div style="font-size:10px; color:#94a3b8; margin-bottom:6px;">● Source : configuration manuelle (aucun pilote coché en §3)</div>';
-    wrap.innerHTML = headerTag + pilots.map(p => {
+    wrap.innerHTML = pilots.map(p => {
+        const rs = _liveRowStateFor(p.mat);
         const active = flights.find(f => f.mat === p.mat && !f.stoppedAt);
         const todays = flights.filter(f => f.mat === p.mat && f.startedAt.startsWith(today) && f.stoppedAt);
         const totalMs = todays.reduce((s, f) => s + (new Date(f.stoppedAt) - new Date(f.startedAt)), 0);
         const totalStr = _liveFormatDuration(totalMs);
-        const liveStr = active ? _liveFormatDuration(Date.now() - new Date(active.startedAt)) : '00:00:00';
-        const activeDrone = active && active.drone ? active.drone : '';
-        // Sélecteur de drone : verrouillé sur le drone du vol actif, sinon liste des drones §3
-        const droneCell = active
-            ? `<div style="font-size:10px; color:#fbbf24; font-weight:600;">🛩 ${activeDrone || '(non précisé)'}</div>`
-            : `<select data-mat="${p.mat}" style="background:#0f172a; color:#e2e8f0; border:1px solid #334155; padding:2px 4px; border-radius:3px; font-size:11px; max-width:100%; width:100%;">${droneOpts}</select>`;
-        return `<div class="lm-flight-row ${active ? 'active' : ''}">
-            <div style="min-width:0;">
+
+        // Cas A : vol en cours → chrono + bouton Atterrir
+        if (active) {
+            const liveStr = _liveFormatDuration(Date.now() - new Date(active.startedAt));
+            return `<div class="lm-flight-row active">
+                <div style="min-width:0; flex:1;">
+                    <div class="lm-mat">${p.mat}</div>
+                    <div class="lm-pilot">${p.nom}</div>
+                    <div style="font-size:10px; color:#fcd34d; font-weight:600; margin-top:2px;">🛩 ${active.drone || '(drone non précisé)'}</div>
+                </div>
+                <div style="text-align:right;">
+                    <div class="lm-time" data-mat="${p.mat}">${liveStr}</div>
+                    <div style="font-size:10px; color:#cbd5e1; opacity:.85;">cumul jour : ${totalStr}</div>
+                </div>
+                <button type="button" data-action="land" data-mat="${p.mat}">⏬ Atterrir</button>
+            </div>`;
+        }
+
+        // Cas B : choix d'un drone (la liste remplace le nom)
+        if (rs.state === 'choosing') {
+            if (!drones.length) {
+                rs.state = 'idle';
+                return `<div class="lm-flight-row">
+                    <div class="lm-pilot" style="color:#fbbf24; flex:1;">${p.nom} — aucun drone coché en §3</div>
+                    <button type="button" data-action="cancel-choose" data-mat="${p.mat}">Annuler</button>
+                </div>`;
+            }
+            const dronesList = drones.map(d =>
+                `<button type="button" data-action="select-drone" data-mat="${p.mat}" data-drone="${(d.label || d.name).replace(/"/g, '&quot;')}" class="lm-drone-pick">🛩 ${d.label || d.name}</button>`
+            ).join('');
+            return `<div class="lm-flight-row lm-choosing">
+                <div style="display:flex; align-items:center; gap:6px; width:100%; margin-bottom:6px;">
+                    <span class="lm-mat">${p.mat}</span>
+                    <span style="flex:1; font-size:11px; color:#93c5fd; font-weight:600;">Choisir le drone pour ${p.nom.split(' ').slice(-1)[0]}</span>
+                    <button type="button" data-action="cancel-choose" data-mat="${p.mat}" style="background:transparent; border:0; color:#94a3b8; font-size:14px; cursor:pointer; padding:0 4px;">✕</button>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:3px; width:100%;">${dronesList}</div>
+            </div>`;
+        }
+
+        // Cas C : drone choisi, prêt à décoller
+        if (rs.state === 'ready' && rs.drone) {
+            return `<div class="lm-flight-row">
+                <div style="min-width:0; flex:1;">
+                    <div class="lm-mat">${p.mat}</div>
+                    <div class="lm-pilot">${p.nom}</div>
+                    <div style="font-size:10px; color:#fcd34d; font-weight:600; margin-top:2px;">🛩 ${rs.drone} <button type="button" data-action="change-drone" data-mat="${p.mat}" style="background:transparent; border:0; color:#93c5fd; cursor:pointer; font-size:9px; text-decoration:underline; margin-left:4px;">changer</button></div>
+                </div>
+                <div style="text-align:right;">
+                    <div class="lm-time">00:00:00</div>
+                    <div style="font-size:10px; color:#94a3b8;">cumul jour : ${totalStr}</div>
+                </div>
+                <button type="button" data-action="takeoff" data-mat="${p.mat}" class="lm-btn-takeoff">▲ Décoller</button>
+            </div>`;
+        }
+
+        // Cas D : idle — clic sur la ligne ouvre la liste des drones
+        return `<div class="lm-flight-row lm-idle" data-action="start-choose" data-mat="${p.mat}">
+            <div style="min-width:0; flex:1;">
                 <div class="lm-mat">${p.mat}</div>
                 <div class="lm-pilot">${p.nom}</div>
-                ${droneCell}
+                <div style="font-size:10px; color:#64748b; margin-top:2px;">↳ cliquer pour assigner un drone</div>
             </div>
-            <div style="margin-left:auto; text-align:right;">
-                <div class="lm-time" data-mat="${p.mat}">${liveStr}</div>
+            <div style="text-align:right;">
+                <div class="lm-time" style="color:#475569;">—</div>
                 <div style="font-size:10px; color:#94a3b8;">cumul jour : ${totalStr}</div>
             </div>
-            <button type="button" data-action="toggle-flight" data-mat="${p.mat}">
-                ${active ? '⏹ Stop' : '▶ Décoller'}
-            </button>
         </div>`;
     }).join('');
     _liveUpdateTotals();
+}
+
+function _liveStartFlight(mat, drone) {
+    const flights = _liveFlights();
+    flights.push({ mat, drone, startedAt: new Date().toISOString(), stoppedAt: null });
+    _setLiveFlights(flights);
+    _liveRenderFlights();
+}
+
+function _liveStopFlight(mat) {
+    const flights = _liveFlights();
+    const active = flights.find(f => f.mat === mat && !f.stoppedAt);
+    if (active) active.stoppedAt = new Date().toISOString();
+    _setLiveFlights(flights);
+    // Après atterrissage, on remet la ligne en idle (il faudra re-choisir un drone).
+    if (_liveRowState[mat]) _liveRowState[mat] = { state: 'idle', drone: '' };
+    _liveRenderFlights();
 }
 
 function _liveFormatDuration(ms) {
@@ -10918,8 +11068,10 @@ async function _liveRefreshAdsb() {
                 if (mapEl._leaflet_id) { try { delete mapEl._leaflet_id; } catch (e) {} }
                 mapEl.innerHTML = '';
             }
-            _liveAdsbMap = L.map('lm-adsb-map', { zoomControl: true, attributionControl: false })
+            _liveAdsbMap = L.map('lm-adsb-map', { zoomControl: false, attributionControl: false })
                 .setView([STATE.lat, STATE.lon], 11);
+            // Zoom +/- relocalisés en bas-droite pour ne plus chevaucher le bandeau info.
+            L.control.zoom({ position: 'bottomright' }).addTo(_liveAdsbMap);
             // Fond sombre (CARTO Dark Matter) avec fallback OSM si le tile renvoie une erreur.
             const dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
                 maxZoom: 18, subdomains: 'abcd'
@@ -10963,7 +11115,8 @@ async function _liveRefreshAdsb() {
 // réseau est piloté par scheduleAircraftRefresh de la page principale).
 function _liveUpdateAdsbMarkers() {
     if (!_liveAdsbMap || !_liveAdsbMap._planes) return;
-    const planes = (STATE.aircraft || []).filter(a => a.lat != null && a.lon != null);
+    let planes = (STATE.aircraft || []).filter(a => a.lat != null && a.lon != null);
+    if (_liveLowOnly) planes = planes.filter(a => a.altM != null && a.altM < 500);
     _liveAdsbMap._planes.clearLayers();
     // Marqueurs : on réutilise exactement la spec graphique de la page principale
     // (mêmes couleurs, mêmes SVG avion/hélico, même schéma de tailles et popup).
@@ -11068,6 +11221,8 @@ function _liveAttachRadarSweep(map, radiusM) {
     }
 }
 
+let _liveLastMeteo = {};   // mémorise les dernières valeurs pour calculer la flèche d'évolution
+
 async function _liveRefreshMeteo() {
     if (STATE.lat == null) {
         const grid = document.getElementById('lm-meteo-grid');
@@ -11077,72 +11232,73 @@ async function _liveRefreshMeteo() {
     try {
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${STATE.lat}&longitude=${STATE.lon}`
             + `&current=temperature_2m,relative_humidity_2m,precipitation,surface_pressure,wind_speed_10m,wind_gusts_10m,wind_direction_10m,visibility,weather_code`
-            + `&hourly=temperature_2m,wind_speed_10m,wind_gusts_10m,precipitation`
             + `&wind_speed_unit=kmh&timezone=auto`;
         const r = await fetchWithTimeout(url, {}, 8000);
         if (!r.ok) throw new Error(r.status);
         const j = await r.json();
         const c = j.current || {};
-        // Tendance : valeur actuelle vs +1h
-        const h = j.hourly || {};
-        const idx = (h.time || []).findIndex(t => new Date(t) > new Date());
-        const next = idx >= 0 ? {
-            wind: h.wind_speed_10m && h.wind_speed_10m[idx],
-            gust: h.wind_gusts_10m && h.wind_gusts_10m[idx],
-            temp: h.temperature_2m && h.temperature_2m[idx],
-            precip: h.precipitation && h.precipitation[idx]
-        } : {};
-        const arrow = (cur, nxt) => {
-            if (nxt == null || cur == null) return '';
-            const d = nxt - cur;
-            if (Math.abs(d) < 0.5) return ' →';
-            return d > 0 ? ' <span style="color:#fbbf24;">↗</span> ' + nxt.toFixed(0) : ' <span style="color:#22c55e;">↘</span> ' + nxt.toFixed(0);
-        };
         const cls = (v, warn, danger) => v >= danger ? 'danger' : (v >= warn ? 'warn' : 'ok');
-        const wind = c.wind_speed_10m || 0;
-        const gust = c.wind_gusts_10m || 0;
+        const values = {
+            wind:    c.wind_speed_10m   || 0,
+            gust:    c.wind_gusts_10m   || 0,
+            precip:  c.precipitation    || 0,
+            temp:    c.temperature_2m   || 0,
+            hum:     c.relative_humidity_2m || 0,
+            press:   c.surface_pressure || 0,
+            vis:     (c.visibility || 0) / 1000,
+            kp:      STATE.kp || 0
+        };
+        // Flèche d'évolution depuis le dernier refresh : ↑ rouge si la valeur
+        // augmente, ↓ verte si elle baisse, rien si pas de variation ou 1er load.
+        const trend = (key, threshold) => {
+            const prev = _liveLastMeteo[key];
+            if (prev == null) return '';
+            const d = values[key] - prev;
+            if (Math.abs(d) < (threshold || 0.1)) return '';
+            return d > 0
+                ? '<span class="lm-trend up">▲</span>'
+                : '<span class="lm-trend down">▼</span>';
+        };
         const dir = c.wind_direction_10m || 0;
         const grid = document.getElementById('lm-meteo-grid');
         if (!grid) return;
         grid.innerHTML = `
-            <div class="lm-tile ${cls(wind, 25, 40)}">
+            <div class="lm-tile ${cls(values.wind, 25, 40)}">${trend('wind', 0.5)}
                 <div class="lm-tile-k">Vent</div>
-                <div class="lm-tile-v">${wind.toFixed(0)}<span class="lm-tile-u">km/h</span></div>
-                <div class="lm-tile-t">${dir.toFixed(0)}°${arrow(wind, next.wind)}</div>
+                <div class="lm-tile-v">${values.wind.toFixed(0)}<span class="lm-tile-u">km/h</span></div>
+                <div class="lm-tile-t">${dir.toFixed(0)}°</div>
             </div>
-            <div class="lm-tile ${cls(gust, 35, 50)}">
+            <div class="lm-tile ${cls(values.gust, 35, 50)}">${trend('gust', 0.5)}
                 <div class="lm-tile-k">Rafales</div>
-                <div class="lm-tile-v">${gust.toFixed(0)}<span class="lm-tile-u">km/h</span></div>
-                <div class="lm-tile-t">${arrow(gust, next.gust)}</div>
+                <div class="lm-tile-v">${values.gust.toFixed(0)}<span class="lm-tile-u">km/h</span></div>
             </div>
-            <div class="lm-tile ${cls(c.precipitation || 0, 0.5, 2)}">
+            <div class="lm-tile ${cls(values.precip, 0.5, 2)}">${trend('precip', 0.05)}
                 <div class="lm-tile-k">Pluie</div>
-                <div class="lm-tile-v">${(c.precipitation || 0).toFixed(1)}<span class="lm-tile-u">mm</span></div>
-                <div class="lm-tile-t">${arrow(c.precipitation || 0, next.precip)}</div>
+                <div class="lm-tile-v">${values.precip.toFixed(1)}<span class="lm-tile-u">mm</span></div>
             </div>
-            <div class="lm-tile ok">
+            <div class="lm-tile ok">${trend('temp', 0.2)}
                 <div class="lm-tile-k">Température</div>
-                <div class="lm-tile-v">${(c.temperature_2m || 0).toFixed(1)}<span class="lm-tile-u">°C</span></div>
-                <div class="lm-tile-t">${arrow(c.temperature_2m, next.temp)}</div>
+                <div class="lm-tile-v">${values.temp.toFixed(1)}<span class="lm-tile-u">°C</span></div>
             </div>
-            <div class="lm-tile ok">
+            <div class="lm-tile ok">${trend('hum', 1)}
                 <div class="lm-tile-k">Humidité</div>
-                <div class="lm-tile-v">${(c.relative_humidity_2m || 0).toFixed(0)}<span class="lm-tile-u">%</span></div>
+                <div class="lm-tile-v">${values.hum.toFixed(0)}<span class="lm-tile-u">%</span></div>
             </div>
-            <div class="lm-tile ok">
+            <div class="lm-tile ok">${trend('press', 0.3)}
                 <div class="lm-tile-k">Pression</div>
-                <div class="lm-tile-v">${(c.surface_pressure || 0).toFixed(0)}<span class="lm-tile-u">hPa</span></div>
+                <div class="lm-tile-v">${values.press.toFixed(0)}<span class="lm-tile-u">hPa</span></div>
             </div>
-            <div class="lm-tile ${(c.visibility || 99999) < 5000 ? 'warn' : 'ok'}">
+            <div class="lm-tile ${values.vis < 5 ? 'warn' : 'ok'}">${trend('vis', 0.1)}
                 <div class="lm-tile-k">Visibilité</div>
-                <div class="lm-tile-v">${((c.visibility || 0) / 1000).toFixed(1)}<span class="lm-tile-u">km</span></div>
+                <div class="lm-tile-v">${values.vis.toFixed(1)}<span class="lm-tile-u">km</span></div>
             </div>
-            <div class="lm-tile ${(STATE.kp || 0) >= 5 ? 'danger' : (STATE.kp || 0) >= 4 ? 'warn' : 'ok'}">
+            <div class="lm-tile ${values.kp >= 5 ? 'danger' : values.kp >= 4 ? 'warn' : 'ok'}">${trend('kp', 0.1)}
                 <div class="lm-tile-k">Indice Kp</div>
-                <div class="lm-tile-v">${(STATE.kp || 0).toFixed(1)}</div>
-                <div class="lm-tile-t">${(STATE.kp || 0) >= 5 ? 'GPS perturbé' : 'GPS OK'}</div>
+                <div class="lm-tile-v">${values.kp.toFixed(1)}</div>
+                <div class="lm-tile-t">${values.kp >= 5 ? 'GPS perturbé' : 'GPS OK'}</div>
             </div>
         `;
+        _liveLastMeteo = values;
         document.getElementById('lm-meteo-updated').textContent = '↻ ' + new Date().toLocaleTimeString('fr-FR');
     } catch (e) {
         console.warn('Live météo:', e);
