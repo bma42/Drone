@@ -10695,6 +10695,10 @@ function _liveSyncAlertBtn() {
 function _liveBindHandlers(overlay) {
     const q = sel => overlay.querySelector(sel);
     q('#lm-btn-stopall') && q('#lm-btn-stopall').addEventListener('click', _liveStopAllFlights);
+    q('#lm-btn-stats') && q('#lm-btn-stats').addEventListener('click', _liveOpenStats);
+    q('#lm-btn-close-stats') && q('#lm-btn-close-stats').addEventListener('click', () => {
+        const p = document.getElementById('lm-stats-panel'); if (p) p.style.display = 'none';
+    });
     q('#lm-btn-clear-stats') && q('#lm-btn-clear-stats').addEventListener('click', _liveClearFlightStats);
     q('#lm-btn-exit') && q('#lm-btn-exit').addEventListener('click', exitLiveMode);
     // Toggle alertes vocales : on passe par la délégation data-action pour
@@ -10863,6 +10867,15 @@ function _liveModeHtml() {
     <div class="lm-bar">
         <div class="lm-title"><span class="lm-dot"></span> LIVE MODE</div>
         <button id="lm-btn-stopall" type="button">⏹ Tout arrêter</button>
+        <button id="lm-btn-stats" type="button" title="Stats agrégées : batteries, drones, global" style="display:inline-flex; align-items:center; gap:6px;">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="12" y1="20" x2="12" y2="10"/>
+                <line x1="18" y1="20" x2="18" y2="4"/>
+                <line x1="6" y1="20" x2="6" y2="16"/>
+                <line x1="3" y1="20" x2="21" y2="20"/>
+            </svg>
+            Stats
+        </button>
         <button id="lm-btn-clear-stats" type="button" title="Effacer les chronos cumulés et l'historique des vols du jour" style="display:inline-flex; align-items:center; gap:6px;">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <polyline points="3 6 5 6 21 6"/>
@@ -10928,6 +10941,13 @@ function _liveModeHtml() {
             <div id="lm-flights-list"></div>
             <div class="lm-totals" id="lm-totals"></div>
         </div>
+    </div>
+    <div id="lm-stats-panel" style="display:none; position:fixed; top:60px; left:50%; transform:translateX(-50%); width:min(720px, 94vw); max-height:84vh; background:#0f172a; border:1px solid #334155; border-radius:8px; padding:18px; z-index:100000; overflow:auto; box-shadow:0 12px 40px rgba(0,0,0,.6);">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+            <h3 style="margin:0; color:#93c5fd; font-size:13px; letter-spacing:.8px; flex:1;">STATISTIQUES DE VOL — JOUR EN COURS</h3>
+            <button id="lm-btn-close-stats" type="button" style="background:#1e293b; color:#e2e8f0; border:1px solid #334155; padding:5px 12px; border-radius:4px; font-size:12px; cursor:pointer;">Fermer ✕</button>
+        </div>
+        <div id="lm-stats-content" style="display:flex; flex-direction:column; gap:18px; font-size:12px;"></div>
     </div>
     `;
 }
@@ -11229,6 +11249,109 @@ function _liveStopAllFlights() {
         _setLiveFlights(flights);
         _liveRenderFlights();
     }
+}
+
+// Ouvre le panneau de stats agrégées (batteries, drones, global) pour le jour
+// en cours. Lecture seule : se base sur _liveFlights() actuel.
+function _liveOpenStats() {
+    const panel = document.getElementById('lm-stats-panel');
+    if (!panel) return;
+    panel.style.display = 'block';
+    _liveRenderStats();
+}
+
+function _liveRenderStats() {
+    const wrap = document.getElementById('lm-stats-content');
+    if (!wrap) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const flights = _liveFlights().filter(f => f.startedAt && f.startedAt.startsWith(today));
+    const now = Date.now();
+    const durMs = (f) => (f.stoppedAt ? new Date(f.stoppedAt) : new Date(now)) - new Date(f.startedAt);
+
+    // Global
+    const totalMs = flights.reduce((s, f) => s + durMs(f), 0);
+    const active = flights.filter(f => !f.stoppedAt).length;
+    const uniqAgents = new Set(flights.map(f => f.mat)).size;
+    const uniqDrones = new Set(flights.filter(f => f.drone).map(f => f.drone)).size;
+
+    // Par drone (label complet, modèle + serial)
+    const byDrone = {};
+    flights.forEach(f => {
+        const k = f.drone || '(drone non précisé)';
+        if (!byDrone[k]) byDrone[k] = { count: 0, ms: 0, lastEnd: '' };
+        byDrone[k].count++;
+        byDrone[k].ms += durMs(f);
+        if (f.stoppedAt && f.stoppedAt > byDrone[k].lastEnd) byDrone[k].lastEnd = f.stoppedAt;
+    });
+    const droneRows = Object.entries(byDrone)
+        .sort((a, b) => b[1].ms - a[1].ms)
+        .map(([drone, s]) => {
+            const idx = drone.indexOf(' · ');
+            const model = idx >= 0 ? drone.slice(0, idx) : drone;
+            const sn = idx >= 0 ? drone.slice(idx + 3) : '';
+            return `<tr>
+                <td><strong style="color:#fff;">${model}</strong>${sn ? '<br><span style="color:#64748b; font-family:ui-monospace,monospace; font-size:10px;">SN ' + sn + '</span>' : ''}</td>
+                <td style="text-align:right; font-family:ui-monospace,monospace; color:#fbbf24; font-weight:700;">${_liveFormatDuration(s.ms)}</td>
+                <td style="text-align:right;">${s.count}</td>
+                <td style="text-align:right; color:#94a3b8; font-size:10px;">${s.lastEnd ? s.lastEnd.slice(11, 16) : '—'}</td>
+            </tr>`;
+        }).join('');
+
+    // Par batterie (clé = modèle + N°)
+    const byBatt = {};
+    flights.forEach(f => {
+        if (!f.battery) return;
+        const model = _liveDroneModelKey(f.drone);
+        const k = model + '|B' + f.battery;
+        if (!byBatt[k]) byBatt[k] = { model, num: f.battery, count: 0, ms: 0 };
+        byBatt[k].count++;
+        byBatt[k].ms += durMs(f);
+    });
+    const battRows = Object.values(byBatt)
+        .sort((a, b) => a.model.localeCompare(b.model) || a.num - b.num)
+        .map(s => `<tr>
+            <td><strong style="color:#fff;">B${s.num}</strong></td>
+            <td style="color:#cbd5e1; font-size:11px;">${s.model || '—'}</td>
+            <td style="text-align:right; font-family:ui-monospace,monospace; color:#fbbf24; font-weight:700;">${_liveFormatDuration(s.ms)}</td>
+            <td style="text-align:right;">${s.count} vol${s.count > 1 ? 's' : ''}</td>
+        </tr>`).join('');
+
+    const tbl = (rows, headers) => rows
+        ? `<table style="width:100%; border-collapse:collapse;">
+            <thead><tr style="border-bottom:1px solid #334155;">${headers.map(h => '<th style="text-align:' + h.align + '; padding:6px 8px; color:#93c5fd; font-size:10px; font-weight:700; letter-spacing:.5px; text-transform:uppercase;">' + h.label + '</th>').join('')}</tr></thead>
+            <tbody>${rows.split('</tr>').map(r => r ? r.replace(/<td/g, '<td style="padding:6px 8px; border-bottom:1px solid #1e293b;"').replace(/style="padding:6px 8px; border-bottom:1px solid #1e293b;" style="/g, 'style="padding:6px 8px; border-bottom:1px solid #1e293b; ').replace(/<\/tr/g, '</tr') : '').join('</tr>')}</tbody>
+           </table>`
+        : '<div style="color:#64748b; font-size:11px; padding:8px;">Aucune donnée pour le jour en cours.</div>';
+
+    wrap.innerHTML = `
+        <section>
+            <div style="font-size:11px; color:#93c5fd; font-weight:700; letter-spacing:.5px; margin-bottom:8px; text-transform:uppercase;">Global</div>
+            <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
+                <div style="background:#1e293b; padding:10px; border-radius:6px;"><div style="font-size:10px; color:#94a3b8; text-transform:uppercase;">Temps total</div><div style="font-size:18px; font-weight:800; color:#fbbf24; font-family:ui-monospace,monospace;">${_liveFormatDuration(totalMs)}</div></div>
+                <div style="background:#1e293b; padding:10px; border-radius:6px;"><div style="font-size:10px; color:#94a3b8; text-transform:uppercase;">Vols</div><div style="font-size:18px; font-weight:800; color:#fff;">${flights.length}${active ? ' <span style="font-size:10px; color:#22c55e;">(' + active + ' en cours)</span>' : ''}</div></div>
+                <div style="background:#1e293b; padding:10px; border-radius:6px;"><div style="font-size:10px; color:#94a3b8; text-transform:uppercase;">Télépilotes</div><div style="font-size:18px; font-weight:800; color:#fff;">${uniqAgents}</div></div>
+                <div style="background:#1e293b; padding:10px; border-radius:6px;"><div style="font-size:10px; color:#94a3b8; text-transform:uppercase;">Drones</div><div style="font-size:18px; font-weight:800; color:#fff;">${uniqDrones}</div></div>
+            </div>
+        </section>
+        <section>
+            <div style="font-size:11px; color:#93c5fd; font-weight:700; letter-spacing:.5px; margin-bottom:8px; text-transform:uppercase;">Par drone</div>
+            ${tbl(droneRows, [
+                { align:'left',  label:'Drone' },
+                { align:'right', label:'Temps cumulé' },
+                { align:'right', label:'Vols' },
+                { align:'right', label:'Dernier' }
+            ])}
+        </section>
+        <section>
+            <div style="font-size:11px; color:#93c5fd; font-weight:700; letter-spacing:.5px; margin-bottom:8px; text-transform:uppercase;">Par batterie</div>
+            ${tbl(battRows, [
+                { align:'left',  label:'Batterie' },
+                { align:'left',  label:'Modèle drone' },
+                { align:'right', label:'Temps cumulé' },
+                { align:'right', label:'Utilisations' }
+            ])}
+        </section>
+    `;
 }
 
 // Efface l'historique des vols (chronos cumulés par télépilote et drone/batterie
