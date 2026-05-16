@@ -11615,25 +11615,54 @@ function _liveAttachRadarSweep(map, radiusM) {
     container.querySelectorAll('.lm-radar-sweep-svg').forEach(n => n.remove());
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'lm-radar-sweep-svg');
-    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('viewBox', '-50 -50 100 100');
     svg.setAttribute('preserveAspectRatio', 'xMidYMid slice');
-    svg.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:400; overflow:visible;';
-    // Animation SVG native (animateTransform) plutôt que CSS transform-origin
-    // qui est capricieux sur Safari pour les <g>. Universel et fiable.
+    // z-index élevé pour passer au-dessus des tuiles + overlay-pane Leaflet,
+    // pointer-events:none pour ne pas bloquer les clics carte.
+    svg.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:650; overflow:visible; mix-blend-mode:screen;';
+    // Animation SVG native (animateTransform) — universellement supportée
+    // et indépendante de transform-origin CSS (capricieux sur Safari).
     svg.innerHTML = `
         <defs>
             <radialGradient id="lm-sweep-grad" cx="0" cy="0" r="60" gradientUnits="userSpaceOnUse">
-                <stop offset="0%"  stop-color="rgba(34,197,94,0.75)"/>
-                <stop offset="50%" stop-color="rgba(34,197,94,0.20)"/>
+                <stop offset="0%"  stop-color="rgba(34,197,94,0.95)"/>
+                <stop offset="35%" stop-color="rgba(34,197,94,0.45)"/>
+                <stop offset="75%" stop-color="rgba(34,197,94,0.10)"/>
+                <stop offset="100%" stop-color="rgba(34,197,94,0)"/>
+            </radialGradient>
+            <radialGradient id="lm-sweep-trail" cx="0" cy="0" r="60" gradientUnits="userSpaceOnUse">
+                <stop offset="0%"  stop-color="rgba(34,197,94,0.35)"/>
+                <stop offset="60%" stop-color="rgba(34,197,94,0.08)"/>
                 <stop offset="100%" stop-color="rgba(34,197,94,0)"/>
             </radialGradient>
         </defs>
-        <g transform="translate(50 50)">
-            <path d="M 0 0 L 70 0 A 70 70 0 0 1 49.5 49.5 Z" fill="url(#lm-sweep-grad)" opacity="0.95">
-                <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="0" to="360" dur="4s" repeatCount="indefinite"/>
-            </path>
-            <circle cx="0" cy="0" r="2.4" fill="#22c55e"/>
+        <!-- Croisillons cardinaux N/S/E/O en fond -->
+        <g stroke="rgba(34,197,94,0.18)" stroke-width="0.4" stroke-dasharray="1.5 2">
+            <line x1="-55" y1="0" x2="55" y2="0"/>
+            <line x1="0" y1="-55" x2="0" y2="55"/>
         </g>
+        <text x="0" y="-46" text-anchor="middle" fill="rgba(34,197,94,0.6)" font-size="3.5" font-weight="700" font-family="ui-monospace, monospace">N</text>
+        <text x="46" y="1.5" text-anchor="middle" fill="rgba(34,197,94,0.6)" font-size="3.5" font-weight="700" font-family="ui-monospace, monospace">E</text>
+        <text x="0" y="49" text-anchor="middle" fill="rgba(34,197,94,0.6)" font-size="3.5" font-weight="700" font-family="ui-monospace, monospace">S</text>
+        <text x="-46" y="1.5" text-anchor="middle" fill="rgba(34,197,94,0.6)" font-size="3.5" font-weight="700" font-family="ui-monospace, monospace">O</text>
+
+        <!-- Faisceau principal qui tourne (cône 60° + traînée) -->
+        <g>
+            <!-- Traînée diffuse : cône large derrière le faisceau -->
+            <path d="M 0 0 L 60 0 A 60 60 0 0 0 30 -51.96 Z" fill="url(#lm-sweep-trail)" opacity="0.6"/>
+            <!-- Faisceau net : cône avant -->
+            <path d="M 0 0 L 60 0 A 60 60 0 0 1 51.96 30 Z" fill="url(#lm-sweep-grad)" opacity="0.95"/>
+            <!-- Bord d'attaque lumineux -->
+            <line x1="0" y1="0" x2="60" y2="0" stroke="#22c55e" stroke-width="0.6" opacity="0.9" filter="drop-shadow(0 0 1.5px rgba(34,197,94,0.8))"/>
+            <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="0" to="360" dur="4.5s" repeatCount="indefinite"/>
+        </g>
+
+        <!-- Pastille centrale pulsante (point d'origine) -->
+        <circle cx="0" cy="0" r="1.4" fill="#22c55e" opacity="0.95">
+            <animate attributeName="r" values="1.4;2.2;1.4" dur="1.8s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0.95;0.55;0.95" dur="1.8s" repeatCount="indefinite"/>
+        </circle>
+        <circle cx="0" cy="0" r="0.7" fill="#86efac"/>
     `;
     container.appendChild(svg);
 }
