@@ -10621,6 +10621,9 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-adsb-list td { padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,.04); color: #cbd5e1; vertical-align: middle; }
         #live-mode-overlay .lm-adsb-list tr:last-child td { border-bottom: 0; }
         #live-mode-overlay .lm-adsb-list .lm-badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 9px; font-weight: 700; letter-spacing: .3px; color: #fff; white-space: nowrap; }
+        /* Contrôles Leaflet TOUJOURS visibles en Live Mode (la règle globale les
+           cache par défaut et ne les montre qu'au survol via .map-controls-visible). */
+        #live-mode-overlay .leaflet-control-container { opacity: 1 !important; pointer-events: auto !important; }
         /* Zoom controls Leaflet — relocalisés bas-droite, sous le bandeau info, et stylés dark. */
         #live-mode-overlay .leaflet-control-zoom { border: 0 !important; box-shadow: 0 2px 8px rgba(0,0,0,.5) !important; }
         #live-mode-overlay .leaflet-control-zoom a { background: rgba(15,23,42,.92) !important; color: #e2e8f0 !important; border: 1px solid #334155 !important; width: 32px !important; height: 32px !important; line-height: 30px !important; font-size: 18px !important; font-weight: 700 !important; }
@@ -11184,6 +11187,13 @@ async function _liveRefreshAdsb() {
             L.circleMarker([STATE.lat, STATE.lon], {
                 radius: 6, color: '#fbbf24', fillColor: '#fbbf24', fillOpacity: 1, weight: 2
             }).addTo(_liveAdsbMap);
+            // Cercle d'élongation (rayon de vol opérationnel — STATE.radius).
+            // Repris de la page principale : bleu #0066cc rempli, mis à jour à
+            // chaque tick au cas où l'utilisateur modifierait le rayon.
+            _liveAdsbMap._elongCircle = L.circle([STATE.lat, STATE.lon], {
+                radius: STATE.radius || 0,
+                color: '#0066cc', fillColor: '#0066cc', fillOpacity: 0.12, weight: 2
+            }).addTo(_liveAdsbMap);
             _liveAdsbMap._planes = L.layerGroup().addTo(_liveAdsbMap);
             // Le balayage radar est cosmétique : si quoi que ce soit foire,
             // on continue sans, plutôt que de bloquer toute la carte.
@@ -11209,6 +11219,12 @@ async function _liveRefreshAdsb() {
 // réseau est piloté par scheduleAircraftRefresh de la page principale).
 function _liveUpdateAdsbMarkers() {
     if (!_liveAdsbMap || !_liveAdsbMap._planes) return;
+    // Synchronise l'élongation au cas où le rayon a été modifié dans §1 pendant
+    // que le Live Mode est ouvert.
+    if (_liveAdsbMap._elongCircle && STATE.lat != null) {
+        _liveAdsbMap._elongCircle.setLatLng([STATE.lat, STATE.lon]);
+        _liveAdsbMap._elongCircle.setRadius(STATE.radius || 0);
+    }
     let planes = (STATE.aircraft || []).filter(a => a.lat != null && a.lon != null);
     if (_liveLowOnly) planes = planes.filter(a => a.altM != null && a.altM < 500);
     _liveAdsbMap._planes.clearLayers();
