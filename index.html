@@ -11621,24 +11621,44 @@ function _liveAttachRadarSweep(map, radiusM) {
     wrap.className = 'lm-radar-wrap';
     wrap.style.cssText = 'position:absolute; inset:0; pointer-events:none; z-index:450; overflow:hidden;';
 
-    // Cône balayant via conic-gradient + animation CSS — compat universelle, pas
-    // de SVG/blend-mode/filter capricieux.
+    // Faisceau type radar militaire : large ligne avec gradient linéaire qui
+    // part du centre vers l'extérieur, tourne autour du centre.
     const sweep = document.createElement('div');
     sweep.style.cssText = `
         position:absolute; left:50%; top:50%;
-        width:200%; height:200%;
-        transform:translate(-50%,-50%);
-        background: conic-gradient(from 0deg,
-            rgba(34,197,94,0.55) 0deg,
-            rgba(34,197,94,0.30) 25deg,
-            rgba(34,197,94,0.10) 55deg,
-            rgba(34,197,94,0) 75deg,
-            rgba(34,197,94,0) 360deg);
-        border-radius:50%;
+        width:60%; height:6px;
+        margin-top:-3px;
+        transform-origin: 0 50%;
+        background: linear-gradient(90deg,
+            rgba(34,197,94,1) 0%,
+            rgba(34,197,94,0.7) 30%,
+            rgba(34,197,94,0.25) 70%,
+            rgba(34,197,94,0) 100%);
+        box-shadow: 0 0 8px rgba(34,197,94,0.8), 0 0 16px rgba(34,197,94,0.4);
         animation: lm-radar-rot 4s linear infinite;
         will-change: transform;
+        border-radius: 3px;
     `;
     wrap.appendChild(sweep);
+
+    // Halo diffus derrière le faisceau (cône large semi-transparent) pour
+    // matérialiser la zone récemment balayée.
+    const trail = document.createElement('div');
+    trail.style.cssText = `
+        position:absolute; left:50%; top:50%;
+        width:60%; height:60%;
+        margin:-30% 0 0 0;
+        transform-origin: 0 50%;
+        background: conic-gradient(from 270deg at 0% 50%,
+            rgba(34,197,94,0) 0deg,
+            rgba(34,197,94,0) 270deg,
+            rgba(34,197,94,0.25) 350deg,
+            rgba(34,197,94,0.45) 360deg);
+        animation: lm-radar-rot 4s linear infinite;
+        will-change: transform;
+        pointer-events:none;
+    `;
+    wrap.appendChild(trail);
 
     // Pastille centrale verte pulsante (origine du radar)
     const dot = document.createElement('div');
@@ -11659,8 +11679,8 @@ function _liveAttachRadarSweep(map, radiusM) {
         st.id = 'lm-radar-anim-css';
         st.textContent = `
             @keyframes lm-radar-rot {
-                from { transform: translate(-50%,-50%) rotate(0deg); }
-                to   { transform: translate(-50%,-50%) rotate(360deg); }
+                from { transform: rotate(0deg); }
+                to   { transform: rotate(360deg); }
             }
             @keyframes lm-radar-pulse {
                 0%, 100% { transform: scale(1); opacity: 0.95; }
