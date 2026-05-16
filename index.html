@@ -10821,6 +10821,13 @@ async function _liveRefreshAdsb() {
     if (STATE.lat == null) { if (info) info.textContent = 'Sélectionne une mission avant.'; return; }
     if (!_liveAdsbMap && typeof L !== 'undefined') {
         try {
+            // L.map throw « Map container is already initialized » si le div garde
+            // un _leaflet_id d'une session précédente (overlay réutilisé). On purge.
+            const mapEl = document.getElementById('lm-adsb-map');
+            if (mapEl) {
+                if (mapEl._leaflet_id) { try { delete mapEl._leaflet_id; } catch (e) {} }
+                mapEl.innerHTML = '';
+            }
             _liveAdsbMap = L.map('lm-adsb-map', { zoomControl: true, attributionControl: false })
                 .setView([STATE.lat, STATE.lon], 11);
             // Fond sombre (CARTO Dark Matter) avec fallback OSM si le tile renvoie une erreur.
