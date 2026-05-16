@@ -10051,6 +10051,14 @@ function _renderMissionSelect() {
     const sel = document.getElementById('mission-select');
     if (!sel) return;
     const current = sel.value;
+    const hasMissions = _missionsLocal.length > 0;
+    sel.style.display = hasMissions ? '' : 'none';
+    if (!hasMissions) {
+        sel.innerHTML = '';
+        const delBtn = document.getElementById('mission-delete-btn');
+        if (delBtn) { delBtn.disabled = true; delBtn.style.opacity = '.5'; }
+        return;
+    }
     const opts = _missionsLocal
         .slice()
         .sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''))
@@ -10104,6 +10112,18 @@ function serializeMission() {
 
 function restoreMission(data) {
     if (!data) return;
+    // Reset préalable : tout checkbox/radio absent de la sauvegarde est décoché.
+    // Sinon, l'état laissé par la mission précédente (ou les valeurs par défaut
+    // de la page) pollue le chargement (ex. tous les pilotes apparaissent cochés
+    // alors que la mission sauvegardée n'en avait qu'un).
+    const savedKeys = new Set(Object.keys(data.fields || {}));
+    document.querySelectorAll('input[type="checkbox"][id], input[type="radio"][id]').forEach(el => {
+        if (el.id === 'mission-select') return;
+        const radioKey = '__radio__' + el.name;
+        if (!savedKeys.has(el.id) && !savedKeys.has(radioKey)) {
+            el.checked = false;
+        }
+    });
     Object.entries(data.fields || {}).forEach(([id, val]) => {
         if (id.startsWith('__radio__')) {
             const name = id.slice(9);
