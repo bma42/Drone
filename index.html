@@ -11275,8 +11275,9 @@ async function _liveRefreshAdsb() {
             dark.addTo(_liveAdsbMap);
             _liveAdsbMap._rings = L.layerGroup().addTo(_liveAdsbMap);
             _liveRebuildAdsbRings();
-            // Couche radar pluie temps réel RainViewer (sous l'animation de balayage)
-            _liveAddRainOverlay();
+            // Radar pluie RainViewer désactivé pour l'instant (qualité limitée
+            // au-delà de z11). Réactiver en décommentant la ligne ci-dessous.
+            // _liveAddRainOverlay();
             L.circleMarker([STATE.lat, STATE.lon], {
                 radius: 6, color: '#fbbf24', fillColor: '#fbbf24', fillOpacity: 1, weight: 2
             }).addTo(_liveAdsbMap);
