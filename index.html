@@ -10520,7 +10520,6 @@ function enterLiveMode() {
         if (typeof toggleAircraftAuto === 'function') toggleAircraftAuto(true);
         if (typeof toggleAircraftAlert === 'function') toggleAircraftAlert(true);
     } catch (e) { console.warn('[live] ADS-B sync failed:', e); }
-    try { _liveRenderPilots(); } catch (e) { console.warn('[live] renderPilots:', e); }
     try { _liveRenderFlights(); } catch (e) { console.warn('[live] renderFlights:', e); }
     try { _liveRefreshAdsb(); } catch (e) { console.warn('[live] refreshAdsb:', e); }
     try { _liveRefreshMeteo(); } catch (e) { console.warn('[live] refreshMeteo:', e); }
@@ -10589,9 +10588,6 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-flight-row button { background: #0f172a; color: #fbbf24; border: 1px solid #334155; padding: 4px 9px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 700; }
         #live-mode-overlay .lm-flight-row.active button { background: #fbbf24; color: #1f2937; }
         #live-mode-overlay .lm-flight-row button:hover { filter: brightness(1.15); }
-        #live-mode-overlay .lm-add-pilot { display: flex; gap: 6px; margin-top: 8px; }
-        #live-mode-overlay .lm-add-pilot input { flex: 1; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; padding: 5px 8px; border-radius: 4px; font-size: 12px; }
-        #live-mode-overlay .lm-add-pilot button { background: #0b3d91; color: #fff; border: 0; padding: 5px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 600; }
         #live-mode-overlay .lm-totals { font-size: 11px; color: #94a3b8; margin-top: 8px; padding-top: 8px; border-top: 1px solid #1e293b; }
         #live-mode-overlay .lm-adsb-info { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: rgba(15,23,42,.85); color: #fff; padding: 6px 10px; border-radius: 5px; font-size: 11px; z-index: 1000; font-weight: 600; pointer-events: auto; }
         #live-mode-overlay .lm-adsb-info .lm-stats { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
@@ -10656,18 +10652,9 @@ function _liveInjectStyles() {
 
 function _liveBindHandlers(overlay) {
     const q = sel => overlay.querySelector(sel);
-    q('#lm-btn-config') && q('#lm-btn-config').addEventListener('click', _liveOpenPilotsConfig);
     q('#lm-btn-stopall') && q('#lm-btn-stopall').addEventListener('click', _liveStopAllFlights);
     q('#lm-btn-clear-stats') && q('#lm-btn-clear-stats').addEventListener('click', _liveClearFlightStats);
     q('#lm-btn-exit') && q('#lm-btn-exit').addEventListener('click', exitLiveMode);
-    q('#lm-btn-add-pilot') && q('#lm-btn-add-pilot').addEventListener('click', _liveAddPilot);
-    q('#lm-btn-close-config') && q('#lm-btn-close-config').addEventListener('click', () => {
-        q('#lm-pilots-config').style.display = 'none';
-    });
-    ['lm-new-pilot-mat', 'lm-new-pilot-nom'].forEach(id => {
-        const el = q('#' + id);
-        if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') _liveAddPilot(); });
-    });
     // Toggle alertes vocales + sélecteur d'intervalle de refresh ADS-B
     const alertBtn = q('#lm-btn-alert');
     if (alertBtn) {
@@ -10720,8 +10707,7 @@ function _liveBindHandlers(overlay) {
         if (!t) return;
         const a = t.dataset.action;
         const mat = t.dataset.mat;
-        if (a === 'remove-pilot') _liveRemovePilot(parseInt(t.dataset.idx, 10));
-        else if (a === 'start-choose') { _liveRowStateFor(mat).state = 'choosing'; _liveRenderFlights(); }
+        if (a === 'start-choose') { _liveRowStateFor(mat).state = 'choosing'; _liveRenderFlights(); }
         else if (a === 'cancel-choose') { _liveRowStateFor(mat).state = 'idle'; _liveRenderFlights(); }
         else if (a === 'change-drone') { _liveRowStateFor(mat).state = 'choosing'; _liveRenderFlights(); }
         else if (a === 'select-drone') {
@@ -10779,9 +10765,16 @@ function _liveModeHtml() {
     return `
     <div class="lm-bar">
         <div class="lm-title"><span class="lm-dot"></span> LIVE MODE</div>
-        <button id="lm-btn-config" type="button">⚙ Configurer agents</button>
         <button id="lm-btn-stopall" type="button">⏹ Tout arrêter</button>
-        <button id="lm-btn-clear-stats" type="button" title="Effacer les chronos cumulés et l'historique des vols du jour">🧹 Effacer stats</button>
+        <button id="lm-btn-clear-stats" type="button" title="Effacer les chronos cumulés et l'historique des vols du jour" style="display:inline-flex; align-items:center; gap:6px;">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                <path d="M10 11v6M14 11v6"/>
+                <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>
+            </svg>
+            Effacer stats
+        </button>
         <div class="lm-clock" id="lm-clock">--:--:--</div>
         <button id="lm-btn-exit" class="lm-exit" type="button">✕ Quitter</button>
     </div>
@@ -10827,53 +10820,9 @@ function _liveModeHtml() {
             <div class="lm-totals" id="lm-totals"></div>
         </div>
     </div>
-    <div id="lm-pilots-config" style="display:none; position:fixed; top:80px; left:50%; transform:translateX(-50%); width:min(560px, 92vw); max-height:80vh; background:#0f172a; border:1px solid #334155; border-radius:8px; padding:18px; z-index:100000; overflow:auto; box-shadow:0 12px 40px rgba(0,0,0,.6);">
-        <h3 style="margin:0 0 10px; color:#93c5fd; font-size:13px; letter-spacing:.8px;">CONFIGURATION DES TÉLÉPILOTES</h3>
-        <div id="lm-pilots-list" style="display:flex; flex-direction:column; gap:5px;"></div>
-        <div class="lm-add-pilot">
-            <input type="text" id="lm-new-pilot-mat" placeholder="Matricule" style="max-width:120px;" autocomplete="off">
-            <input type="text" id="lm-new-pilot-nom" placeholder="Nom Prénom" autocomplete="off">
-            <button id="lm-btn-add-pilot" type="button">+ Ajouter</button>
-        </div>
-        <button id="lm-btn-close-config" type="button" style="margin-top:10px; background:#1e293b; color:#e2e8f0; border:1px solid #334155; padding:6px 12px; border-radius:4px; font-size:12px; cursor:pointer;">Fermer</button>
-    </div>
     `;
 }
 
-function _liveOpenPilotsConfig() {
-    document.getElementById('lm-pilots-config').style.display = 'block';
-    _liveRenderPilotsConfig();
-}
-function _liveRenderPilotsConfig() {
-    const list = document.getElementById('lm-pilots-list');
-    if (!list) return;
-    const pilots = _livePilots();
-    list.innerHTML = pilots.length ? pilots.map((p, idx) => `
-        <div style="display:flex; gap:6px; align-items:center; background:#1e293b; padding:5px 8px; border-radius:4px;">
-            <span style="font-family:ui-monospace,monospace; color:#fbbf24; font-weight:700; min-width:80px;">${p.mat}</span>
-            <span style="flex:1; color:#e2e8f0;">${p.nom}${p.drone ? ' · <span style=\"color:#93c5fd;\">' + p.drone + '</span>' : ''}</span>
-            <button type="button" data-action="remove-pilot" data-idx="${idx}" style="background:#7f1d1d; color:#fff; border:0; padding:3px 8px; border-radius:3px; font-size:11px; cursor:pointer;">×</button>
-        </div>`).join('') : '<div style="color:#64748b; font-size:12px; padding:8px;">Aucun télépilote configuré.</div>';
-}
-function _liveAddPilot() {
-    const mat = document.getElementById('lm-new-pilot-mat').value.trim();
-    const nom = document.getElementById('lm-new-pilot-nom').value.trim();
-    if (!mat || !nom) return;
-    const pilots = _livePilots();
-    pilots.push({ mat, nom });
-    _setLivePilots(pilots);
-    document.getElementById('lm-new-pilot-mat').value = '';
-    document.getElementById('lm-new-pilot-nom').value = '';
-    _liveRenderPilotsConfig();
-    _liveRenderFlights();
-}
-function _liveRemovePilot(idx) {
-    const pilots = _livePilots();
-    pilots.splice(idx, 1);
-    _setLivePilots(pilots);
-    _liveRenderPilotsConfig();
-    _liveRenderFlights();
-}
 
 // Récupère les pilotes cochés dans §3 (Moyens). Source de vérité prioritaire.
 function _liveMissionPilots() {
@@ -10930,10 +10879,6 @@ function _liveEffectivePilots() {
     return mission.length ? mission : _livePilots();
 }
 
-function _liveRenderPilots() {
-    // Si aucun pilote (ni §3, ni localStorage) on ouvre le configurateur manuel.
-    if (!_liveEffectivePilots().length) _liveOpenPilotsConfig();
-}
 
 // État éphémère par pilote (non persisté) : pilote → { state, drone }
 //   'idle'     : nom seul, clic ouvre la liste des drones
@@ -10972,7 +10917,7 @@ function _liveRenderFlights() {
     const pilots = _liveEffectivePilots();
     const drones = _liveMissionDrones();
     if (!pilots.length) {
-        wrap.innerHTML = '<div style="color:#64748b; font-size:12px; padding:10px; text-align:center;">⚙ Ajoute des télépilotes via « Configurer agents » ou coche-les dans le module 3 (Moyens) de la mission.</div>';
+        wrap.innerHTML = '<div style="color:#64748b; font-size:12px; padding:10px; text-align:center;">Aucun télépilote sélectionné — coche-les dans le module 3 (Moyens) de la mission.</div>';
         document.getElementById('lm-totals').innerHTML = '';
         return;
     }
