@@ -10788,10 +10788,11 @@ function _liveBindHandlers(overlay) {
             const rs = _liveRowStateFor(mat);
             const n = parseInt(t.dataset.bat, 10) || 1;
             const fls = _liveFlights();
-            const takenByFlight = fls.some(f => !f.stoppedAt && f.mat !== mat && f.drone === rs.drone && f.battery === n);
-            const takenByPicker = Object.entries(_liveRowState).some(([k, v]) => k !== mat && v.state === 'ready' && v.drone === rs.drone && v.battery === n);
+            const myModel = _liveDroneModelKey(rs.drone);
+            const takenByFlight = fls.some(f => !f.stoppedAt && f.mat !== mat && f.battery === n && _liveDroneModelKey(f.drone) === myModel);
+            const takenByPicker = Object.entries(_liveRowState).some(([k, v]) => k !== mat && v.state === 'ready' && v.battery === n && _liveDroneModelKey(v.drone) === myModel);
             if (takenByFlight || takenByPicker) {
-                alert('Cette batterie est déjà associée à ce drone par un autre télépilote.');
+                alert('Cette batterie est déjà engagée sur un drone du même modèle par un autre télépilote.');
                 _liveRenderFlights();
                 return;
             }
@@ -10985,6 +10986,14 @@ const LM_DRONE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
     '<rect x="9.5" y="9.5" width="5" height="5" rx="1"/>' +
     '<circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/></svg>';
 
+// Extrait la « clé modèle » d'un label de drone (« MODEL · SN » → « MODEL »).
+// Permet de mutualiser un pool de batteries entre tous les exemplaires d'un
+// même modèle (M4T-001 et M4T-002 partagent les batteries B1..B14).
+function _liveDroneModelKey(droneLabel) {
+    if (!droneLabel) return '';
+    return droneLabel.split(' · ')[0].trim().toUpperCase();
+}
+
 // Nombre de batteries disponibles par modèle de drone (DIPN 42 standard).
 function _liveDroneMaxBat(name) {
     if (!name) return 1;
@@ -11077,17 +11086,20 @@ function _liveRenderFlights() {
             </div>`;
         }
 
-        // Cas B' : choix d'une batterie. On exclut les batteries déjà
-        // utilisées sur le même drone par un autre pilote, qu'il soit en vol
-        // ou déjà en train de la pré-sélectionner (état 'ready').
+        // Cas B' : choix d'une batterie. Les batteries sont mutualisées par
+        // modèle de drone (un pool M4T = 14 batteries partagées entre tous
+        // les M4T de la flotte). On exclut donc toutes les batteries déjà
+        // engagées sur un drone du MÊME MODÈLE par un autre pilote, qu'il
+        // soit en vol OU en pré-sélection.
         if (rs.state === 'battery' && rs.drone) {
             const maxBat = _liveDroneMaxBat(rs.droneName || rs.drone);
+            const myModel = _liveDroneModelKey(rs.drone);
             const battsInUse = new Set();
             flights.forEach(f => {
-                if (!f.stoppedAt && f.drone === rs.drone && f.mat !== p.mat && f.battery) battsInUse.add(f.battery);
+                if (!f.stoppedAt && f.mat !== p.mat && f.battery && _liveDroneModelKey(f.drone) === myModel) battsInUse.add(f.battery);
             });
             Object.entries(_liveRowState).forEach(([k, v]) => {
-                if (k !== p.mat && v.state === 'ready' && v.drone === rs.drone && v.battery) battsInUse.add(v.battery);
+                if (k !== p.mat && v.state === 'ready' && v.drone && v.battery && _liveDroneModelKey(v.drone) === myModel) battsInUse.add(v.battery);
             });
             const battBtns = Array.from({ length: maxBat }, (_, i) => {
                 const n = i + 1;
