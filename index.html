@@ -10476,6 +10476,9 @@ const LIVE_PILOTS_KEY = 'drone-live-pilots';
 const LIVE_FLIGHTS_KEY = 'drone-live-flights';
 let _liveAdsbInterval = null, _liveMeteoInterval = null, _liveTickInterval = null;
 let _liveMeteoIntervalMs = 60000;
+let _liveProgressInterval = null;
+let _liveAdsbProgStart = 0;
+let _liveMeteoProgStart = 0;
 let _liveLowOnly = (() => { try { return localStorage.getItem('drone_live_lowonly') === '1'; } catch (e) { return false; } })();
 let _liveAdsbMap = null;
 let _liveSavedAdsb = null;   // backup avant d'imposer auto+alertes
@@ -10527,6 +10530,10 @@ function enterLiveMode() {
     _liveMeteoIntervalMs = 60000;   // 1 min par défaut
     _liveMeteoInterval = setInterval(() => { try { _liveRefreshMeteo(); } catch (e) {} }, _liveMeteoIntervalMs);
     _liveTickInterval = setInterval(() => { try { _liveTickActiveFlights(); } catch (e) {} }, 1000);
+    // Barres de progression du prochain refresh (météo + ADS-B), tick 200 ms.
+    _liveAdsbProgStart = Date.now();
+    _liveMeteoProgStart = Date.now();
+    _liveProgressInterval = setInterval(_liveTickProgress, 200);
     console.log('[live] enterLiveMode done · STATE.lat=', STATE?.lat, '· aircraft=', STATE?.aircraft?.length);
 }
 
@@ -10606,7 +10613,7 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: #fde047; cursor: pointer; user-select: none; white-space: nowrap; flex: 0 0 auto; background: #0f172a; border: 1.5px solid #fde047; padding: 3px 10px; border-radius: 999px; font-weight: 700; letter-spacing: .3px; transition: all .15s; }
         #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly:hover { background: #1e293b; }
         #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly:has(input:checked) { background: #fde047; color: #1f2937; }
-        #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly input { accent-color: #fde047; flex: 0 0 auto; margin: 0; }
+        #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly input { accent-color: #1f2937; flex: 0 0 auto; margin: 0; }
         /* Ligne « vol en cours » plus lisible : 3 zones distinctes (pilote /
            chrono dominant / bouton land), drone en 2e ligne, SN en petit. */
         #live-mode-overlay .lm-flight-row.lm-flying { padding: 10px 12px; gap: 12px; }
@@ -10645,7 +10652,14 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-trend.down { color: #22c55e; animation: lm-trend-loop-down 1.4s ease-in-out infinite; }
         @keyframes lm-trend-loop-up   { 0% { opacity: .25; transform: translateY(6px)  scale(.85); } 50% { opacity: 1; transform: translateY(-2px) scale(1.15); } 100% { opacity: .25; transform: translateY(-8px) scale(.85); } }
         @keyframes lm-trend-loop-down { 0% { opacity: .25; transform: translateY(-6px) scale(.85); } 50% { opacity: 1; transform: translateY(2px)  scale(1.15); } 100% { opacity: .25; transform: translateY(8px)  scale(.85); } }
-        #live-mode-overlay .lm-meteo-updated { font-size: 10px; color: #64748b; text-align: right; margin-top: 6px; }
+        #live-mode-overlay .lm-meteo-updated { font-size: 10px; color: #64748b; white-space: nowrap; }
+        #live-mode-overlay .lm-meteo-footer { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+        #live-mode-overlay .lm-meteo-footer .lm-progress-bar { flex: 1; }
+        /* Barre de progression du prochain refresh (fine, sombre, fill teal/ambre) */
+        #live-mode-overlay .lm-progress-bar { position: relative; height: 3px; background: rgba(255,255,255,.08); border-radius: 2px; overflow: hidden; min-width: 60px; }
+        #live-mode-overlay .lm-progress-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; background: linear-gradient(90deg, #0e7490, #22d3ee); border-radius: 2px; transition: width .2s linear; }
+        #live-mode-overlay .lm-progress-bar-adsb { flex: 1; min-width: 80px; max-width: 220px; }
+        #live-mode-overlay .lm-progress-bar-adsb .lm-progress-fill { background: linear-gradient(90deg, #15803d, #22c55e); }
         @media (max-width: 900px) {
             #live-mode-overlay .lm-grid { grid-template-columns: 1fr; grid-template-rows: 1fr auto auto; }
             #live-mode-overlay .lm-adsb { grid-row: auto; min-height: 50vh; }
@@ -10786,6 +10800,7 @@ function exitLiveMode() {
     if (_liveAdsbInterval) { clearInterval(_liveAdsbInterval); _liveAdsbInterval = null; }
     if (_liveMeteoInterval) { clearInterval(_liveMeteoInterval); _liveMeteoInterval = null; }
     if (_liveTickInterval) { clearInterval(_liveTickInterval); _liveTickInterval = null; }
+    if (_liveProgressInterval) { clearInterval(_liveProgressInterval); _liveProgressInterval = null; }
     if (_liveWindAnimTimer) { clearInterval(_liveWindAnimTimer); _liveWindAnimTimer = null; }
     if (_liveAdsbMap) { try { _liveAdsbMap.remove(); } catch (e) {} _liveAdsbMap = null; }
     // Restaure l'état ADS-B antérieur (auto / alertes / intervalle).
@@ -10819,6 +10834,7 @@ function _liveModeHtml() {
         <div class="lm-panel lm-adsb">
             <div class="lm-adsb-info" id="lm-adsb-info">
                 <span class="lm-stats" id="lm-adsb-stats">Chargement ADS-B…</span>
+                <div class="lm-progress-bar lm-progress-bar-adsb" id="lm-adsb-progress"><div class="lm-progress-fill" id="lm-adsb-progress-fill"></div></div>
                 <span class="lm-adsb-ctrl">
                     <label class="lm-adsb-radius" title="Rayon de détection ADS-B (km)">
                         <span class="lm-radius-val"><span id="lm-radius-num">20</span> km</span>
@@ -10854,7 +10870,10 @@ function _liveModeHtml() {
             <div class="lm-meteo-grid" id="lm-meteo-grid">
                 <div class="lm-tile"><div class="lm-tile-k">Chargement…</div></div>
             </div>
-            <div class="lm-meteo-updated" id="lm-meteo-updated"></div>
+            <div class="lm-meteo-footer">
+                <div class="lm-progress-bar" id="lm-meteo-progress"><div class="lm-progress-fill" id="lm-meteo-progress-fill"></div></div>
+                <div class="lm-meteo-updated" id="lm-meteo-updated"></div>
+            </div>
         </div>
         <div class="lm-panel">
             <h3>Vols en cours / total du jour</h3>
@@ -11160,6 +11179,22 @@ function _liveClearFlightStats() {
     _liveRenderFlights();
 }
 
+// Barres de progression « prochain refresh ». Pour chacune (météo et ADS-B),
+// largeur = elapsed / interval. À 100% on remet à zéro (le refresh suivant
+// est censé arriver à ce moment).
+function _liveTickProgress() {
+    const adsbInt = Math.max(1, (aircraftRefreshSec || 5)) * 1000;
+    let adsbEl = Date.now() - _liveAdsbProgStart;
+    if (adsbEl >= adsbInt) { _liveAdsbProgStart = Date.now(); adsbEl = 0; }
+    const meteoInt = Math.max(1000, _liveMeteoIntervalMs || 60000);
+    let meteoEl = Date.now() - _liveMeteoProgStart;
+    if (meteoEl >= meteoInt) { _liveMeteoProgStart = Date.now(); meteoEl = 0; }
+    const adsbFill = document.getElementById('lm-adsb-progress-fill');
+    const meteoFill = document.getElementById('lm-meteo-progress-fill');
+    if (adsbFill)  adsbFill.style.width  = ((adsbEl / adsbInt) * 100).toFixed(1) + '%';
+    if (meteoFill) meteoFill.style.width = ((meteoEl / meteoInt) * 100).toFixed(1) + '%';
+}
+
 function _liveTickActiveFlights() {
     const clock = document.getElementById('lm-clock');
     if (clock) clock.textContent = new Date().toLocaleTimeString('fr-FR');
@@ -11232,6 +11267,7 @@ async function _liveRefreshAdsb() {
     // Le fetch initial est délégué à la fonction principale fetchAircraft() qui
     // remplit STATE.aircraft (cascade ADSB.lol → airplanes.live → OpenSky).
     try { await fetchAircraft(STATE.lat, STATE.lon); } catch (e) { /* fetchAircraft gère ses erreurs */ }
+    _liveAdsbProgStart = Date.now();   // remet à zéro la barre de progression
     _liveUpdateAdsbMarkers();
 }
 
@@ -11455,6 +11491,7 @@ async function _liveRefreshMeteo() {
         `;
         _liveLastMeteo = values;
         _liveUpdateWindArrow(values.wind, dir);
+        _liveMeteoProgStart = Date.now();   // remet à zéro la barre de progression
         document.getElementById('lm-meteo-updated').textContent = '↻ ' + new Date().toLocaleTimeString('fr-FR');
     } catch (e) {
         console.warn('Live météo:', e);
