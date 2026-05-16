@@ -10658,6 +10658,7 @@ function _liveBindHandlers(overlay) {
     const q = sel => overlay.querySelector(sel);
     q('#lm-btn-config') && q('#lm-btn-config').addEventListener('click', _liveOpenPilotsConfig);
     q('#lm-btn-stopall') && q('#lm-btn-stopall').addEventListener('click', _liveStopAllFlights);
+    q('#lm-btn-clear-stats') && q('#lm-btn-clear-stats').addEventListener('click', _liveClearFlightStats);
     q('#lm-btn-exit') && q('#lm-btn-exit').addEventListener('click', exitLiveMode);
     q('#lm-btn-add-pilot') && q('#lm-btn-add-pilot').addEventListener('click', _liveAddPilot);
     q('#lm-btn-close-config') && q('#lm-btn-close-config').addEventListener('click', () => {
@@ -10780,6 +10781,7 @@ function _liveModeHtml() {
         <div class="lm-title"><span class="lm-dot"></span> LIVE MODE</div>
         <button id="lm-btn-config" type="button">⚙ Configurer agents</button>
         <button id="lm-btn-stopall" type="button">⏹ Tout arrêter</button>
+        <button id="lm-btn-clear-stats" type="button" title="Effacer les chronos cumulés et l'historique des vols du jour">🧹 Effacer stats</button>
         <div class="lm-clock" id="lm-clock">--:--:--</div>
         <button id="lm-btn-exit" class="lm-exit" type="button">✕ Quitter</button>
     </div>
@@ -11139,6 +11141,24 @@ function _liveStopAllFlights() {
         _setLiveFlights(flights);
         _liveRenderFlights();
     }
+}
+
+// Efface l'historique des vols (chronos cumulés par télépilote et drone/batterie
+// associés). La liste des télépilotes configurés est conservée. Les vols en
+// cours sont d'abord stoppés.
+function _liveClearFlightStats() {
+    const flights = _liveFlights();
+    const active = flights.filter(f => !f.stoppedAt).length;
+    const total = flights.length;
+    if (!total) { alert('Aucune statistique à effacer.'); return; }
+    const msg = active
+        ? `Effacer toutes les stats de vol ?\n\n${total} vol(s) enregistré(s) (dont ${active} en cours qui seront arrêtés).\n\nLes télépilotes configurés sont conservés.`
+        : `Effacer toutes les stats de vol ?\n\n${total} vol(s) seront supprimés.\nLes télépilotes configurés sont conservés.`;
+    if (!confirm(msg)) return;
+    _setLiveFlights([]);
+    // Reset les états transient (drone/batterie en cours de sélection)
+    Object.keys(_liveRowState).forEach(k => { _liveRowState[k] = { state: 'idle', drone: '', battery: null }; });
+    _liveRenderFlights();
 }
 
 function _liveTickActiveFlights() {
