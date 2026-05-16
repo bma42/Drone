@@ -10754,6 +10754,7 @@ function exitLiveMode() {
     if (_liveAdsbInterval) { clearInterval(_liveAdsbInterval); _liveAdsbInterval = null; }
     if (_liveMeteoInterval) { clearInterval(_liveMeteoInterval); _liveMeteoInterval = null; }
     if (_liveTickInterval) { clearInterval(_liveTickInterval); _liveTickInterval = null; }
+    if (_liveWindAnimTimer) { clearInterval(_liveWindAnimTimer); _liveWindAnimTimer = null; }
     if (_liveAdsbMap) { try { _liveAdsbMap.remove(); } catch (e) {} _liveAdsbMap = null; }
     // Restaure l'état ADS-B antérieur (auto / alertes / intervalle).
     if (_liveSavedAdsb) {
@@ -11416,50 +11417,81 @@ async function _liveRefreshMeteo() {
     }
 }
 
-// Flèche de vent superposée sur la carte radar : indique l'origine (queue)
-// et la direction d'écoulement (pointe). La longueur reflète la vitesse.
+// Helper : projection point + cap + distance → nouveau lat/lon (haversine).
+function _liveOffsetLatLon(lat, lon, distM, bearingDeg) {
+    const R = 6371000;
+    const dR = distM / R;
+    const t = bearingDeg * Math.PI / 180;
+    const lat1 = lat * Math.PI / 180;
+    const lon1 = lon * Math.PI / 180;
+    const lat2 = Math.asin(Math.sin(lat1) * Math.cos(dR) + Math.cos(lat1) * Math.sin(dR) * Math.cos(t));
+    const lon2 = lon1 + Math.atan2(Math.sin(t) * Math.sin(dR) * Math.cos(lat1), Math.cos(dR) - Math.sin(lat1) * Math.sin(lat2));
+    return [lat2 * 180 / Math.PI, lon2 * 180 / Math.PI];
+}
+
+let _liveWindDashOffset = 0;
+let _liveWindAnimTimer = null;
+
+// Flèche de vent sur la carte radar : polyline Leaflet (donc en lat/lon réels)
+// qui traverse la zone de vol. Pointe = direction d'écoulement, queue =
+// origine du vent. Animation de dash défilant pour suggérer le mouvement.
 function _liveUpdateWindArrow(speedKmh, dirFromDeg) {
     const map = _liveAdsbMap;
-    if (!map) return;
-    const container = map.getContainer();
-    if (!container) return;
-    let svg = container.querySelector('.lm-wind-svg');
-    if (!svg) {
-        svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.setAttribute('class', 'lm-wind-svg');
-        svg.setAttribute('viewBox', '0 0 100 100');
-        svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-        svg.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:450; overflow:visible;';
-        container.appendChild(svg);
+    if (!map || STATE.lat == null) return;
+    // Supprime l'ancienne flèche s'il y en a une
+    if (map._windLayer) {
+        try { map.removeLayer(map._windLayer); } catch (e) {}
+        map._windLayer = null;
     }
-    // Convention météo : dirFromDeg = direction d'où vient le vent. La pointe
-    // de la flèche doit pointer dans la direction où va le vent.
-    // En SVG (Y vers le bas), une flèche dessinée pointant UP (négatif Y) a
-    // rotation 0 = nord. Pour pointer dans le sens de l'écoulement (depuis le
-    // FROM-dir), on tourne de (dirFromDeg + 180) mod 360.
-    const rot = ((dirFromDeg || 0) + 180) % 360;
-    // Longueur proportionnelle à la vitesse (5 km/h = 12 unités, plafonné).
-    const len = Math.min(34, 6 + (speedKmh || 0) * 0.7);
-    // Animation : on accélère le pulse quand le vent forcit (1.4 s → 0.6 s).
-    const animDur = Math.max(0.6, 1.8 - (speedKmh || 0) * 0.05).toFixed(2);
-    svg.innerHTML = `
-        <defs>
-            <marker id="lm-wind-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                <path d="M0,0 L10,5 L0,10 z" fill="#fbbf24"/>
-            </marker>
-        </defs>
-        <g transform="translate(50 50) rotate(${rot})" style="animation: lm-wind-pulse ${animDur}s ease-in-out infinite;">
-            <line x1="0" y1="${len}" x2="0" y2="${-len}" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" marker-end="url(#lm-wind-head)" style="filter: drop-shadow(0 0 3px rgba(251,191,36,.55));"/>
-            <circle cx="0" cy="${len}" r="2.4" fill="#fbbf24"/>
-        </g>
-        <text x="50" y="93" text-anchor="middle" fill="#fbbf24" font-size="3.6" font-weight="700" font-family="ui-monospace, monospace" style="text-shadow: 0 0 4px rgba(0,0,0,.85);">${Math.round(dirFromDeg || 0)}° · ${Math.round(speedKmh || 0)} km/h</text>
-    `;
-    if (!document.getElementById('lm-wind-anim-style')) {
-        const st = document.createElement('style');
-        st.id = 'lm-wind-anim-style';
-        st.textContent = '@keyframes lm-wind-pulse { 0%, 100% { opacity: .55; transform-origin: center; } 50% { opacity: 1; } }';
-        document.head.appendChild(st);
-    }
+    if (!speedKmh || speedKmh < 0.5) return;   // pas de flèche s'il n'y a pas de vent
+
+    // Convention météo : dirFromDeg = direction d'OÙ vient le vent.
+    // Le vent va donc dans la direction (dirFromDeg + 180) mod 360.
+    const flowDir = ((dirFromDeg || 0) + 180) % 360;
+
+    // Longueur : 2× le rayon d'élongation (donc la flèche traverse la zone de
+    // vol), avec un minimum de 1500 m pour rester visible quand le rayon est
+    // petit. Plafonné à 6 km pour ne pas écraser la carte aux grands vents.
+    const halfLen = Math.min(6000, Math.max(750, (STATE.radius || 500) * 1.4));
+
+    // Calcule queue (à l'origine du vent) et pointe (sens d'écoulement).
+    const tail = _liveOffsetLatLon(STATE.lat, STATE.lon, halfLen, flowDir - 180);
+    const head = _liveOffsetLatLon(STATE.lat, STATE.lon, halfLen, flowDir);
+
+    // Polyline avec dashArray animé (effet « antpath »)
+    const line = L.polyline([tail, [STATE.lat, STATE.lon], head], {
+        color: '#fbbf24', weight: 4, opacity: 0.9,
+        dashArray: '14 8', dashOffset: '0',
+        lineCap: 'round', lineJoin: 'round',
+        className: 'lm-wind-path'
+    });
+
+    // Tête de flèche : marqueur divIcon orienté
+    const headIcon = L.divIcon({
+        className: '',
+        html: `<svg width="28" height="28" viewBox="0 0 28 28" style="transform:rotate(${flowDir}deg); filter:drop-shadow(0 0 4px rgba(251,191,36,.7));"><path d="M14 2 L22 22 L14 17 L6 22 Z" fill="#fbbf24" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>`,
+        iconSize: [28, 28], iconAnchor: [14, 14]
+    });
+    const headMarker = L.marker(head, { icon: headIcon, interactive: false });
+
+    // Queue : petit cercle pour marquer l'origine
+    const tailMarker = L.circleMarker(tail, {
+        radius: 5, color: '#fbbf24', fillColor: '#0a1224', fillOpacity: 1, weight: 2
+    });
+
+    map._windLayer = L.layerGroup([line, tailMarker, headMarker]).addTo(map);
+
+    // Animation : déplace le dashOffset toutes les 60 ms — l'effet « ants
+    // marching » court le long de la flèche dans la direction du vent.
+    if (_liveWindAnimTimer) clearInterval(_liveWindAnimTimer);
+    _liveWindAnimTimer = setInterval(() => {
+        if (!map || !map._windLayer) { clearInterval(_liveWindAnimTimer); _liveWindAnimTimer = null; return; }
+        _liveWindDashOffset = (_liveWindDashOffset - 2) % 1000;
+        try {
+            const path = map.getContainer().querySelector('.lm-wind-path');
+            if (path) path.setAttribute('stroke-dashoffset', _liveWindDashOffset);
+        } catch (e) {}
+    }, 60);
 }
 
 </script>
