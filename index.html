@@ -10573,6 +10573,7 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-batt-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; width: 100%; }
         #live-mode-overlay .lm-batt-pick { background: linear-gradient(135deg,#15803d,#166534); color: #fff; border: 0; padding: 8px 0; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 700; font-family: ui-monospace, monospace; transition: filter .15s; }
         #live-mode-overlay .lm-batt-pick:hover { filter: brightness(1.25); }
+        #live-mode-overlay .lm-batt-pick.lm-batt-used { background: #334155 !important; color: #64748b !important; cursor: not-allowed; text-decoration: line-through; filter: none !important; }
         /* Pastille batterie dans la ligne en vol / prête à décoller */
         #live-mode-overlay .lm-batt-tag { background: rgba(0,0,0,.3); color: #fde047; padding: 1px 7px; border-radius: 3px; font-size: 10px; font-weight: 700; font-family: ui-monospace, monospace; }
         /* L'icône drone SVG hérite la couleur via currentColor */
@@ -10599,6 +10600,9 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-adsb-info button#lm-btn-alert { background: #1e293b; border: 1px solid #334155; color: #94a3b8; padding: 3px 6px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; }
         #live-mode-overlay .lm-adsb-info button#lm-btn-alert.on { background: #16a34a; border-color: #22c55e; color: #fff; }
         #live-mode-overlay .lm-adsb-info select#lm-adsb-refresh { background: #1e293b; color: #fff; border: 1px solid #334155; padding: 2px 4px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        #live-mode-overlay .lm-adsb-info .lm-adsb-radius { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; color: #cbd5e1; white-space: nowrap; flex: 0 0 auto; background: #0f172a; border: 1px solid #334155; padding: 3px 10px; border-radius: 999px; font-weight: 600; }
+        #live-mode-overlay .lm-adsb-info .lm-adsb-radius .lm-radius-val { color: #fff; font-weight: 700; font-family: ui-monospace, monospace; min-width: 48px; text-align: right; }
+        #live-mode-overlay .lm-adsb-info .lm-adsb-radius input[type=range] { width: 100px; accent-color: #22c55e; cursor: pointer; }
         #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: #fde047; cursor: pointer; user-select: none; white-space: nowrap; flex: 0 0 auto; background: #0f172a; border: 1.5px solid #fde047; padding: 3px 10px; border-radius: 999px; font-weight: 700; letter-spacing: .3px; transition: all .15s; }
         #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly:hover { background: #1e293b; }
         #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly:has(input:checked) { background: #fde047; color: #1f2937; }
@@ -10656,6 +10660,10 @@ function _liveSyncAlertBtn() {
     const btn = document.getElementById('lm-btn-alert');
     if (!btn) return;
     btn.classList.toggle('on', !!aircraftAlertSound);
+    const on = btn.querySelector('.lm-bell-on');
+    const off = btn.querySelector('.lm-bell-off');
+    if (on)  on.style.display  = aircraftAlertSound ? '' : 'none';
+    if (off) off.style.display = aircraftAlertSound ? 'none' : '';
     btn.title = aircraftAlertSound
         ? 'Alertes vocales actives — clic pour désactiver'
         : 'Alertes vocales désactivées — clic pour activer';
@@ -10678,6 +10686,26 @@ function _liveBindHandlers(overlay) {
                 aircraftRefreshSec = v;
                 try { localStorage.setItem('drone_aircraft_refresh_sec', String(v)); } catch (e) {}
                 if (typeof scheduleAircraftRefresh === 'function') scheduleAircraftRefresh();
+            }
+        });
+    }
+    // Slider rayon de détection ADS-B (5-150 km, défaut 20)
+    const radiusSlider = q('#lm-adsb-radius');
+    const radiusNum = q('#lm-radius-num');
+    if (radiusSlider) {
+        radiusSlider.value = String(aircraftSearchRadiusKm || 20);
+        if (radiusNum) radiusNum.textContent = String(aircraftSearchRadiusKm || 20);
+        radiusSlider.addEventListener('input', () => {
+            if (radiusNum) radiusNum.textContent = radiusSlider.value;
+        });
+        radiusSlider.addEventListener('change', () => {
+            const v = parseInt(radiusSlider.value, 10);
+            if (typeof setAircraftRadius === 'function') setAircraftRadius(v);
+            // Met à jour les anneaux verts dashés (rayon visualisé sur le radar)
+            _liveRebuildAdsbRings();
+            // Force un fetch immédiat avec le nouveau rayon
+            if (STATE.lat != null && typeof fetchAircraft === 'function') {
+                fetchAircraft(STATE.lat, STATE.lon).catch(() => {});
             }
         });
     }
@@ -10792,11 +10820,16 @@ function _liveModeHtml() {
             <div class="lm-adsb-info" id="lm-adsb-info">
                 <span class="lm-stats" id="lm-adsb-stats">Chargement ADS-B…</span>
                 <span class="lm-adsb-ctrl">
+                    <label class="lm-adsb-radius" title="Rayon de détection ADS-B (km)">
+                        <span class="lm-radius-val"><span id="lm-radius-num">20</span> km</span>
+                        <input type="range" id="lm-adsb-radius" min="5" max="150" step="5" value="20">
+                    </label>
                     <label class="lm-adsb-lowonly" title="N'afficher que les aéronefs sous 500 m">
                         <input type="checkbox" id="lm-adsb-lowonly"> &lt; 500 m
                     </label>
                     <button id="lm-btn-alert" type="button" data-action="toggle-alert" title="Alertes vocales aéronefs hélico / basse altitude / urgence">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
+                        <svg class="lm-bell-on" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
+                        <svg class="lm-bell-off" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none; display:none;"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.9 17.9 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
                     </button>
                     <select id="lm-adsb-refresh" title="Intervalle de rafraîchissement ADS-B">
                         <option value="1">1 s</option>
@@ -10968,8 +11001,11 @@ function _liveRenderFlights() {
             </div>`;
         }
 
-        // Cas B : choix d'un drone (la liste remplace le nom)
+        // Cas B : choix d'un drone (la liste remplace le nom).
+        // On exclut les drones déjà utilisés par un autre pilote (vol actif).
         if (rs.state === 'choosing') {
+            const dronesInUse = new Set(flights.filter(f => !f.stoppedAt && f.mat !== p.mat).map(f => f.drone));
+            const available = drones.filter(d => !dronesInUse.has(d.label || d.name));
             if (!drones.length) {
                 rs.state = 'idle';
                 return `<div class="lm-flight-row">
@@ -10977,10 +11013,12 @@ function _liveRenderFlights() {
                     <button type="button" data-action="cancel-choose" data-mat="${p.mat}">Annuler</button>
                 </div>`;
             }
-            const dronesList = drones.map(d => {
-                const label = (d.label || d.name).replace(/"/g, '&quot;');
-                return `<button type="button" data-action="select-drone" data-mat="${p.mat}" data-drone="${label}" data-name="${(d.name || '').replace(/"/g, '&quot;')}" class="lm-drone-pick">${LM_DRONE_SVG} ${d.label || d.name}</button>`;
-            }).join('');
+            const dronesList = available.length
+                ? available.map(d => {
+                    const label = (d.label || d.name).replace(/"/g, '&quot;');
+                    return `<button type="button" data-action="select-drone" data-mat="${p.mat}" data-drone="${label}" data-name="${(d.name || '').replace(/"/g, '&quot;')}" class="lm-drone-pick">${LM_DRONE_SVG} ${d.label || d.name}</button>`;
+                }).join('')
+                : '<div style="color:#fbbf24; font-size:11px; padding:6px 0;">Tous les drones de la mission sont en vol — attends qu\'un autre pilote atterrisse.</div>';
             return `<div class="lm-flight-row lm-choosing">
                 <div style="display:flex; align-items:center; gap:6px; width:100%; margin-bottom:6px;">
                     <span class="lm-mat">${p.mat}</span>
@@ -10991,11 +11029,18 @@ function _liveRenderFlights() {
             </div>`;
         }
 
-        // Cas B' : choix d'une batterie (intercalé entre drone et ready)
+        // Cas B' : choix d'une batterie. On exclut les batteries déjà
+        // utilisées sur le même drone par un autre pilote.
         if (rs.state === 'battery' && rs.drone) {
             const maxBat = _liveDroneMaxBat(rs.droneName || rs.drone);
+            const battsInUse = new Set(flights
+                .filter(f => !f.stoppedAt && f.drone === rs.drone && f.mat !== p.mat && f.battery)
+                .map(f => f.battery));
             const battBtns = Array.from({ length: maxBat }, (_, i) => {
                 const n = i + 1;
+                if (battsInUse.has(n)) {
+                    return `<button type="button" class="lm-batt-pick lm-batt-used" disabled title="Batterie B${n} déjà en vol sur ce drone">B${n}</button>`;
+                }
                 return `<button type="button" data-action="select-battery" data-mat="${p.mat}" data-bat="${n}" class="lm-batt-pick">B${n}</button>`;
             }).join('');
             return `<div class="lm-flight-row lm-choosing">
@@ -11159,14 +11204,8 @@ async function _liveRefreshAdsb() {
             const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 });
             dark.on('tileerror', () => { try { _liveAdsbMap.removeLayer(dark); osm.addTo(_liveAdsbMap); } catch (e) {} });
             dark.addTo(_liveAdsbMap);
-            const R = (aircraftSearchRadiusKm || 20) * 1000;
-            for (let i = 1; i <= 4; i++) {
-                L.circle([STATE.lat, STATE.lon], {
-                    radius: (R * i) / 4,
-                    color: '#22c55e', weight: 1, fillOpacity: 0,
-                    dashArray: '4 4', opacity: .45
-                }).addTo(_liveAdsbMap);
-            }
+            _liveAdsbMap._rings = L.layerGroup().addTo(_liveAdsbMap);
+            _liveRebuildAdsbRings();
             L.circleMarker([STATE.lat, STATE.lon], {
                 radius: 6, color: '#fbbf24', fillColor: '#fbbf24', fillOpacity: 1, weight: 2
             }).addTo(_liveAdsbMap);
@@ -11200,6 +11239,21 @@ async function _liveRefreshAdsb() {
 // met à jour les marqueurs sur la carte du Live Mode. Appelé toutes les 2 s
 // par _liveAdsbInterval ; ne fait JAMAIS de fetch lui-même (le rafraîchissement
 // réseau est piloté par scheduleAircraftRefresh de la page principale).
+// Reconstruit les 4 anneaux verts dashés au rayon de recherche ADS-B courant.
+// Appelé à l'init de la carte et à chaque changement de slider rayon.
+function _liveRebuildAdsbRings() {
+    if (!_liveAdsbMap || !_liveAdsbMap._rings) return;
+    _liveAdsbMap._rings.clearLayers();
+    const R = (aircraftSearchRadiusKm || 20) * 1000;
+    for (let i = 1; i <= 4; i++) {
+        L.circle([STATE.lat, STATE.lon], {
+            radius: (R * i) / 4,
+            color: '#22c55e', weight: 1, fillOpacity: 0,
+            dashArray: '4 4', opacity: .45
+        }).addTo(_liveAdsbMap._rings);
+    }
+}
+
 function _liveUpdateAdsbMarkers() {
     if (!_liveAdsbMap || !_liveAdsbMap._planes) return;
     // Synchronise l'élongation au cas où le rayon a été modifié dans §1 pendant
@@ -11314,7 +11368,8 @@ function _liveAttachRadarSweep(map, radiusM) {
     }
 }
 
-let _liveLastMeteo = {};   // mémorise les dernières valeurs pour calculer la flèche d'évolution
+let _liveLastMeteo = {};      // mémorise les dernières valeurs pour calculer la flèche d'évolution
+let _liveLastTrend = {};       // mémorise la dernière direction connue (up/down) par métrique
 
 async function _liveRefreshMeteo() {
     if (STATE.lat == null) {
@@ -11341,14 +11396,21 @@ async function _liveRefreshMeteo() {
             vis:     (c.visibility || 0) / 1000,
             kp:      STATE.kp || 0
         };
-        // Flèche d'évolution depuis le dernier refresh : ↑ rouge si la valeur
-        // augmente, ↓ verte si elle baisse, rien si pas de variation ou 1er load.
+        // Flèche d'évolution : ▲ rouge si valeur en hausse, ▼ vert si baisse.
+        // Si pas de variation significative au dernier refresh, on garde la
+        // dernière direction connue (animée) pour que les triangles soient
+        // toujours visibles tant qu'une tendance existe.
         const trend = (key, threshold) => {
             const prev = _liveLastMeteo[key];
-            if (prev == null) return '';
-            const d = values[key] - prev;
-            if (Math.abs(d) < (threshold || 0.1)) return '';
-            return d > 0
+            if (prev != null) {
+                const d = values[key] - prev;
+                if (Math.abs(d) >= (threshold || 0.1)) {
+                    _liveLastTrend[key] = d > 0 ? 'up' : 'down';
+                }
+            }
+            const dir = _liveLastTrend[key];
+            if (!dir) return '';
+            return dir === 'up'
                 ? '<span class="lm-trend up">▲</span>'
                 : '<span class="lm-trend down">▼</span>';
         };
