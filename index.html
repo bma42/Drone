@@ -10609,8 +10609,13 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-adsb-info .lm-pill.low { background: #fde047; color: #713f12; }
         #live-mode-overlay .lm-adsb-info .lm-pill.prio { background: #dc2626; }
         #live-mode-overlay .lm-adsb-info .lm-adsb-ctrl { display: flex; gap: 6px; align-items: center; }
-        #live-mode-overlay .lm-adsb-info button#lm-btn-alert { background: #1e293b; border: 1px solid #334155; color: #94a3b8; padding: 3px 6px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; }
-        #live-mode-overlay .lm-adsb-info button#lm-btn-alert.on { background: #16a34a; border-color: #22c55e; color: #fff; }
+        #live-mode-overlay .lm-adsb-info button#lm-btn-alert { background: #1e293b; border: 1px solid #334155; color: #fff; padding: 3px 6px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; }
+        #live-mode-overlay .lm-adsb-info button#lm-btn-alert:hover { background: #334155; }
+        /* La diagonale barrant la cloche est masquée quand la cloche est active
+           et visible quand elle est coupée. Aucun autre changement visuel
+           (pas de couleur de fond, juste la barre rouge). */
+        #live-mode-overlay .lm-adsb-info button#lm-btn-alert .lm-bell-slash { opacity: 0; transition: opacity .15s; }
+        #live-mode-overlay .lm-adsb-info button#lm-btn-alert:not(.on) .lm-bell-slash { opacity: 1; }
         #live-mode-overlay .lm-adsb-info select#lm-adsb-refresh { background: #1e293b; color: #fff; border: 1px solid #334155; padding: 2px 4px; border-radius: 4px; font-size: 11px; font-weight: 600; }
         #live-mode-overlay .lm-adsb-info .lm-adsb-radius { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; color: #cbd5e1; white-space: nowrap; flex: 0 0 auto; background: #0f172a; border: 1px solid #334155; padding: 3px 10px; border-radius: 999px; font-weight: 600; }
         #live-mode-overlay .lm-adsb-info .lm-adsb-radius .lm-radius-val { color: #fff; font-weight: 700; font-family: ui-monospace, monospace; min-width: 48px; text-align: right; }
@@ -10675,14 +10680,13 @@ function _liveInjectStyles() {
 
 // Synchronise l'état visuel du bouton cloche d'alertes avec la variable
 // globale aircraftAlertSound. Appelé après chaque toggle.
+// Synchronise l'état visuel du bouton cloche (1 seule classe .on à toggler ;
+// la diagonale .lm-bell-slash apparaît automatiquement via CSS quand
+// la classe est absente).
 function _liveSyncAlertBtn() {
     const btn = document.getElementById('lm-btn-alert');
     if (!btn) return;
     btn.classList.toggle('on', !!aircraftAlertSound);
-    const on = btn.querySelector('.lm-bell-on');
-    const off = btn.querySelector('.lm-bell-off');
-    if (on)  on.style.display  = aircraftAlertSound ? '' : 'none';
-    if (off) off.style.display = aircraftAlertSound ? 'none' : '';
     btn.title = aircraftAlertSound
         ? 'Alertes vocales actives — clic pour désactiver'
         : 'Alertes vocales désactivées — clic pour activer';
@@ -10871,8 +10875,11 @@ function _liveModeHtml() {
                         <input type="checkbox" id="lm-adsb-lowonly"> &lt; 500 m
                     </label>
                     <button id="lm-btn-alert" type="button" data-action="toggle-alert" title="Alertes vocales aéronefs hélico / basse altitude / urgence">
-                        <svg class="lm-bell-on" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
-                        <svg class="lm-bell-off" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none; display:none;"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.9 17.9 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none; overflow:visible;">
+                            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
+                            <path d="M10 21a2 2 0 0 0 4 0"/>
+                            <line class="lm-bell-slash" x1="3" y1="3" x2="21" y2="21" stroke-width="2.6" stroke="#ef4444"/>
+                        </svg>
                     </button>
                     <select id="lm-adsb-refresh" title="Intervalle de rafraîchissement ADS-B">
                         <option value="1">1 s</option>
