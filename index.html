@@ -10564,7 +10564,22 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-add-pilot input { flex: 1; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; padding: 5px 8px; border-radius: 4px; font-size: 12px; }
         #live-mode-overlay .lm-add-pilot button { background: #0b3d91; color: #fff; border: 0; padding: 5px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 600; }
         #live-mode-overlay .lm-totals { font-size: 11px; color: #94a3b8; margin-top: 8px; padding-top: 8px; border-top: 1px solid #1e293b; }
-        #live-mode-overlay .lm-adsb-info { position: absolute; top: 10px; left: 10px; background: rgba(15,23,42,.85); color: #fff; padding: 6px 10px; border-radius: 5px; font-size: 11px; z-index: 1000; font-weight: 600; }
+        #live-mode-overlay .lm-adsb-info { position: absolute; top: 10px; left: 10px; right: 60px; display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: rgba(15,23,42,.85); color: #fff; padding: 6px 10px; border-radius: 5px; font-size: 11px; z-index: 1000; font-weight: 600; pointer-events: auto; }
+        #live-mode-overlay .lm-adsb-info .lm-stats { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+        #live-mode-overlay .lm-adsb-info .lm-pill { background: #0e7490; color: #fff; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 10px; letter-spacing: .3px; display: inline-flex; align-items: center; gap: 4px; }
+        #live-mode-overlay .lm-adsb-info .lm-pill.heli { background: #d97706; }
+        #live-mode-overlay .lm-adsb-info .lm-pill.low { background: #fde047; color: #713f12; }
+        #live-mode-overlay .lm-adsb-info .lm-pill.prio { background: #dc2626; }
+        #live-mode-overlay .lm-adsb-info .lm-adsb-ctrl { display: flex; gap: 6px; align-items: center; }
+        #live-mode-overlay .lm-adsb-info button#lm-btn-alert { background: #1e293b; border: 1px solid #334155; color: #94a3b8; padding: 3px 6px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; }
+        #live-mode-overlay .lm-adsb-info button#lm-btn-alert.on { background: #16a34a; border-color: #22c55e; color: #fff; }
+        #live-mode-overlay .lm-adsb-info select#lm-adsb-refresh { background: #1e293b; color: #fff; border: 1px solid #334155; padding: 2px 4px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        #live-mode-overlay .lm-adsb-list { position: absolute; bottom: 10px; left: 10px; right: 10px; max-height: 180px; overflow: auto; background: rgba(15,23,42,.88); border: 1px solid #1e293b; border-radius: 6px; z-index: 1000; font-size: 11px; backdrop-filter: blur(2px); }
+        #live-mode-overlay .lm-adsb-list:empty { display: none; }
+        #live-mode-overlay .lm-adsb-list table { width: 100%; border-collapse: collapse; }
+        #live-mode-overlay .lm-adsb-list td { padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,.04); color: #cbd5e1; vertical-align: middle; }
+        #live-mode-overlay .lm-adsb-list tr:last-child td { border-bottom: 0; }
+        #live-mode-overlay .lm-adsb-list .lm-badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 9px; font-weight: 700; letter-spacing: .3px; color: #fff; white-space: nowrap; }
         #live-mode-overlay .lm-meteo-updated { font-size: 10px; color: #64748b; text-align: right; margin-top: 6px; }
         @media (max-width: 900px) {
             #live-mode-overlay .lm-grid { grid-template-columns: 1fr; grid-template-rows: 1fr auto auto; }
@@ -10587,6 +10602,28 @@ function _liveBindHandlers(overlay) {
         const el = q('#' + id);
         if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') _liveAddPilot(); });
     });
+    // Toggle alertes vocales + sélecteur d'intervalle de refresh ADS-B
+    const alertBtn = q('#lm-btn-alert');
+    if (alertBtn) {
+        const sync = () => { alertBtn.classList.toggle('on', !!aircraftAlertSound); alertBtn.title = aircraftAlertSound ? 'Alertes vocales actives — clic pour désactiver' : 'Alertes vocales désactivées — clic pour activer'; };
+        sync();
+        alertBtn.addEventListener('click', () => {
+            if (typeof toggleAircraftAlert === 'function') toggleAircraftAlert(!aircraftAlertSound);
+            sync();
+        });
+    }
+    const refreshSel = q('#lm-adsb-refresh');
+    if (refreshSel) {
+        refreshSel.value = String(aircraftRefreshSec || 5);
+        refreshSel.addEventListener('change', () => {
+            const v = parseInt(refreshSel.value, 10);
+            if ([1, 5, 10, 15].includes(v)) {
+                aircraftRefreshSec = v;
+                try { localStorage.setItem('drone_aircraft_refresh_sec', String(v)); } catch (e) {}
+                if (typeof scheduleAircraftRefresh === 'function') scheduleAircraftRefresh();
+            }
+        });
+    }
     // Délégation pour les boutons générés dynamiquement (supprimer agent, décoller/stop)
     overlay.addEventListener('click', (e) => {
         const t = e.target.closest('button[data-action]');
@@ -10627,7 +10664,21 @@ function _liveModeHtml() {
     </div>
     <div class="lm-grid">
         <div class="lm-panel lm-adsb">
-            <div class="lm-adsb-info" id="lm-adsb-info">Chargement ADS-B…</div>
+            <div class="lm-adsb-info" id="lm-adsb-info">
+                <span class="lm-stats" id="lm-adsb-stats">Chargement ADS-B…</span>
+                <span class="lm-adsb-ctrl">
+                    <button id="lm-btn-alert" type="button" title="Alertes vocales aéronefs hélico / basse altitude / urgence">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
+                    </button>
+                    <select id="lm-adsb-refresh" title="Intervalle de rafraîchissement ADS-B">
+                        <option value="1">1 s</option>
+                        <option value="5" selected>5 s</option>
+                        <option value="10">10 s</option>
+                        <option value="15">15 s</option>
+                    </select>
+                </span>
+            </div>
+            <div class="lm-adsb-list" id="lm-adsb-list"></div>
             <div class="lm-adsb-map" id="lm-adsb-map"></div>
         </div>
         <div class="lm-panel">
@@ -10912,31 +10963,76 @@ async function _liveRefreshAdsb() {
 // réseau est piloté par scheduleAircraftRefresh de la page principale).
 function _liveUpdateAdsbMarkers() {
     if (!_liveAdsbMap || !_liveAdsbMap._planes) return;
-    const info = document.getElementById('lm-adsb-info');
     const planes = (STATE.aircraft || []).filter(a => a.lat != null && a.lon != null);
     _liveAdsbMap._planes.clearLayers();
+    // Marqueurs : on réutilise exactement la spec graphique de la page principale
+    // (mêmes couleurs, mêmes SVG avion/hélico, même schéma de tailles et popup).
     planes.forEach(a => {
-        const altFt = a.altFt || a.alt_baro || a.alt_geom || (a.altM != null ? a.altM * 3.281 : 0);
-        const color = a.emergency ? '#fb7185' : (a.isPriority ? '#a855f7' : (altFt < 1000 ? '#dc2626' : altFt < 3000 ? '#f59e0b' : '#22c55e'));
-        const icon = L.divIcon({
-            className: '',
-            html: `<div style="background:${color}; color:#fff; padding:1px 6px; border-radius:6px; font-size:10px; font-weight:700; border:1.5px solid #fff; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,.5);">${a.isHelicopter ? '🚁' : '✈'} ${a.callsign || a.flight || a.reg || a.r || a.hex || '?'}</div>`,
-            iconAnchor: [20, 8]
-        });
-        L.marker([a.lat, a.lon], { icon })
-            .bindPopup(`<b>${a.callsign || a.flight || a.reg || a.hex || '—'}</b><br>${a.type || a.t || a.desc || ''}<br>Alt: ${Math.round(altFt)} ft · Vit: ${a.gs || '?'} kt${a.emergency ? '<br><b style=\"color:#dc2626;\">URGENCE</b>' : ''}`)
-            .addTo(_liveAdsbMap._planes);
+        try {
+            const spec = (typeof _buildAircraftMarkerSpec === 'function') ? _buildAircraftMarkerSpec(a) : null;
+            if (spec && spec.html) {
+                const icon = L.divIcon({ className: '', html: spec.html, iconAnchor: [spec.size / 2 || 17, spec.size / 2 || 17] });
+                const marker = L.marker([a.lat, a.lon], { icon }).addTo(_liveAdsbMap._planes);
+                if (spec.popup) marker.bindPopup(spec.popup);
+            }
+        } catch (e) { /* skip ce marqueur, continue les autres */ }
     });
-    if (info) {
-        if (!planes.length) {
-            info.innerHTML = `<span style="color:#fbbf24;">●</span> Aucun aéronef · auto-refresh ${aircraftRefreshSec}s${aircraftAlertSound ? ' · 🔔' : ''}`;
-        } else {
-            const low = planes.filter(a => ((a.altFt || a.alt_baro || a.alt_geom || 0) < 2000)).length;
-            const heli = planes.filter(a => a.isHelicopter).length;
-            const src = STATE.aircraftSource ? ' · ' + STATE.aircraftSource : '';
-            info.innerHTML = `<span style="color:#22c55e;">●</span> ${planes.length} ac · ${heli} 🚁 · <span style="color:#dc2626;">${low}</span> &lt;2000ft · ${aircraftRefreshSec}s${aircraftAlertSound ? ' · 🔔' : ''}${src}`;
-        }
+    _liveRenderAdsbInfo(planes);
+    _liveRenderAdsbList(planes);
+}
+
+function _liveRenderAdsbInfo(planes) {
+    const stats = document.getElementById('lm-adsb-stats');
+    if (!stats) return;
+    if (!planes.length) {
+        stats.innerHTML = `<span class="lm-pill">0 ac</span><span style="color:#94a3b8;">Aucun aéronef détecté</span>${STATE.aircraftSource ? '<span style="color:#64748b; font-size:10px;">via ' + STATE.aircraftSource + '</span>' : ''}`;
+        return;
     }
+    const heli = planes.filter(a => a.isHelicopter).length;
+    const prio = planes.filter(a => a.isPriority || a.emergency).length;
+    const low = planes.filter(a => a.altM != null && a.altM < 500).length;
+    const parts = [`<span class="lm-pill">${planes.length} aéronef${planes.length > 1 ? 's' : ''}</span>`];
+    if (prio) parts.push(`<span class="lm-pill prio">🚨 ${prio} prio</span>`);
+    if (heli) parts.push(`<span class="lm-pill heli">${heli} hélico${heli > 1 ? 's' : ''}</span>`);
+    if (low)  parts.push(`<span class="lm-pill low">${low} &lt; 500 m / 1640 ft</span>`);
+    if (STATE.aircraftSource) parts.push(`<span style="color:#64748b; font-size:10px;">via ${STATE.aircraftSource}</span>`);
+    stats.innerHTML = parts.join(' ');
+}
+
+function _liveRenderAdsbList(planes) {
+    const list = document.getElementById('lm-adsb-list');
+    if (!list) return;
+    if (!planes.length) { list.innerHTML = ''; return; }
+    // Réutilise le tri / le critère de visibilité de la page principale :
+    // priority > heli > basse altitude > autres ; on n'affiche que ce qui mérite
+    // qu'on l'ait à l'œil (≤ 500 m d'altitude ou hélico ou prio).
+    const visible = planes
+        .filter(a => a.isPriority || a.emergency || a.isHelicopter || (a.altM != null && a.altM < 500))
+        .slice(0, 8);
+    if (!visible.length) { list.innerHTML = ''; return; }
+    const rows = visible.map(a => {
+        const isPrio = a.isPriority || a.emergency;
+        const isHeli = a.isHelicopter;
+        const isLow = a.altM != null && a.altM < 500;
+        const badge = isPrio ? '<span class="lm-badge" style="background:#dc2626;">🚨 PRIO</span>'
+                    : isHeli ? '<span class="lm-badge" style="background:#d97706;">🚁 HELI</span>'
+                    : isLow  ? '<span class="lm-badge" style="background:#fde047; color:#713f12;">&lt; 500 m</span>'
+                    :          '<span class="lm-badge" style="background:#0e7490;">AVION</span>';
+        const cs = a.callsign || a.reg || a.hex || '—';
+        const alt = (a.altM != null)
+            ? `<strong>${Math.round(a.altM)} m</strong> <span style="color:#64748b;">/ ${Math.round(a.altFt)} ft</span>`
+            : '—';
+        const dist = (a.dist != null && a.dist !== Infinity) ? `${(a.dist / 1000).toFixed(1)} km` : '—';
+        const spd = a.gs != null ? `${Math.round(a.gs * 1.852)} km/h` : '—';
+        return `<tr>
+            <td style="width:80px;">${badge}</td>
+            <td><strong style="color:#fff;">${cs}</strong>${a.type ? ' <span style="color:#64748b;">' + a.type + '</span>' : ''}</td>
+            <td style="text-align:right; white-space:nowrap;">${alt}</td>
+            <td style="text-align:right; white-space:nowrap; width:60px;">${spd}</td>
+            <td style="text-align:right; white-space:nowrap; width:60px; color:#fbbf24;">${dist}</td>
+        </tr>`;
+    }).join('');
+    list.innerHTML = `<table><tbody>${rows}</tbody></table>`;
 }
 
 // Balayage radar SVG superposé sur la carte. Version simple et défensive :
