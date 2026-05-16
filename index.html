@@ -11609,86 +11609,50 @@ function _liveRenderAdsbList(planes) {
 // Balayage radar SVG superposé sur la carte. Version simple et défensive :
 // le cône est positionné au centre visuel du conteneur (pas via Leaflet) et
 // reste en place même si le user pan/zoom. Cosmétique uniquement.
+// Restauration du balayage radar de l'implémentation originale (PR #115).
+// SVG superposé sur la carte, le cône est dessiné en coordonnées pixel
+// recalculées à chaque move/zoom. Animation via <animateTransform> SVG
+// natif → universellement supporté (Safari compris).
 function _liveAttachRadarSweep(map, radiusM) {
     const container = map.getContainer();
     if (!container) { console.warn('[radar] no container'); return; }
     console.log('[radar] attach sweep');
-    // Nettoie d'éventuels résidus
-    container.querySelectorAll('.lm-radar-wrap').forEach(n => n.remove());
+    container.querySelectorAll('.lm-radar-sweep-svg').forEach(n => n.remove());
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'lm-radar-sweep-svg');
+    svg.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:450;';
+    container.appendChild(svg);
 
-    // Wrapper centré qui occupe toute la carte (pointer-events:none → clics traversent)
-    const wrap = document.createElement('div');
-    wrap.className = 'lm-radar-wrap';
-    wrap.style.cssText = 'position:absolute; inset:0; pointer-events:none; z-index:450; overflow:hidden;';
-
-    // Faisceau type radar militaire : large ligne avec gradient linéaire qui
-    // part du centre vers l'extérieur, tourne autour du centre.
-    const sweep = document.createElement('div');
-    sweep.style.cssText = `
-        position:absolute; left:50%; top:50%;
-        width:60%; height:6px;
-        margin-top:-3px;
-        transform-origin: 0 50%;
-        background: linear-gradient(90deg,
-            rgba(34,197,94,1) 0%,
-            rgba(34,197,94,0.7) 30%,
-            rgba(34,197,94,0.25) 70%,
-            rgba(34,197,94,0) 100%);
-        box-shadow: 0 0 8px rgba(34,197,94,0.8), 0 0 16px rgba(34,197,94,0.4);
-        animation: lm-radar-rot 4s linear infinite;
-        will-change: transform;
-        border-radius: 3px;
-    `;
-    wrap.appendChild(sweep);
-
-    // Halo diffus derrière le faisceau (cône large semi-transparent) pour
-    // matérialiser la zone récemment balayée.
-    const trail = document.createElement('div');
-    trail.style.cssText = `
-        position:absolute; left:50%; top:50%;
-        width:60%; height:60%;
-        margin:-30% 0 0 0;
-        transform-origin: 0 50%;
-        background: conic-gradient(from 270deg at 0% 50%,
-            rgba(34,197,94,0) 0deg,
-            rgba(34,197,94,0) 270deg,
-            rgba(34,197,94,0.25) 350deg,
-            rgba(34,197,94,0.45) 360deg);
-        animation: lm-radar-rot 4s linear infinite;
-        will-change: transform;
-        pointer-events:none;
-    `;
-    wrap.appendChild(trail);
-
-    // Pastille centrale verte pulsante (origine du radar)
-    const dot = document.createElement('div');
-    dot.style.cssText = `
-        position:absolute; left:50%; top:50%;
-        width:10px; height:10px; margin:-5px 0 0 -5px;
-        background:#22c55e; border-radius:50%;
-        box-shadow:0 0 0 2px rgba(34,197,94,0.4), 0 0 6px rgba(34,197,94,0.7);
-        animation: lm-radar-pulse 1.6s ease-in-out infinite;
-    `;
-    wrap.appendChild(dot);
-
-    container.appendChild(wrap);
-
-    // Keyframes ajoutées au head une seule fois
-    if (!document.getElementById('lm-radar-anim-css')) {
-        const st = document.createElement('style');
-        st.id = 'lm-radar-anim-css';
-        st.textContent = `
-            @keyframes lm-radar-rot {
-                from { transform: rotate(0deg); }
-                to   { transform: rotate(360deg); }
-            }
-            @keyframes lm-radar-pulse {
-                0%, 100% { transform: scale(1); opacity: 0.95; }
-                50%      { transform: scale(1.4); opacity: 0.55; }
-            }
+    const draw = () => {
+        if (STATE.lat == null) return;
+        const center = map.latLngToContainerPoint([STATE.lat, STATE.lon]);
+        const edge = map.latLngToContainerPoint(L.latLng(STATE.lat, STATE.lon).toBounds(radiusM * 2).getNorthEast());
+        const px = Math.max(60, Math.hypot(edge.x - center.x, edge.y - center.y));
+        // 45° depuis l'axe X positif, dans le sens horaire
+        const x2 = (px * Math.cos(Math.PI / 4)).toFixed(2);
+        const y2 = (px * Math.sin(Math.PI / 4)).toFixed(2);
+        svg.innerHTML = `
+            <defs>
+                <radialGradient id="lm-sweep-grad" cx="0" cy="0" r="${px}" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%"  stop-color="rgba(34,197,94,0.85)"/>
+                    <stop offset="40%" stop-color="rgba(34,197,94,0.35)"/>
+                    <stop offset="100%" stop-color="rgba(34,197,94,0)"/>
+                </radialGradient>
+            </defs>
+            <g transform="translate(${center.x} ${center.y})">
+                <path d="M 0 0 L ${px.toFixed(0)} 0 A ${px.toFixed(0)} ${px.toFixed(0)} 0 0 1 ${x2} ${y2} Z" fill="url(#lm-sweep-grad)" opacity="0.95">
+                    <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="0" to="360" dur="4s" repeatCount="indefinite"/>
+                </path>
+                <circle cx="0" cy="0" r="4" fill="#22c55e" opacity="0.95">
+                    <animate attributeName="r" values="4;6;4" dur="1.6s" repeatCount="indefinite"/>
+                </circle>
+            </g>
         `;
-        document.head.appendChild(st);
-    }
+    };
+    draw();
+    // Re-render à chaque changement de carte (pan / zoom / resize) pour que
+    // le centre du radar reste collé au point de mission.
+    map.on('move zoom resize', draw);
 }
 
 let _liveLastMeteo = {};      // mémorise les dernières valeurs pour calculer la flèche d'évolution
