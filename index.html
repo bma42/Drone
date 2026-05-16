@@ -10585,8 +10585,24 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-adsb-info button#lm-btn-alert { background: #1e293b; border: 1px solid #334155; color: #94a3b8; padding: 3px 6px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; }
         #live-mode-overlay .lm-adsb-info button#lm-btn-alert.on { background: #16a34a; border-color: #22c55e; color: #fff; }
         #live-mode-overlay .lm-adsb-info select#lm-adsb-refresh { background: #1e293b; color: #fff; border: 1px solid #334155; padding: 2px 4px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-        #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #fde047; cursor: pointer; user-select: none; }
-        #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly input { accent-color: #fde047; }
+        #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #fde047; cursor: pointer; user-select: none; white-space: nowrap; flex: 0 0 auto; }
+        #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly input { accent-color: #fde047; flex: 0 0 auto; }
+        /* Ligne « vol en cours » plus lisible : 3 zones distinctes (pilote /
+           chrono dominant / bouton land), drone en 2e ligne, SN en petit. */
+        #live-mode-overlay .lm-flight-row.lm-flying { padding: 10px 12px; gap: 12px; }
+        #live-mode-overlay .lm-flying-left { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+        #live-mode-overlay .lm-pilot-line { display: flex; align-items: center; gap: 6px; }
+        #live-mode-overlay .lm-mat-pill { background: rgba(0,0,0,.25); color: #fde047; padding: 1px 7px; border-radius: 3px; font-size: 10px; font-weight: 700; font-family: ui-monospace, monospace; }
+        #live-mode-overlay .lm-pilot-name { color: #fff; font-weight: 700; font-size: 13px; line-height: 1.1; }
+        #live-mode-overlay .lm-drone-line { display: flex; align-items: baseline; gap: 6px; font-size: 11px; flex-wrap: wrap; }
+        #live-mode-overlay .lm-drone-ico { font-size: 13px; }
+        #live-mode-overlay .lm-drone-model { color: #fff; font-weight: 600; }
+        #live-mode-overlay .lm-drone-sn { color: rgba(255,255,255,.55); font-size: 10px; font-family: ui-monospace, monospace; letter-spacing: .3px; }
+        #live-mode-overlay .lm-flying-time { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+        #live-mode-overlay .lm-time-big { font-family: ui-monospace, monospace; font-weight: 800; color: #fff; font-size: 22px; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -.5px; }
+        #live-mode-overlay .lm-time-sub { font-size: 10px; color: rgba(255,255,255,.7); }
+        #live-mode-overlay .lm-btn-land { background: linear-gradient(135deg,#dc2626,#991b1b) !important; color: #fff !important; border: 0 !important; padding: 8px 14px !important; border-radius: 5px; cursor: pointer; font-weight: 700 !important; font-size: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+        #live-mode-overlay .lm-btn-land:hover { filter: brightness(1.1); }
         #live-mode-overlay .lm-adsb-list { position: absolute; bottom: 10px; left: 10px; right: 78px; max-height: 180px; overflow: auto; background: rgba(15,23,42,.88); border: 1px solid #1e293b; border-radius: 6px; z-index: 1000; font-size: 11px; backdrop-filter: blur(2px); }
         #live-mode-overlay .lm-adsb-list:empty { display: none; }
         #live-mode-overlay .lm-adsb-list table { width: 100%; border-collapse: collapse; }
@@ -10915,17 +10931,29 @@ function _liveRenderFlights() {
         // Cas A : vol en cours → chrono + bouton Atterrir
         if (active) {
             const liveStr = _liveFormatDuration(Date.now() - new Date(active.startedAt));
-            return `<div class="lm-flight-row active">
-                <div style="min-width:0; flex:1;">
-                    <div class="lm-mat">${p.mat}</div>
-                    <div class="lm-pilot">${p.nom}</div>
-                    <div style="font-size:10px; color:#fcd34d; font-weight:600; margin-top:2px;">🛩 ${active.drone || '(drone non précisé)'}</div>
+            // Affiche le drone en deux lignes : modèle en gras, N° de série en
+            // petit gris dessous. Sépare par « · » si pas de N° distinct.
+            const droneStr = active.drone || '(drone non précisé)';
+            const idx = droneStr.indexOf(' · ');
+            const droneModel = idx >= 0 ? droneStr.slice(0, idx) : droneStr;
+            const droneSerial = idx >= 0 ? droneStr.slice(idx + 3) : '';
+            return `<div class="lm-flight-row active lm-flying">
+                <div class="lm-flying-left">
+                    <div class="lm-pilot-line">
+                        <span class="lm-mat-pill">${p.mat}</span>
+                        <span class="lm-pilot-name">${p.nom}</span>
+                    </div>
+                    <div class="lm-drone-line">
+                        <span class="lm-drone-ico">🛩</span>
+                        <span class="lm-drone-model">${droneModel}</span>
+                        ${droneSerial ? '<span class="lm-drone-sn">SN ' + droneSerial + '</span>' : ''}
+                    </div>
                 </div>
-                <div style="text-align:right;">
-                    <div class="lm-time" data-mat="${p.mat}">${liveStr}</div>
-                    <div style="font-size:10px; color:#cbd5e1; opacity:.85;">cumul jour : ${totalStr}</div>
+                <div class="lm-flying-time">
+                    <div class="lm-time-big" data-mat="${p.mat}">${liveStr}</div>
+                    <div class="lm-time-sub">cumul jour ${totalStr}</div>
                 </div>
-                <button type="button" data-action="land" data-mat="${p.mat}">⏬ Atterrir</button>
+                <button type="button" data-action="land" data-mat="${p.mat}" class="lm-btn-land">⏬ Atterrir</button>
             </div>`;
         }
 
