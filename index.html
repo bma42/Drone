@@ -1269,8 +1269,18 @@
                 <div style="font-size:11px; font-weight:600; color:var(--c-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px;">Destinataire</div>
                 <input type="email" id="send-to" placeholder="adresse@exemple.fr" style="margin-bottom:10px;">
                 <div style="font-size:11px; font-weight:600; color:var(--c-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px;">Mode d'envoi</div>
-                <button class="action-opt" onclick="doAction('share')"><span>📤</span><div><strong>Partager via le système</strong> <span style="font-size:10px; background:#e7f6ec; color:var(--c-success); padding:1px 6px; border-radius:999px;">A</span><div style="font-size:11px; color:var(--c-muted);">Mail, AirDrop, Messages… (Mac, iOS, Android)</div></div></button>
-                <button class="action-opt" onclick="doAction('mailto')"><span>✉️</span><div><strong>Préparer un email</strong> <span style="font-size:10px; background:#dbeafe; color:#1d4ed8; padding:1px 6px; border-radius:999px;">B</span><div style="font-size:11px; color:var(--c-muted);">Ouvre Mail.app/Outlook + télécharge le PDF à joindre.</div></div></button>
+                <button class="action-opt" onclick="doAction('share')">
+                    <span style="display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; background:linear-gradient(135deg,#16a34a 0%,#15803d 100%); border-radius:8px; color:#fff;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px; filter:drop-shadow(0 1px 1px rgba(0,0,0,.2));"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                    </span>
+                    <div><strong>Partager via le système</strong> <span style="font-size:10px; background:#e7f6ec; color:var(--c-success); padding:1px 6px; border-radius:999px;">A</span><div style="font-size:11px; color:var(--c-muted);">Mail, AirDrop, Messages… (Mac, iOS, Android)</div></div>
+                </button>
+                <button class="action-opt" onclick="doAction('mailto')">
+                    <span style="display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; background:linear-gradient(135deg,#0066cc 0%,#1d4ed8 100%); border-radius:8px; color:#fff;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px; filter:drop-shadow(0 1px 1px rgba(0,0,0,.2));"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                    </span>
+                    <div><strong>Préparer un email</strong> <span style="font-size:10px; background:#dbeafe; color:#1d4ed8; padding:1px 6px; border-radius:999px;">B</span><div style="font-size:11px; color:var(--c-muted);">Ouvre Mail.app/Outlook + télécharge le PDF à joindre.</div></div>
+                </button>
             </div>
         </div>
         <button id="global-collapse-btn" class="btn btn-ghost" onclick="toggleAllCardsCollapsed()" title="Replier / déplier tous les modules" style="padding:6px 9px;">
@@ -1572,6 +1582,18 @@
                 </div>
                 </div><!-- /circo-block -->
 
+                <!-- Bloc contacts départementaux (s'affiche uniquement quand hors circonscription DIPN 42) -->
+                <div id="dept-contacts-block" style="display:none;" class="field-group">
+                    <label class="lbl">📍 Contacts du département <strong id="dept-name-label">…</strong></label>
+                    <div style="padding:10px 14px; background:#fffbeb; border:1px solid #fde68a; border-radius:6px; font-size:12px; line-height:1.7;">
+                        <div id="dept-samu-content">⏳ Recherche SAMU/CHU…</div>
+                        <div id="dept-airport-content" style="margin-top:10px; padding-top:10px; border-top:1px dashed #fde68a;">⏳ Recherche tour de contrôle / aéroport…</div>
+                        <div style="font-size:10.5px; color:var(--c-muted); margin-top:8px; font-style:italic;">
+                            Source&nbsp;: annuaire de l'administration française (api-lannuaire.service-public.fr) + base IGN des aéroports.
+                        </div>
+                    </div>
+                </div>
+
                 <div id="arrete-pref-box" style="display:none;" class="field-group">
                     <label class="lbl">Détails de l'arrêté préfectoral</label>
                     <div class="row-2">
@@ -1723,7 +1745,10 @@
                         </div>
                     </div>
                     <div id="custom-vectors"></div>
-                    <button type="button" class="btn btn-ghost no-print" style="margin-top:6px; width:100%; background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; font-size:13px; padding:9px 10px; font-weight:600; text-align:center; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="addCustomVector()">+ Ajouter un autre drone</button>
+                    <button type="button" class="no-print act-btn act-btn-info" style="margin-top:6px; width:100%; padding:10px 14px; font-size:13px;" onclick="addCustomVector()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Ajouter un autre drone
+                    </button>
                     <div class="divider"></div>
                     <div class="check-option">
                         <input type="checkbox" id="kit-retrans" onchange="document.getElementById('retrans-box').style.display = this.checked ? 'block' : 'none'">
@@ -1776,7 +1801,10 @@
                         </thead>
                         <tbody id="auth-drone-tbody"></tbody>
                     </table>
-                    <button type="button" class="btn btn-ghost no-print" style="margin-top:8px; width:100%; background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; font-size:13px; padding:9px 10px; font-weight:600; text-align:center; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="addAuthDrone()">+ Ajouter un drone autorisé</button>
+                    <button type="button" class="no-print act-btn act-btn-info" style="margin-top:8px; width:100%; padding:10px 14px; font-size:13px;" onclick="addAuthDrone()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Ajouter un drone autorisé
+                    </button>
                     <div class="empty-state no-print" id="auth-drone-empty">Aucun autre drone déclaré sur la zone.</div>
                 </div>
             </div>
@@ -3303,6 +3331,11 @@ function autoToggleHorsCircuit(dept) {
     if (cb.checked !== isOutside) {
         cb.checked = isOutside;
         toggleHorsCircuit();
+    } else if (isOutside && cb.checked && typeof loadDeptContacts === 'function') {
+        // Adresse changée mais toujours hors-circo → rafraîchit les contacts du nouveau département
+        const deptBox = document.getElementById('dept-contacts-block');
+        if (deptBox) deptBox.style.display = 'block';
+        loadDeptContacts(dept);
     }
 }
 
@@ -9482,6 +9515,152 @@ function toggleHorsCircuit() {
         r.disabled = off;
     });
     if (off) toggleClearanceLate();
+    // Affichage / fetch des contacts départementaux uniquement quand hors-circo
+    const deptBox = document.getElementById('dept-contacts-block');
+    if (deptBox) {
+        if (off && STATE.dept) {
+            deptBox.style.display = 'block';
+            loadDeptContacts(STATE.dept);
+        } else {
+            deptBox.style.display = 'none';
+        }
+    }
+}
+
+/* ===================================================================
+   Contacts départementaux (SAMU / CHU / aéroport) — lookup via api-lannuaire
+   Affichés en §2 quand la mission est hors DIPN 42 → l'utilisateur a directement
+   sous la main les coordonnées du SAMU et de la tour de contrôle du département concerné.
+   =================================================================== */
+const DEPT_NAMES = {
+    '01':'Ain','02':'Aisne','03':'Allier','04':'Alpes-de-Haute-Provence','05':'Hautes-Alpes',
+    '06':'Alpes-Maritimes','07':'Ardèche','08':'Ardennes','09':'Ariège','10':'Aube',
+    '11':'Aude','12':'Aveyron','13':'Bouches-du-Rhône','14':'Calvados','15':'Cantal',
+    '16':'Charente','17':'Charente-Maritime','18':'Cher','19':'Corrèze','2A':'Corse-du-Sud',
+    '2B':'Haute-Corse','21':'Côte-d\'Or','22':'Côtes-d\'Armor','23':'Creuse','24':'Dordogne',
+    '25':'Doubs','26':'Drôme','27':'Eure','28':'Eure-et-Loir','29':'Finistère',
+    '30':'Gard','31':'Haute-Garonne','32':'Gers','33':'Gironde','34':'Hérault',
+    '35':'Ille-et-Vilaine','36':'Indre','37':'Indre-et-Loire','38':'Isère','39':'Jura',
+    '40':'Landes','41':'Loir-et-Cher','42':'Loire','43':'Haute-Loire','44':'Loire-Atlantique',
+    '45':'Loiret','46':'Lot','47':'Lot-et-Garonne','48':'Lozère','49':'Maine-et-Loire',
+    '50':'Manche','51':'Marne','52':'Haute-Marne','53':'Mayenne','54':'Meurthe-et-Moselle',
+    '55':'Meuse','56':'Morbihan','57':'Moselle','58':'Nièvre','59':'Nord',
+    '60':'Oise','61':'Orne','62':'Pas-de-Calais','63':'Puy-de-Dôme','64':'Pyrénées-Atlantiques',
+    '65':'Hautes-Pyrénées','66':'Pyrénées-Orientales','67':'Bas-Rhin','68':'Haut-Rhin','69':'Rhône',
+    '70':'Haute-Saône','71':'Saône-et-Loire','72':'Sarthe','73':'Savoie','74':'Haute-Savoie',
+    '75':'Paris','76':'Seine-Maritime','77':'Seine-et-Marne','78':'Yvelines','79':'Deux-Sèvres',
+    '80':'Somme','81':'Tarn','82':'Tarn-et-Garonne','83':'Var','84':'Vaucluse',
+    '85':'Vendée','86':'Vienne','87':'Haute-Vienne','88':'Vosges','89':'Yonne',
+    '90':'Territoire de Belfort','91':'Essonne','92':'Hauts-de-Seine','93':'Seine-Saint-Denis','94':'Val-de-Marne',
+    '95':'Val-d\'Oise',
+    '971':'Guadeloupe','972':'Martinique','973':'Guyane','974':'La Réunion','976':'Mayotte'
+};
+
+const ANNUAIRE_API = 'https://api-lannuaire.service-public.fr/api/explore/v2.1/catalog/datasets/api-lannuaire-administration/records';
+async function _fetchAnnuaire(where, limit) {
+    const url = `${ANNUAIRE_API}?where=${encodeURIComponent(where)}&limit=${limit || 5}`;
+    const r = await fetchWithTimeout(url, {}, 10000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    return j.results || [];
+}
+
+function _annuairePhones(rec) {
+    const tels = [];
+    (rec.telephone || []).forEach(t => {
+        const v = typeof t === 'string' ? t : (t.valeur || t.numero || '');
+        if (v) tels.push(v.trim());
+    });
+    return [...new Set(tels)];
+}
+function _annuaireEmails(rec) {
+    const emails = [];
+    (rec.adresse_courriel || []).forEach(e => {
+        const v = typeof e === 'string' ? e : (e.valeur || '');
+        if (v) emails.push(v.trim());
+    });
+    return [...new Set(emails)];
+}
+function _annuaireSite(rec) {
+    if (Array.isArray(rec.site_internet)) {
+        const s = rec.site_internet[0];
+        return typeof s === 'string' ? s : (s && s.valeur) || '';
+    }
+    return '';
+}
+
+function _renderAnnuaireCard(rec, fallbackTitle) {
+    const title = rec.nom || fallbackTitle;
+    const tels = _annuairePhones(rec);
+    const mails = _annuaireEmails(rec);
+    const site = _annuaireSite(rec);
+    return `
+        <div><strong style="color:var(--c-primary);">${title}</strong></div>
+        ${tels.length ? `<div>📞 ${tels.slice(0, 3).map(t => `<a href="tel:${t.replace(/[^+\d]/g, '')}" style="color:var(--c-accent); text-decoration:none;">${t}</a>`).join(' · ')}</div>` : ''}
+        ${mails.length ? `<div>✉ ${mails.slice(0, 3).map(e => `<a href="mailto:${e}" style="color:var(--c-accent); text-decoration:none;">${e}</a>`).join(' · ')}</div>` : ''}
+        ${site ? `<div>🔗 <a href="${site}" target="_blank" rel="noopener" style="color:var(--c-accent); text-decoration:none;">${site.replace(/^https?:\/\//, '').slice(0, 40)}</a></div>` : ''}
+    `;
+}
+
+async function loadDeptContacts(deptCode) {
+    if (!deptCode) return;
+    const samuEl = document.getElementById('dept-samu-content');
+    const airEl  = document.getElementById('dept-airport-content');
+    const nameEl = document.getElementById('dept-name-label');
+    if (nameEl) nameEl.textContent = (DEPT_NAMES[deptCode] || '') + ' (' + deptCode + ')';
+    if (samuEl) samuEl.innerHTML = '⏳ Recherche SAMU/CHU…';
+    if (airEl)  airEl.innerHTML  = '⏳ Recherche aéroport…';
+
+    // 1. SAMU du département (recherche par nom contenant « SAMU » + commune dans le département)
+    try {
+        let recs = await _fetchAnnuaire(`nom like "SAMU ${deptCode}"`, 3);
+        if (recs.length === 0) {
+            // Fallback : tous les SAMU dans le département (par commune)
+            recs = await _fetchAnnuaire(`nom like "SAMU" and code_insee_commune startswith "${deptCode}"`, 3);
+        }
+        if (recs.length === 0) {
+            // Fallback final : CHU du département
+            recs = await _fetchAnnuaire(`nom like "Centre hospitalier universitaire" and code_insee_commune startswith "${deptCode}"`, 3);
+        }
+        if (recs.length === 0) {
+            recs = await _fetchAnnuaire(`nom like "Centre hospitalier" and code_insee_commune startswith "${deptCode}"`, 1);
+        }
+        if (samuEl) {
+            samuEl.innerHTML = recs.length
+                ? recs.map(r => _renderAnnuaireCard(r, `SAMU/CHU ${deptCode}`)).join('<hr style="border:0; border-top:1px dashed #fde68a; margin:6px 0;">')
+                : '<span style="color:var(--c-muted);">Aucun SAMU/CHU trouvé pour ce département dans l\'annuaire officiel.</span>';
+        }
+    } catch (e) {
+        console.warn('SAMU/CHU lookup', e);
+        if (samuEl) samuEl.innerHTML = `<span style="color:var(--c-danger);">⚠ Recherche SAMU indisponible (${(e && e.message) || e}).</span>`;
+    }
+
+    // 2. Tour de contrôle / aéroport — recherche annuaire + 3 plus proches dans FR_AIRPORTS
+    try {
+        // 2a. Recherche annuaire : « Aviation civile » / « DSAC » du département (régional)
+        let avRecs = [];
+        try { avRecs = await _fetchAnnuaire(`(nom like "DSAC" or nom like "Direction de la sécurité de l\'aviation civile") and code_insee_commune startswith "${deptCode}"`, 2); } catch (e) {}
+        // 2b. 3 aéroports avec tour les plus proches (FR_AIRPORTS, type "A")
+        let nearAirports = [];
+        if (STATE.lat != null && Array.isArray(FR_AIRPORTS)) {
+            nearAirports = FR_AIRPORTS
+                .filter(a => a[2] === 'A' && typeof a[3] === 'number' && typeof a[4] === 'number')
+                .map(a => ({ id: a[0], name: a[1], lat: a[3], lon: a[4], dist: haversine(STATE.lat, STATE.lon, a[3], a[4]) }))
+                .sort((a, b) => a.dist - b.dist)
+                .slice(0, 3);
+        }
+        const avHtml = avRecs.length
+            ? avRecs.map(r => _renderAnnuaireCard(r, 'DSAC')).join('<hr style="border:0; border-top:1px dashed #fde68a; margin:6px 0;">')
+            : '';
+        const airHtml = nearAirports.length
+            ? `<div><strong style="color:var(--c-primary);">Aéroports les plus proches (avec tour) :</strong></div>` +
+              nearAirports.map(a => `<div>✈ ${a.name} — <strong>${fmtDist(a.dist)}</strong></div>`).join('')
+            : '<span style="color:var(--c-muted);">Aucun aéroport avec tour de contrôle trouvé à proximité.</span>';
+        if (airEl) airEl.innerHTML = avHtml + (avHtml && airHtml ? '<hr style="border:0; border-top:1px dashed #fde68a; margin:6px 0;">' : '') + airHtml;
+    } catch (e) {
+        console.warn('Airport lookup', e);
+        if (airEl) airEl.innerHTML = `<span style="color:var(--c-danger);">⚠ Recherche aéroport indisponible.</span>`;
+    }
 }
 
 function addAuthDrone() {
