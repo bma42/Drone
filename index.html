@@ -10560,7 +10560,17 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-flight-row.lm-idle { cursor: pointer; }
         #live-mode-overlay .lm-flight-row.lm-idle:hover { background: #334155; }
         #live-mode-overlay .lm-flight-row.lm-choosing { flex-direction: column; align-items: stretch; background: #0f172a; border: 1px solid #1e40af; }
-        #live-mode-overlay .lm-drone-pick { background: linear-gradient(135deg,#1e40af,#1e3a8a); color: #fff; border: 0; padding: 7px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: 600; text-align: left; transition: filter .15s; }
+        #live-mode-overlay .lm-drone-pick { background: linear-gradient(135deg,#1e40af,#1e3a8a); color: #fff; border: 0; padding: 7px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: 600; text-align: left; transition: filter .15s; display: flex; align-items: center; gap: 8px; }
+        #live-mode-overlay .lm-drone-pick svg { color: #93c5fd; flex-shrink: 0; }
+        /* Grille de sélection batterie (B1, B2 … B14) */
+        #live-mode-overlay .lm-batt-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; width: 100%; }
+        #live-mode-overlay .lm-batt-pick { background: linear-gradient(135deg,#15803d,#166534); color: #fff; border: 0; padding: 8px 0; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 700; font-family: ui-monospace, monospace; transition: filter .15s; }
+        #live-mode-overlay .lm-batt-pick:hover { filter: brightness(1.25); }
+        /* Pastille batterie dans la ligne en vol / prête à décoller */
+        #live-mode-overlay .lm-batt-tag { background: rgba(0,0,0,.3); color: #fde047; padding: 1px 7px; border-radius: 3px; font-size: 10px; font-weight: 700; font-family: ui-monospace, monospace; }
+        /* L'icône drone SVG hérite la couleur via currentColor */
+        #live-mode-overlay .lm-drone-ico { display: inline-flex; align-items: center; color: #93c5fd; }
+        #live-mode-overlay .lm-drone-ico svg { width: 16px; height: 16px; }
         #live-mode-overlay .lm-drone-pick:hover { filter: brightness(1.2); }
         #live-mode-overlay .lm-btn-takeoff { background: linear-gradient(135deg,#16a34a,#15803d) !important; color: #fff !important; border: 0 !important; padding: 6px 12px !important; font-weight: 700 !important; box-shadow: 0 0 0 0 rgba(34,197,94,.5); animation: lm-takeoff-pulse 1.6s ease-in-out infinite; }
         @keyframes lm-takeoff-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,.5); } 50% { box-shadow: 0 0 0 6px rgba(34,197,94,0); } }
@@ -10585,8 +10595,9 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-adsb-info button#lm-btn-alert { background: #1e293b; border: 1px solid #334155; color: #94a3b8; padding: 3px 6px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; }
         #live-mode-overlay .lm-adsb-info button#lm-btn-alert.on { background: #16a34a; border-color: #22c55e; color: #fff; }
         #live-mode-overlay .lm-adsb-info select#lm-adsb-refresh { background: #1e293b; color: #fff; border: 1px solid #334155; padding: 2px 4px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-        #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #fff; cursor: pointer; user-select: none; white-space: nowrap; flex: 0 0 auto; background: rgba(253,224,71,.18); border: 1px solid rgba(253,224,71,.5); padding: 2px 8px; border-radius: 999px; font-weight: 600; }
-        #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly:hover { background: rgba(253,224,71,.28); }
+        #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: #fde047; cursor: pointer; user-select: none; white-space: nowrap; flex: 0 0 auto; background: #0f172a; border: 1.5px solid #fde047; padding: 3px 10px; border-radius: 999px; font-weight: 700; letter-spacing: .3px; transition: all .15s; }
+        #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly:hover { background: #1e293b; }
+        #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly:has(input:checked) { background: #fde047; color: #1f2937; }
         #live-mode-overlay .lm-adsb-info .lm-adsb-lowonly input { accent-color: #fde047; flex: 0 0 auto; margin: 0; }
         /* Ligne « vol en cours » plus lisible : 3 zones distinctes (pilote /
            chrono dominant / bouton land), drone en 2e ligne, SN en petit. */
@@ -10704,13 +10715,24 @@ function _liveBindHandlers(overlay) {
         else if (a === 'select-drone') {
             const rs = _liveRowStateFor(mat);
             rs.drone = t.dataset.drone || '';
+            rs.droneName = t.dataset.name || '';
+            rs.battery = null;
+            // Si une seule batterie possible (ex. Mini Pro), on saute l'étape.
+            const max = _liveDroneMaxBat(rs.droneName || rs.drone);
+            if (max <= 1) { rs.battery = 1; rs.state = 'ready'; }
+            else rs.state = 'battery';
+            _liveRenderFlights();
+        }
+        else if (a === 'select-battery') {
+            const rs = _liveRowStateFor(mat);
+            rs.battery = parseInt(t.dataset.bat, 10) || 1;
             rs.state = 'ready';
             _liveRenderFlights();
         }
         else if (a === 'takeoff') {
             const rs = _liveRowStateFor(mat);
             if (!rs.drone) return;
-            _liveStartFlight(mat, rs.drone);
+            _liveStartFlight(mat, rs.drone, rs.battery);
         }
         else if (a === 'land') _liveStopFlight(mat);
         // Backward compat : ancien data-action « toggle-flight »
@@ -10906,8 +10928,28 @@ function _liveRenderPilots() {
 // L'état « flying » est déduit de _liveFlights() (présence d'un vol actif).
 let _liveRowState = {};
 function _liveRowStateFor(mat) {
-    if (!_liveRowState[mat]) _liveRowState[mat] = { state: 'idle', drone: '' };
+    if (!_liveRowState[mat]) _liveRowState[mat] = { state: 'idle', drone: '', battery: null };
     return _liveRowState[mat];
+}
+
+// SVG logo drone (même que la topbar de la page principale), réutilisé dans
+// les lignes de vol pour identifier visuellement l'aéronef.
+const LM_DRONE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:1em; height:1em; vertical-align:-2px;">' +
+    '<line x1="6" y1="6" x2="9.5" y2="9.5"/><line x1="18" y1="6" x2="14.5" y2="9.5"/>' +
+    '<line x1="6" y1="18" x2="9.5" y2="14.5"/><line x1="18" y1="18" x2="14.5" y2="14.5"/>' +
+    '<circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="6" r="2.4"/>' +
+    '<circle cx="6" cy="18" r="2.4"/><circle cx="18" cy="18" r="2.4"/>' +
+    '<rect x="9.5" y="9.5" width="5" height="5" rx="1"/>' +
+    '<circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/></svg>';
+
+// Nombre de batteries disponibles par modèle de drone (DIPN 42 standard).
+function _liveDroneMaxBat(name) {
+    if (!name) return 1;
+    const n = name.toUpperCase();
+    if (/MATRICE\s*4T|\bM4T\b/.test(n)) return 14;
+    if (/MAVIC\s*3T|\bM3T\b/.test(n))   return 7;
+    if (/MINI/.test(n))                   return 1;
+    return 1;
 }
 
 function _liveRenderFlights() {
@@ -10932,12 +10974,11 @@ function _liveRenderFlights() {
         // Cas A : vol en cours → chrono + bouton Atterrir
         if (active) {
             const liveStr = _liveFormatDuration(Date.now() - new Date(active.startedAt));
-            // Affiche le drone en deux lignes : modèle en gras, N° de série en
-            // petit gris dessous. Sépare par « · » si pas de N° distinct.
             const droneStr = active.drone || '(drone non précisé)';
             const idx = droneStr.indexOf(' · ');
             const droneModel = idx >= 0 ? droneStr.slice(0, idx) : droneStr;
             const droneSerial = idx >= 0 ? droneStr.slice(idx + 3) : '';
+            const battTag = active.battery ? `<span class="lm-batt-tag">⚡ B${active.battery}</span>` : '';
             return `<div class="lm-flight-row active lm-flying">
                 <div class="lm-flying-left">
                     <div class="lm-pilot-line">
@@ -10945,8 +10986,9 @@ function _liveRenderFlights() {
                         <span class="lm-pilot-name">${p.nom}</span>
                     </div>
                     <div class="lm-drone-line">
-                        <span class="lm-drone-ico">🛩</span>
+                        <span class="lm-drone-ico">${LM_DRONE_SVG}</span>
                         <span class="lm-drone-model">${droneModel}</span>
+                        ${battTag}
                         ${droneSerial ? '<span class="lm-drone-sn">SN ' + droneSerial + '</span>' : ''}
                     </div>
                 </div>
@@ -10967,9 +11009,10 @@ function _liveRenderFlights() {
                     <button type="button" data-action="cancel-choose" data-mat="${p.mat}">Annuler</button>
                 </div>`;
             }
-            const dronesList = drones.map(d =>
-                `<button type="button" data-action="select-drone" data-mat="${p.mat}" data-drone="${(d.label || d.name).replace(/"/g, '&quot;')}" class="lm-drone-pick">🛩 ${d.label || d.name}</button>`
-            ).join('');
+            const dronesList = drones.map(d => {
+                const label = (d.label || d.name).replace(/"/g, '&quot;');
+                return `<button type="button" data-action="select-drone" data-mat="${p.mat}" data-drone="${label}" data-name="${(d.name || '').replace(/"/g, '&quot;')}" class="lm-drone-pick">${LM_DRONE_SVG} ${d.label || d.name}</button>`;
+            }).join('');
             return `<div class="lm-flight-row lm-choosing">
                 <div style="display:flex; align-items:center; gap:6px; width:100%; margin-bottom:6px;">
                     <span class="lm-mat">${p.mat}</span>
@@ -10980,13 +11023,34 @@ function _liveRenderFlights() {
             </div>`;
         }
 
-        // Cas C : drone choisi, prêt à décoller
+        // Cas B' : choix d'une batterie (intercalé entre drone et ready)
+        if (rs.state === 'battery' && rs.drone) {
+            const maxBat = _liveDroneMaxBat(rs.droneName || rs.drone);
+            const battBtns = Array.from({ length: maxBat }, (_, i) => {
+                const n = i + 1;
+                return `<button type="button" data-action="select-battery" data-mat="${p.mat}" data-bat="${n}" class="lm-batt-pick">B${n}</button>`;
+            }).join('');
+            return `<div class="lm-flight-row lm-choosing">
+                <div style="display:flex; align-items:center; gap:6px; width:100%; margin-bottom:6px;">
+                    <span class="lm-mat">${p.mat}</span>
+                    <span style="flex:1; font-size:11px; color:#93c5fd; font-weight:600;">${LM_DRONE_SVG} ${rs.drone.split(' · ')[0]} — choisir la batterie</span>
+                    <button type="button" data-action="change-drone" data-mat="${p.mat}" style="background:transparent; border:0; color:#94a3b8; font-size:10px; cursor:pointer; text-decoration:underline;">changer drone</button>
+                </div>
+                <div class="lm-batt-grid">${battBtns}</div>
+            </div>`;
+        }
+
+        // Cas C : drone + batterie choisis, prêt à décoller
         if (rs.state === 'ready' && rs.drone) {
             return `<div class="lm-flight-row">
                 <div style="min-width:0; flex:1;">
                     <div class="lm-mat">${p.mat}</div>
                     <div class="lm-pilot">${p.nom}</div>
-                    <div style="font-size:10px; color:#fcd34d; font-weight:600; margin-top:2px;">🛩 ${rs.drone} <button type="button" data-action="change-drone" data-mat="${p.mat}" style="background:transparent; border:0; color:#93c5fd; cursor:pointer; font-size:9px; text-decoration:underline; margin-left:4px;">changer</button></div>
+                    <div style="font-size:10px; color:#fcd34d; font-weight:600; margin-top:2px; display:flex; align-items:center; gap:6px;">
+                        ${LM_DRONE_SVG} ${rs.drone}
+                        ${rs.battery ? '<span class="lm-batt-tag">⚡ B' + rs.battery + '</span>' : ''}
+                        <button type="button" data-action="change-drone" data-mat="${p.mat}" style="background:transparent; border:0; color:#93c5fd; cursor:pointer; font-size:9px; text-decoration:underline; margin-left:4px;">changer</button>
+                    </div>
                 </div>
                 <div style="text-align:right;">
                     <div class="lm-time">00:00:00</div>
@@ -11012,9 +11076,9 @@ function _liveRenderFlights() {
     _liveUpdateTotals();
 }
 
-function _liveStartFlight(mat, drone) {
+function _liveStartFlight(mat, drone, battery) {
     const flights = _liveFlights();
-    flights.push({ mat, drone, startedAt: new Date().toISOString(), stoppedAt: null });
+    flights.push({ mat, drone, battery: battery || null, startedAt: new Date().toISOString(), stoppedAt: null });
     _setLiveFlights(flights);
     _liveRenderFlights();
 }
@@ -11024,8 +11088,9 @@ function _liveStopFlight(mat) {
     const active = flights.find(f => f.mat === mat && !f.stoppedAt);
     if (active) active.stoppedAt = new Date().toISOString();
     _setLiveFlights(flights);
-    // Après atterrissage, on remet la ligne en idle (il faudra re-choisir un drone).
-    if (_liveRowState[mat]) _liveRowState[mat] = { state: 'idle', drone: '' };
+    // Après atterrissage, on remet la ligne en idle (il faudra re-choisir un
+    // drone et une batterie pour le prochain vol).
+    if (_liveRowState[mat]) _liveRowState[mat] = { state: 'idle', drone: '', battery: null };
     _liveRenderFlights();
 }
 
@@ -11328,9 +11393,56 @@ async function _liveRefreshMeteo() {
             </div>
         `;
         _liveLastMeteo = values;
+        _liveUpdateWindArrow(values.wind, dir);
         document.getElementById('lm-meteo-updated').textContent = '↻ ' + new Date().toLocaleTimeString('fr-FR');
     } catch (e) {
         console.warn('Live météo:', e);
+    }
+}
+
+// Flèche de vent superposée sur la carte radar : indique l'origine (queue)
+// et la direction d'écoulement (pointe). La longueur reflète la vitesse.
+function _liveUpdateWindArrow(speedKmh, dirFromDeg) {
+    const map = _liveAdsbMap;
+    if (!map) return;
+    const container = map.getContainer();
+    if (!container) return;
+    let svg = container.querySelector('.lm-wind-svg');
+    if (!svg) {
+        svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'lm-wind-svg');
+        svg.setAttribute('viewBox', '0 0 100 100');
+        svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+        svg.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:450; overflow:visible;';
+        container.appendChild(svg);
+    }
+    // Convention météo : dirFromDeg = direction d'où vient le vent. La pointe
+    // de la flèche doit pointer dans la direction où va le vent.
+    // En SVG (Y vers le bas), une flèche dessinée pointant UP (négatif Y) a
+    // rotation 0 = nord. Pour pointer dans le sens de l'écoulement (depuis le
+    // FROM-dir), on tourne de (dirFromDeg + 180) mod 360.
+    const rot = ((dirFromDeg || 0) + 180) % 360;
+    // Longueur proportionnelle à la vitesse (5 km/h = 12 unités, plafonné).
+    const len = Math.min(34, 6 + (speedKmh || 0) * 0.7);
+    // Animation : on accélère le pulse quand le vent forcit (1.4 s → 0.6 s).
+    const animDur = Math.max(0.6, 1.8 - (speedKmh || 0) * 0.05).toFixed(2);
+    svg.innerHTML = `
+        <defs>
+            <marker id="lm-wind-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#fbbf24"/>
+            </marker>
+        </defs>
+        <g transform="translate(50 50) rotate(${rot})" style="animation: lm-wind-pulse ${animDur}s ease-in-out infinite;">
+            <line x1="0" y1="${len}" x2="0" y2="${-len}" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" marker-end="url(#lm-wind-head)" style="filter: drop-shadow(0 0 3px rgba(251,191,36,.55));"/>
+            <circle cx="0" cy="${len}" r="2.4" fill="#fbbf24"/>
+        </g>
+        <text x="50" y="93" text-anchor="middle" fill="#fbbf24" font-size="3.6" font-weight="700" font-family="ui-monospace, monospace" style="text-shadow: 0 0 4px rgba(0,0,0,.85);">${Math.round(dirFromDeg || 0)}° · ${Math.round(speedKmh || 0)} km/h</text>
+    `;
+    if (!document.getElementById('lm-wind-anim-style')) {
+        const st = document.createElement('style');
+        st.id = 'lm-wind-anim-style';
+        st.textContent = '@keyframes lm-wind-pulse { 0%, 100% { opacity: .55; transform-origin: center; } 50% { opacity: 1; } }';
+        document.head.appendChild(st);
     }
 }
 
