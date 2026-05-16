@@ -10641,10 +10641,10 @@ function _liveInjectStyles() {
         /* Flèches d'évolution sur tuiles météo (animation au refresh) */
         #live-mode-overlay .lm-tile { position: relative; }
         #live-mode-overlay .lm-trend { position: absolute; top: 4px; right: 6px; font-size: 14px; font-weight: 700; line-height: 1; opacity: 0; transition: opacity .35s; }
-        #live-mode-overlay .lm-trend.up   { color: #ef4444; animation: lm-trend-pop-up   1.2s ease-out forwards; }
-        #live-mode-overlay .lm-trend.down { color: #22c55e; animation: lm-trend-pop-down 1.2s ease-out forwards; }
-        @keyframes lm-trend-pop-up   { 0% { opacity: 0; transform: translateY(8px) scale(.6); } 25% { opacity: 1; transform: translateY(0) scale(1.25); } 100% { opacity: .85; transform: translateY(0) scale(1); } }
-        @keyframes lm-trend-pop-down { 0% { opacity: 0; transform: translateY(-8px) scale(.6); } 25% { opacity: 1; transform: translateY(0) scale(1.25); } 100% { opacity: .85; transform: translateY(0) scale(1); } }
+        #live-mode-overlay .lm-trend.up   { color: #ef4444; animation: lm-trend-loop-up   1.4s ease-in-out infinite; }
+        #live-mode-overlay .lm-trend.down { color: #22c55e; animation: lm-trend-loop-down 1.4s ease-in-out infinite; }
+        @keyframes lm-trend-loop-up   { 0% { opacity: .25; transform: translateY(6px)  scale(.85); } 50% { opacity: 1; transform: translateY(-2px) scale(1.15); } 100% { opacity: .25; transform: translateY(-8px) scale(.85); } }
+        @keyframes lm-trend-loop-down { 0% { opacity: .25; transform: translateY(-6px) scale(.85); } 50% { opacity: 1; transform: translateY(2px)  scale(1.15); } 100% { opacity: .25; transform: translateY(8px)  scale(.85); } }
         #live-mode-overlay .lm-meteo-updated { font-size: 10px; color: #64748b; text-align: right; margin-top: 6px; }
         @media (max-width: 900px) {
             #live-mode-overlay .lm-grid { grid-template-columns: 1fr; grid-template-rows: 1fr auto auto; }
