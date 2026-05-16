@@ -10512,6 +10512,8 @@ function enterLiveMode() {
     overlay.style.display = 'flex';
     document.body.style.overflow = 'hidden';
     try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); } catch (e) {}
+    _liveMeteoFirstLoad = true;   // ré-évalue les tendances depuis hourly à chaque ouverture
+    _liveLastMeteo = {};           // reset pour ne pas comparer à une session précédente
     try {
         _liveSavedAdsb = {
             auto: typeof aircraftAutoRefresh !== 'undefined' ? aircraftAutoRefresh : false,
@@ -10763,10 +10765,20 @@ function _liveBindHandlers(overlay) {
         else if (a === 'change-drone') { _liveRowStateFor(mat).state = 'choosing'; _liveRenderFlights(); }
         else if (a === 'select-drone') {
             const rs = _liveRowStateFor(mat);
-            rs.drone = t.dataset.drone || '';
+            const chosen = t.dataset.drone || '';
+            // Dernier check : si le drone vient d'être pris par un autre pilote
+            // (vol actif ou pré-sélection ready/battery), refuse.
+            const fls = _liveFlights();
+            const takenByFlight = fls.some(f => !f.stoppedAt && f.mat !== mat && f.drone === chosen);
+            const takenByPicker = Object.entries(_liveRowState).some(([k, v]) => k !== mat && (v.state === 'ready' || v.state === 'battery') && v.drone === chosen);
+            if (takenByFlight || takenByPicker) {
+                alert('Ce drone vient d\'être pris par un autre télépilote.');
+                _liveRenderFlights();
+                return;
+            }
+            rs.drone = chosen;
             rs.droneName = t.dataset.name || '';
             rs.battery = null;
-            // Si une seule batterie possible (ex. Mini Pro), on saute l'étape.
             const max = _liveDroneMaxBat(rs.droneName || rs.drone);
             if (max <= 1) { rs.battery = 1; rs.state = 'ready'; }
             else rs.state = 'battery';
@@ -10774,7 +10786,16 @@ function _liveBindHandlers(overlay) {
         }
         else if (a === 'select-battery') {
             const rs = _liveRowStateFor(mat);
-            rs.battery = parseInt(t.dataset.bat, 10) || 1;
+            const n = parseInt(t.dataset.bat, 10) || 1;
+            const fls = _liveFlights();
+            const takenByFlight = fls.some(f => !f.stoppedAt && f.mat !== mat && f.drone === rs.drone && f.battery === n);
+            const takenByPicker = Object.entries(_liveRowState).some(([k, v]) => k !== mat && v.state === 'ready' && v.drone === rs.drone && v.battery === n);
+            if (takenByFlight || takenByPicker) {
+                alert('Cette batterie est déjà associée à ce drone par un autre télépilote.');
+                _liveRenderFlights();
+                return;
+            }
+            rs.battery = n;
             rs.state = 'ready';
             _liveRenderFlights();
         }
@@ -10802,6 +10823,8 @@ function exitLiveMode() {
     if (_liveTickInterval) { clearInterval(_liveTickInterval); _liveTickInterval = null; }
     if (_liveProgressInterval) { clearInterval(_liveProgressInterval); _liveProgressInterval = null; }
     if (_liveWindAnimTimer) { clearInterval(_liveWindAnimTimer); _liveWindAnimTimer = null; }
+    if (_liveRainTimer) { clearTimeout(_liveRainTimer); _liveRainTimer = null; }
+    _liveRainLayer = null;
     if (_liveAdsbMap) { try { _liveAdsbMap.remove(); } catch (e) {} _liveAdsbMap = null; }
     // Restaure l'état ADS-B antérieur (auto / alertes / intervalle).
     if (_liveSavedAdsb) {
@@ -11021,9 +11044,15 @@ function _liveRenderFlights() {
         }
 
         // Cas B : choix d'un drone (la liste remplace le nom).
-        // On exclut les drones déjà utilisés par un autre pilote (vol actif).
+        // On exclut les drones déjà utilisés par un autre pilote, qu'il soit
+        // en vol (flight actif) OU déjà en train de pré-sélectionner ce drone
+        // (état 'ready' ou 'battery' dans _liveRowState).
         if (rs.state === 'choosing') {
-            const dronesInUse = new Set(flights.filter(f => !f.stoppedAt && f.mat !== p.mat).map(f => f.drone));
+            const dronesInUse = new Set();
+            flights.forEach(f => { if (!f.stoppedAt && f.mat !== p.mat) dronesInUse.add(f.drone); });
+            Object.entries(_liveRowState).forEach(([k, v]) => {
+                if (k !== p.mat && (v.state === 'ready' || v.state === 'battery') && v.drone) dronesInUse.add(v.drone);
+            });
             const available = drones.filter(d => !dronesInUse.has(d.label || d.name));
             if (!drones.length) {
                 rs.state = 'idle';
@@ -11049,12 +11078,17 @@ function _liveRenderFlights() {
         }
 
         // Cas B' : choix d'une batterie. On exclut les batteries déjà
-        // utilisées sur le même drone par un autre pilote.
+        // utilisées sur le même drone par un autre pilote, qu'il soit en vol
+        // ou déjà en train de la pré-sélectionner (état 'ready').
         if (rs.state === 'battery' && rs.drone) {
             const maxBat = _liveDroneMaxBat(rs.droneName || rs.drone);
-            const battsInUse = new Set(flights
-                .filter(f => !f.stoppedAt && f.drone === rs.drone && f.mat !== p.mat && f.battery)
-                .map(f => f.battery));
+            const battsInUse = new Set();
+            flights.forEach(f => {
+                if (!f.stoppedAt && f.drone === rs.drone && f.mat !== p.mat && f.battery) battsInUse.add(f.battery);
+            });
+            Object.entries(_liveRowState).forEach(([k, v]) => {
+                if (k !== p.mat && v.state === 'ready' && v.drone === rs.drone && v.battery) battsInUse.add(v.battery);
+            });
             const battBtns = Array.from({ length: maxBat }, (_, i) => {
                 const n = i + 1;
                 if (battsInUse.has(n)) {
@@ -11241,6 +11275,8 @@ async function _liveRefreshAdsb() {
             dark.addTo(_liveAdsbMap);
             _liveAdsbMap._rings = L.layerGroup().addTo(_liveAdsbMap);
             _liveRebuildAdsbRings();
+            // Couche radar pluie temps réel RainViewer (sous l'animation de balayage)
+            _liveAddRainOverlay();
             L.circleMarker([STATE.lat, STATE.lon], {
                 radius: 6, color: '#fbbf24', fillColor: '#fbbf24', fillOpacity: 1, weight: 2
             }).addTo(_liveAdsbMap);
@@ -11275,6 +11311,35 @@ async function _liveRefreshAdsb() {
 // met à jour les marqueurs sur la carte du Live Mode. Appelé toutes les 2 s
 // par _liveAdsbInterval ; ne fait JAMAIS de fetch lui-même (le rafraîchissement
 // réseau est piloté par scheduleAircraftRefresh de la page principale).
+// Overlay radar pluie RainViewer sur la carte ADS-B. La couche se met
+// automatiquement à l'échelle si l'utilisateur zoome au-delà de z11 (maxZoom
+// natif de RainViewer) grâce à maxNativeZoom. Refresh 5 min.
+let _liveRainLayer = null, _liveRainTimer = null;
+async function _liveAddRainOverlay() {
+    if (!_liveAdsbMap) return;
+    try {
+        const r = await fetchWithTimeout('https://api.rainviewer.com/public/weather-maps.json', {}, 8000);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const j = await r.json();
+        const host = j.host || 'https://tilecache.rainviewer.com';
+        const past = (j.radar && j.radar.past) || [];
+        const last = past[past.length - 1];
+        if (!last) return;
+        if (_liveRainLayer) { try { _liveAdsbMap.removeLayer(_liveRainLayer); } catch (e) {} }
+        _liveRainLayer = L.tileLayer(`${host}${last.path}/256/{z}/{x}/{y}/2/1_1.png`, {
+            opacity: 0.55,
+            maxZoom: 18, maxNativeZoom: 11,   // tiles z>11 scalées par Leaflet
+            zIndex: 350,
+            errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+            attribution: '© <a href="https://www.rainviewer.com" target="_blank">RainViewer</a>'
+        });
+        _liveRainLayer.addTo(_liveAdsbMap);
+    } catch (e) { console.warn('[live rain]', e); }
+    // Refresh toutes les 5 min (RainViewer publie /10 min, on prend large)
+    if (_liveRainTimer) clearTimeout(_liveRainTimer);
+    _liveRainTimer = setTimeout(_liveAddRainOverlay, 5 * 60000);
+}
+
 // Reconstruit les 4 anneaux verts dashés au rayon de recherche ADS-B courant.
 // Appelé à l'init de la carte et à chaque changement de slider rayon.
 function _liveRebuildAdsbRings() {
@@ -11406,6 +11471,7 @@ function _liveAttachRadarSweep(map, radiusM) {
 
 let _liveLastMeteo = {};      // mémorise les dernières valeurs pour calculer la flèche d'évolution
 let _liveLastTrend = {};       // mémorise la dernière direction connue (up/down) par métrique
+let _liveMeteoFirstLoad = true; // 1er load : seed les tendances depuis hourly (valeur il y a 1 h)
 
 async function _liveRefreshMeteo() {
     if (STATE.lat == null) {
@@ -11414,8 +11480,11 @@ async function _liveRefreshMeteo() {
         return;
     }
     try {
+        // Au 1er load, on demande aussi 'hourly' avec past_hours=2 pour pouvoir
+        // seeder la tendance des flèches dès l'arrivée sur le Live Mode.
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${STATE.lat}&longitude=${STATE.lon}`
             + `&current=temperature_2m,relative_humidity_2m,precipitation,surface_pressure,wind_speed_10m,wind_gusts_10m,wind_direction_10m,visibility,weather_code`
+            + (_liveMeteoFirstLoad ? `&hourly=temperature_2m,wind_speed_10m,wind_gusts_10m,precipitation,relative_humidity_2m,surface_pressure,visibility&past_hours=2&forecast_hours=1` : '')
             + `&wind_speed_unit=kmh&timezone=auto`;
         const r = await fetchWithTimeout(url, {}, 8000);
         if (!r.ok) throw new Error(r.status);
@@ -11432,6 +11501,40 @@ async function _liveRefreshMeteo() {
             vis:     (c.visibility || 0) / 1000,
             kp:      STATE.kp || 0
         };
+
+        // Seed les tendances au 1er load : compare current avec la valeur
+        // il y a 1h (depuis hourly). Permet d'afficher les triangles
+        // immédiatement à l'arrivée sur le Live Mode.
+        if (_liveMeteoFirstLoad && j.hourly && j.hourly.time) {
+            const target = Date.now() - 60 * 60 * 1000;
+            let idx = -1, bestDiff = Infinity;
+            for (let i = 0; i < j.hourly.time.length; i++) {
+                const t = new Date(j.hourly.time[i]).getTime();
+                const d = Math.abs(t - target);
+                if (d < bestDiff) { bestDiff = d; idx = i; }
+            }
+            if (idx >= 0) {
+                const at = (arr) => Array.isArray(arr) && arr[idx] != null ? arr[idx] : null;
+                const past = {
+                    wind:   at(j.hourly.wind_speed_10m),
+                    gust:   at(j.hourly.wind_gusts_10m),
+                    precip: at(j.hourly.precipitation),
+                    temp:   at(j.hourly.temperature_2m),
+                    hum:    at(j.hourly.relative_humidity_2m),
+                    press:  at(j.hourly.surface_pressure),
+                    vis:    at(j.hourly.visibility) != null ? at(j.hourly.visibility) / 1000 : null
+                };
+                const thresholds = { wind:.5, gust:.5, precip:.05, temp:.2, hum:1, press:.3, vis:.1 };
+                Object.keys(past).forEach(k => {
+                    if (past[k] == null) return;
+                    const d = values[k] - past[k];
+                    if (Math.abs(d) >= (thresholds[k] || .1)) {
+                        _liveLastTrend[k] = d > 0 ? 'up' : 'down';
+                    }
+                });
+            }
+            _liveMeteoFirstLoad = false;
+        }
         // Flèche d'évolution : ▲ rouge si valeur en hausse, ▼ vert si baisse.
         // Si pas de variation significative au dernier refresh, on garde la
         // dernière direction connue (animée) pour que les triangles soient
