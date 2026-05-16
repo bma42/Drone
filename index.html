@@ -11611,48 +11611,64 @@ function _liveRenderAdsbList(planes) {
 // reste en place même si le user pan/zoom. Cosmétique uniquement.
 function _liveAttachRadarSweep(map, radiusM) {
     const container = map.getContainer();
-    if (!container) return;
-    container.querySelectorAll('.lm-radar-sweep-svg').forEach(n => n.remove());
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('class', 'lm-radar-sweep-svg');
-    svg.setAttribute('viewBox', '-50 -50 100 100');
-    svg.setAttribute('preserveAspectRatio', 'xMidYMid slice');
-    // z-index élevé pour passer au-dessus des tuiles + overlay-pane Leaflet,
-    // pointer-events:none pour ne pas bloquer les clics carte.
-    svg.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:450; overflow:visible;';
-    // Animation SVG native (animateTransform) — universellement supportée
-    // et indépendante de transform-origin CSS (capricieux sur Safari).
-    svg.innerHTML = `
-        <defs>
-            <radialGradient id="lm-sweep-grad" cx="0" cy="0" r="60" gradientUnits="userSpaceOnUse">
-                <stop offset="0%"  stop-color="rgba(34,197,94,0.85)"/>
-                <stop offset="40%" stop-color="rgba(34,197,94,0.40)"/>
-                <stop offset="100%" stop-color="rgba(34,197,94,0)"/>
-            </radialGradient>
-        </defs>
-        <!-- Croisillons cardinaux N/S/E/O en fond -->
-        <g stroke="rgba(34,197,94,0.25)" stroke-width="0.5" stroke-dasharray="1.5 2">
-            <line x1="-60" y1="0" x2="60" y2="0"/>
-            <line x1="0" y1="-60" x2="0" y2="60"/>
-        </g>
-        <text x="0" y="-46" text-anchor="middle" fill="rgba(34,197,94,0.7)" font-size="4" font-weight="700" font-family="ui-monospace, monospace">N</text>
-        <text x="46" y="1.5" text-anchor="middle" fill="rgba(34,197,94,0.7)" font-size="4" font-weight="700" font-family="ui-monospace, monospace">E</text>
-        <text x="0" y="49" text-anchor="middle" fill="rgba(34,197,94,0.7)" font-size="4" font-weight="700" font-family="ui-monospace, monospace">S</text>
-        <text x="-46" y="1.5" text-anchor="middle" fill="rgba(34,197,94,0.7)" font-size="4" font-weight="700" font-family="ui-monospace, monospace">O</text>
+    if (!container) { console.warn('[radar] no container'); return; }
+    console.log('[radar] attach sweep');
+    // Nettoie d'éventuels résidus
+    container.querySelectorAll('.lm-radar-wrap').forEach(n => n.remove());
 
-        <!-- Faisceau qui tourne (cône 60°) -->
-        <g>
-            <path d="M 0 0 L 60 0 A 60 60 0 0 1 51.96 30 Z" fill="url(#lm-sweep-grad)"/>
-            <line x1="0" y1="0" x2="60" y2="0" stroke="#86efac" stroke-width="0.7" opacity="1"/>
-            <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="0" to="360" dur="4s" repeatCount="indefinite"/>
-        </g>
+    // Wrapper centré qui occupe toute la carte (pointer-events:none → clics traversent)
+    const wrap = document.createElement('div');
+    wrap.className = 'lm-radar-wrap';
+    wrap.style.cssText = 'position:absolute; inset:0; pointer-events:none; z-index:450; overflow:hidden;';
 
-        <!-- Pastille centrale pulsante (point d'origine) -->
-        <circle cx="0" cy="0" r="1.8" fill="#22c55e">
-            <animate attributeName="r" values="1.8;2.8;1.8" dur="1.6s" repeatCount="indefinite"/>
-        </circle>
+    // Cône balayant via conic-gradient + animation CSS — compat universelle, pas
+    // de SVG/blend-mode/filter capricieux.
+    const sweep = document.createElement('div');
+    sweep.style.cssText = `
+        position:absolute; left:50%; top:50%;
+        width:200%; height:200%;
+        transform:translate(-50%,-50%);
+        background: conic-gradient(from 0deg,
+            rgba(34,197,94,0.55) 0deg,
+            rgba(34,197,94,0.30) 25deg,
+            rgba(34,197,94,0.10) 55deg,
+            rgba(34,197,94,0) 75deg,
+            rgba(34,197,94,0) 360deg);
+        border-radius:50%;
+        animation: lm-radar-rot 4s linear infinite;
+        will-change: transform;
     `;
-    container.appendChild(svg);
+    wrap.appendChild(sweep);
+
+    // Pastille centrale verte pulsante (origine du radar)
+    const dot = document.createElement('div');
+    dot.style.cssText = `
+        position:absolute; left:50%; top:50%;
+        width:10px; height:10px; margin:-5px 0 0 -5px;
+        background:#22c55e; border-radius:50%;
+        box-shadow:0 0 0 2px rgba(34,197,94,0.4), 0 0 6px rgba(34,197,94,0.7);
+        animation: lm-radar-pulse 1.6s ease-in-out infinite;
+    `;
+    wrap.appendChild(dot);
+
+    container.appendChild(wrap);
+
+    // Keyframes ajoutées au head une seule fois
+    if (!document.getElementById('lm-radar-anim-css')) {
+        const st = document.createElement('style');
+        st.id = 'lm-radar-anim-css';
+        st.textContent = `
+            @keyframes lm-radar-rot {
+                from { transform: translate(-50%,-50%) rotate(0deg); }
+                to   { transform: translate(-50%,-50%) rotate(360deg); }
+            }
+            @keyframes lm-radar-pulse {
+                0%, 100% { transform: scale(1); opacity: 0.95; }
+                50%      { transform: scale(1.4); opacity: 0.55; }
+            }
+        `;
+        document.head.appendChild(st);
+    }
 }
 
 let _liveLastMeteo = {};      // mémorise les dernières valeurs pour calculer la flèche d'évolution
