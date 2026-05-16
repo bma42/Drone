@@ -215,7 +215,10 @@
             0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,.6); }
             50%      { box-shadow: 0 0 0 8px rgba(251,191,36,0); }
         }
+        @keyframes fastfly-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         #fast-fly-btn:hover { background:#f59e0b !important; }
+        /* État chargement : fond sombre, icône SVG blanche tournante */
+        #fast-fly-btn.loading { background:#1f2937 !important; color:#fff !important; animation:none !important; box-shadow:none !important; }
         /* Rafraîchir : icône tourne pendant le fetch manuel */
         #refresh-btn.refresh-spinning svg { animation: refresh-spin 0.8s linear infinite; transform-origin: 50% 50%; }
         @keyframes refresh-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -3453,18 +3456,23 @@ function fastFly() {
     }
     const btn = document.getElementById('fast-fly-btn');
     const original = btn.innerHTML;
-    btn.innerHTML = '⏳ Position…'; btn.disabled = true;
+    const originalStyle = btn.getAttribute('style') || '';
+    // État chargement : fond sombre + icône SVG blanche qui tourne en continu
+    // (plus lisible que ⏳ et signale clairement « occupé »).
+    btn.classList.add('loading');
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:14px; height:14px; animation:fastfly-spin .9s linear infinite;"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Position…';
+    btn.disabled = true;
     navigator.geolocation.getCurrentPosition(
         async (pos) => {
             showFastFlyProgress();
             await reverseGeocodeAndSelect(pos.coords.latitude, pos.coords.longitude,
                 `Position courante (${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)})`);
             setNowMission();
-            btn.innerHTML = original; btn.disabled = false;
+            btn.innerHTML = original; btn.disabled = false; btn.classList.remove('loading');
         },
         (err) => {
             alert('Géolocalisation refusée : ' + err.message);
-            btn.innerHTML = original; btn.disabled = false;
+            btn.innerHTML = original; btn.disabled = false; btn.classList.remove('loading');
         }
     );
 }
@@ -11449,10 +11457,10 @@ function _liveUpdateWindArrow(speedKmh, dirFromDeg) {
     // Le vent va donc dans la direction (dirFromDeg + 180) mod 360.
     const flowDir = ((dirFromDeg || 0) + 180) % 360;
 
-    // Longueur : 2× le rayon d'élongation (donc la flèche traverse la zone de
-    // vol), avec un minimum de 1500 m pour rester visible quand le rayon est
-    // petit. Plafonné à 6 km pour ne pas écraser la carte aux grands vents.
-    const halfLen = Math.min(6000, Math.max(750, (STATE.radius || 500) * 1.4));
+    // Longueur : la flèche doit clairement traverser la zone de vol et bien
+    // au-delà. Half-length = 4× le rayon d'élongation, plancher 3 km,
+    // plafond 15 km pour rester visible à n'importe quel niveau de zoom.
+    const halfLen = Math.min(15000, Math.max(3000, (STATE.radius || 500) * 4));
 
     // Calcule queue (à l'origine du vent) et pointe (sens d'écoulement).
     const tail = _liveOffsetLatLon(STATE.lat, STATE.lon, halfLen, flowDir - 180);
@@ -11479,7 +11487,17 @@ function _liveUpdateWindArrow(speedKmh, dirFromDeg) {
         radius: 5, color: '#fbbf24', fillColor: '#0a1224', fillOpacity: 1, weight: 2
     });
 
-    map._windLayer = L.layerGroup([line, tailMarker, headMarker]).addTo(map);
+    // Étiquette « dir° · vitesse km/h » positionnée à côté de la pointe (juste
+    // en aval, dans le sens d'écoulement) pour ne pas chevaucher la flèche.
+    const labelPos = _liveOffsetLatLon(STATE.lat, STATE.lon, halfLen * 1.15, flowDir);
+    const labelIcon = L.divIcon({
+        className: '',
+        html: `<div style="background:rgba(15,23,42,.92); color:#fbbf24; padding:3px 8px; border-radius:5px; font-size:11px; font-weight:700; font-family:ui-monospace,monospace; border:1px solid #fbbf24; white-space:nowrap; box-shadow:0 1px 4px rgba(0,0,0,.5); letter-spacing:.3px;">${Math.round(dirFromDeg || 0)}° · ${Math.round(speedKmh || 0)} km/h</div>`,
+        iconSize: null, iconAnchor: [-14, 8]
+    });
+    const labelMarker = L.marker(labelPos, { icon: labelIcon, interactive: false });
+
+    map._windLayer = L.layerGroup([line, tailMarker, headMarker, labelMarker]).addTo(map);
 
     // Animation : déplace le dashOffset toutes les 60 ms — l'effet « ants
     // marching » court le long de la flèche dans la direction du vent.
