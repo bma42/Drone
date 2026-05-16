@@ -10466,42 +10466,92 @@ function _setLiveFlights(arr) {
 }
 
 function enterLiveMode() {
+    console.log('[live] enterLiveMode start');
+    _liveInjectStyles();   // injecte les CSS dans <head> (plus fiable que via innerHTML)
     let overlay = document.getElementById('live-mode-overlay');
     if (!overlay) {
         overlay = document.createElement('div');
         overlay.id = 'live-mode-overlay';
         overlay.innerHTML = _liveModeHtml();
         document.body.appendChild(overlay);
-        // Branche les gestionnaires APRÈS insertion dans le DOM (plus robuste
-        // que onclick="..." inline qui peut casser sur certains navigateurs
-        // selon l'échappement HTML).
         _liveBindHandlers(overlay);
     }
     overlay.style.display = 'flex';
     document.body.style.overflow = 'hidden';
     try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); } catch (e) {}
-    // Aligne le Live Mode sur le schéma ADS-B de la page principale :
-    // auto-refresh (intervalle court) + alertes vocales actives. On sauvegarde
-    // l'état antérieur pour le restaurer en sortie.
-    _liveSavedAdsb = {
-        auto: aircraftAutoRefresh,
-        alert: aircraftAlertSound,
-        sec: aircraftRefreshSec
-    };
-    aircraftRefreshSec = 5;
-    try { localStorage.setItem('drone_aircraft_refresh_sec', '5'); } catch (e) {}
-    toggleAircraftAuto(true);
-    toggleAircraftAlert(true);
-    _liveRenderPilots();
-    _liveRenderFlights();
-    _liveRefreshAdsb();
-    _liveRefreshMeteo();
-    // L'interval ne fait plus de fetch (la page principale s'en charge via
-    // scheduleAircraftRefresh) — il ne fait que rafraîchir les marqueurs depuis
-    // STATE.aircraft. Refresh visuel toutes les 2 s pour fluidité.
-    _liveAdsbInterval = setInterval(_liveUpdateAdsbMarkers, 2000);
-    _liveMeteoInterval = setInterval(_liveRefreshMeteo, 5 * 60000);
-    _liveTickInterval = setInterval(_liveTickActiveFlights, 1000);
+    try {
+        _liveSavedAdsb = {
+            auto: typeof aircraftAutoRefresh !== 'undefined' ? aircraftAutoRefresh : false,
+            alert: typeof aircraftAlertSound !== 'undefined' ? aircraftAlertSound : false,
+            sec: typeof aircraftRefreshSec !== 'undefined' ? aircraftRefreshSec : 15
+        };
+        aircraftRefreshSec = 5;
+        try { localStorage.setItem('drone_aircraft_refresh_sec', '5'); } catch (e) {}
+        if (typeof toggleAircraftAuto === 'function') toggleAircraftAuto(true);
+        if (typeof toggleAircraftAlert === 'function') toggleAircraftAlert(true);
+    } catch (e) { console.warn('[live] ADS-B sync failed:', e); }
+    try { _liveRenderPilots(); } catch (e) { console.warn('[live] renderPilots:', e); }
+    try { _liveRenderFlights(); } catch (e) { console.warn('[live] renderFlights:', e); }
+    try { _liveRefreshAdsb(); } catch (e) { console.warn('[live] refreshAdsb:', e); }
+    try { _liveRefreshMeteo(); } catch (e) { console.warn('[live] refreshMeteo:', e); }
+    _liveAdsbInterval = setInterval(() => { try { _liveUpdateAdsbMarkers(); } catch (e) {} }, 2000);
+    _liveMeteoInterval = setInterval(() => { try { _liveRefreshMeteo(); } catch (e) {} }, 5 * 60000);
+    _liveTickInterval = setInterval(() => { try { _liveTickActiveFlights(); } catch (e) {} }, 1000);
+    console.log('[live] enterLiveMode done · STATE.lat=', STATE?.lat, '· aircraft=', STATE?.aircraft?.length);
+}
+
+// Injecte les CSS du Live Mode dans <head> une seule fois. Plus fiable que
+// d'inclure un <style> via innerHTML qui peut être ignoré ou retardé dans
+// certains navigateurs / contextes shadow DOM.
+function _liveInjectStyles() {
+    if (document.getElementById('live-mode-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'live-mode-styles';
+    s.textContent = `
+        #live-mode-overlay { position: fixed; inset: 0; z-index: 99999; background: #0a1224; color: #e2e8f0; display: none; flex-direction: column; font-family: inherit; }
+        #live-mode-overlay .lm-bar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: #050a16; border-bottom: 1px solid #1e293b; flex-wrap: wrap; }
+        #live-mode-overlay .lm-title { font-weight: 700; font-size: 14px; letter-spacing: .5px; color: #fff; display: flex; align-items: center; gap: 8px; }
+        #live-mode-overlay .lm-title .lm-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: lm-pulse 1.4s infinite; }
+        @keyframes lm-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(.85); } }
+        #live-mode-overlay .lm-clock { color: #fbbf24; font-weight: 700; font-variant-numeric: tabular-nums; font-size: 14px; margin-left: auto; }
+        #live-mode-overlay .lm-bar button { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 6px 12px; border-radius: 5px; font-size: 12px; cursor: pointer; font-weight: 600; }
+        #live-mode-overlay .lm-bar button:hover { background: #334155; }
+        #live-mode-overlay .lm-exit { background: #dc2626 !important; border-color: #dc2626 !important; color: #fff !important; }
+        #live-mode-overlay .lm-exit:hover { background: #b91c1c !important; }
+        #live-mode-overlay .lm-grid { flex: 1; display: grid; grid-template-columns: 1fr 420px; grid-template-rows: 1fr 1fr; gap: 8px; padding: 8px; overflow: hidden; min-height: 0; }
+        #live-mode-overlay .lm-panel { background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; padding: 12px; overflow: auto; min-width: 0; min-height: 0; }
+        #live-mode-overlay .lm-adsb { grid-row: 1 / 3; padding: 0; position: relative; overflow: hidden; }
+        #live-mode-overlay .lm-adsb-map { width: 100%; height: 100%; background: #0a1224; }
+        #live-mode-overlay .lm-panel h3 { margin: 0 0 10px; font-size: 13px; color: #93c5fd; text-transform: uppercase; letter-spacing: .8px; border-bottom: 1px solid #1e293b; padding-bottom: 6px; }
+        #live-mode-overlay .lm-meteo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+        #live-mode-overlay .lm-tile { background: #1e293b; border-radius: 6px; padding: 8px 10px; }
+        #live-mode-overlay .lm-tile-k { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
+        #live-mode-overlay .lm-tile-v { font-size: 22px; font-weight: 800; color: #fff; line-height: 1.1; margin-top: 2px; font-variant-numeric: tabular-nums; }
+        #live-mode-overlay .lm-tile-u { font-size: 11px; color: #cbd5e1; font-weight: 500; margin-left: 2px; }
+        #live-mode-overlay .lm-tile-t { font-size: 10px; color: #fbbf24; margin-top: 2px; }
+        #live-mode-overlay .lm-tile.ok { border-left: 3px solid #16a34a; }
+        #live-mode-overlay .lm-tile.warn { border-left: 3px solid #eab308; }
+        #live-mode-overlay .lm-tile.danger { border-left: 3px solid #dc2626; }
+        #live-mode-overlay .lm-flight-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 5px; margin-bottom: 5px; background: #1e293b; font-size: 12px; }
+        #live-mode-overlay .lm-flight-row.active { background: #15803d; }
+        #live-mode-overlay .lm-flight-row .lm-pilot { font-weight: 600; color: #fff; }
+        #live-mode-overlay .lm-flight-row .lm-time { font-family: ui-monospace, monospace; font-weight: 700; color: #fbbf24; font-variant-numeric: tabular-nums; }
+        #live-mode-overlay .lm-flight-row .lm-mat { font-size: 10px; color: #94a3b8; }
+        #live-mode-overlay .lm-flight-row button { background: #0f172a; color: #fbbf24; border: 1px solid #334155; padding: 4px 9px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 700; }
+        #live-mode-overlay .lm-flight-row.active button { background: #fbbf24; color: #1f2937; }
+        #live-mode-overlay .lm-flight-row button:hover { filter: brightness(1.15); }
+        #live-mode-overlay .lm-add-pilot { display: flex; gap: 6px; margin-top: 8px; }
+        #live-mode-overlay .lm-add-pilot input { flex: 1; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; padding: 5px 8px; border-radius: 4px; font-size: 12px; }
+        #live-mode-overlay .lm-add-pilot button { background: #0b3d91; color: #fff; border: 0; padding: 5px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 600; }
+        #live-mode-overlay .lm-totals { font-size: 11px; color: #94a3b8; margin-top: 8px; padding-top: 8px; border-top: 1px solid #1e293b; }
+        #live-mode-overlay .lm-adsb-info { position: absolute; top: 10px; left: 10px; background: rgba(15,23,42,.85); color: #fff; padding: 6px 10px; border-radius: 5px; font-size: 11px; z-index: 1000; font-weight: 600; }
+        #live-mode-overlay .lm-meteo-updated { font-size: 10px; color: #64748b; text-align: right; margin-top: 6px; }
+        @media (max-width: 900px) {
+            #live-mode-overlay .lm-grid { grid-template-columns: 1fr; grid-template-rows: 1fr auto auto; }
+            #live-mode-overlay .lm-adsb { grid-row: auto; min-height: 50vh; }
+        }
+    `;
+    document.head.appendChild(s);
 }
 
 function _liveBindHandlers(overlay) {
@@ -10548,46 +10598,6 @@ function exitLiveMode() {
 
 function _liveModeHtml() {
     return `
-    <style>
-        #live-mode-overlay { position: fixed; inset: 0; z-index: 99999; background: #0a1224; color: #e2e8f0; display: none; flex-direction: column; font-family: inherit; }
-        #live-mode-overlay .lm-bar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: #050a16; border-bottom: 1px solid #1e293b; }
-        #live-mode-overlay .lm-bar .lm-title { font-weight: 700; font-size: 14px; letter-spacing: .5px; color: #fff; display: flex; align-items: center; gap: 8px; }
-        #live-mode-overlay .lm-bar .lm-title .lm-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: lm-pulse 1.4s infinite; }
-        @keyframes lm-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(.85); } }
-        #live-mode-overlay .lm-bar .lm-clock { color: #fbbf24; font-weight: 700; font-variant-numeric: tabular-nums; font-size: 14px; margin-left: auto; }
-        #live-mode-overlay .lm-bar button { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 6px 12px; border-radius: 5px; font-size: 12px; cursor: pointer; font-weight: 600; }
-        #live-mode-overlay .lm-bar button:hover { background: #334155; }
-        #live-mode-overlay .lm-bar .lm-exit { background: #dc2626; border-color: #dc2626; color: #fff; }
-        #live-mode-overlay .lm-bar .lm-exit:hover { background: #b91c1c; }
-        #live-mode-overlay .lm-grid { flex: 1; display: grid; grid-template-columns: 1fr 420px; grid-template-rows: 1fr 1fr; gap: 8px; padding: 8px; overflow: hidden; }
-        #live-mode-overlay .lm-panel { background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; padding: 12px; overflow: auto; }
-        #live-mode-overlay .lm-adsb { grid-row: 1 / 3; padding: 0; position: relative; overflow: hidden; }
-        #live-mode-overlay .lm-adsb-map { width: 100%; height: 100%; }
-        #live-mode-overlay .lm-panel h3 { margin: 0 0 10px; font-size: 13px; color: #93c5fd; text-transform: uppercase; letter-spacing: .8px; border-bottom: 1px solid #1e293b; padding-bottom: 6px; }
-        #live-mode-overlay .lm-meteo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-        #live-mode-overlay .lm-tile { background: #1e293b; border-radius: 6px; padding: 8px 10px; }
-        #live-mode-overlay .lm-tile-k { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
-        #live-mode-overlay .lm-tile-v { font-size: 22px; font-weight: 800; color: #fff; line-height: 1.1; margin-top: 2px; font-variant-numeric: tabular-nums; }
-        #live-mode-overlay .lm-tile-u { font-size: 11px; color: #cbd5e1; font-weight: 500; margin-left: 2px; }
-        #live-mode-overlay .lm-tile-t { font-size: 10px; color: #fbbf24; margin-top: 2px; }
-        #live-mode-overlay .lm-tile.ok { border-left: 3px solid #16a34a; }
-        #live-mode-overlay .lm-tile.warn { border-left: 3px solid #eab308; }
-        #live-mode-overlay .lm-tile.danger { border-left: 3px solid #dc2626; }
-        #live-mode-overlay .lm-flight-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 5px; margin-bottom: 5px; background: #1e293b; font-size: 12px; }
-        #live-mode-overlay .lm-flight-row.active { background: #15803d; }
-        #live-mode-overlay .lm-flight-row .lm-pilot { flex: 1; font-weight: 600; color: #fff; }
-        #live-mode-overlay .lm-flight-row .lm-time { font-family: ui-monospace, monospace; font-weight: 700; color: #fbbf24; font-variant-numeric: tabular-nums; }
-        #live-mode-overlay .lm-flight-row .lm-mat { font-size: 10px; color: #94a3b8; }
-        #live-mode-overlay .lm-flight-row button { background: #0f172a; color: #fbbf24; border: 1px solid #334155; padding: 4px 9px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 700; }
-        #live-mode-overlay .lm-flight-row.active button { background: #fbbf24; color: #1f2937; }
-        #live-mode-overlay .lm-flight-row button:hover { filter: brightness(1.15); }
-        #live-mode-overlay .lm-add-pilot { display: flex; gap: 6px; margin-top: 8px; }
-        #live-mode-overlay .lm-add-pilot input { flex: 1; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; padding: 5px 8px; border-radius: 4px; font-size: 12px; }
-        #live-mode-overlay .lm-add-pilot button { background: #0b3d91; color: #fff; border: 0; padding: 5px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 600; }
-        #live-mode-overlay .lm-totals { font-size: 11px; color: #94a3b8; margin-top: 8px; padding-top: 8px; border-top: 1px solid #1e293b; }
-        #live-mode-overlay .lm-adsb-info { position: absolute; top: 10px; left: 10px; background: rgba(15,23,42,.85); color: #fff; padding: 6px 10px; border-radius: 5px; font-size: 11px; z-index: 1000; font-weight: 600; }
-        #live-mode-overlay .lm-meteo-updated { font-size: 10px; color: #64748b; text-align: right; margin-top: 6px; }
-    </style>
     <div class="lm-bar">
         <div class="lm-title"><span class="lm-dot"></span> LIVE MODE</div>
         <button id="lm-btn-config" type="button">⚙ Configurer agents</button>
