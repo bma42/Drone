@@ -10864,7 +10864,7 @@ function _liveModeHtml() {
                         <span class="lm-radius-val"><span id="lm-radius-num">20</span> km</span>
                         <input type="range" id="lm-adsb-radius" min="5" max="150" step="5" value="20">
                     </label>
-                    <label class="lm-adsb-lowonly" title="N'afficher que les aéronefs sous 500 m">
+                    <label class="lm-adsb-lowonly" title="Masquer les avions au-dessus de 500 m — les hélicoptères restent affichés à toute altitude">
                         <input type="checkbox" id="lm-adsb-lowonly"> &lt; 500 m
                     </label>
                     <button id="lm-btn-alert" type="button" data-action="toggle-alert" title="Alertes vocales aéronefs hélico / basse altitude / urgence">
@@ -11381,7 +11381,13 @@ function _liveUpdateAdsbMarkers() {
         _liveAdsbMap._elongCircle.setRadius(STATE.radius || 0);
     }
     let planes = (STATE.aircraft || []).filter(a => a.lat != null && a.lon != null);
-    if (_liveLowOnly) planes = planes.filter(a => a.altM != null && a.altM < 500);
+    // Filtre « < 500 m » : on garde les aéronefs basse altitude, MAIS aussi
+    // systématiquement les hélicoptères (peu importe l'altitude) et les
+    // priorités / urgences. Un hélico haut reste pertinent pour un opérateur
+    // drone (passages opérationnels, contournements possibles).
+    if (_liveLowOnly) {
+        planes = planes.filter(a => a.isHelicopter || a.isPriority || a.emergency || (a.altM != null && a.altM < 500));
+    }
     _liveAdsbMap._planes.clearLayers();
     // Marqueurs : on réutilise exactement la spec graphique de la page principale
     // (mêmes couleurs, mêmes SVG avion/hélico, même schéma de tailles et popup).
