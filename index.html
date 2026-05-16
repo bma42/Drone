@@ -10650,21 +10650,25 @@ function _liveInjectStyles() {
     document.head.appendChild(s);
 }
 
+// Synchronise l'état visuel du bouton cloche d'alertes avec la variable
+// globale aircraftAlertSound. Appelé après chaque toggle.
+function _liveSyncAlertBtn() {
+    const btn = document.getElementById('lm-btn-alert');
+    if (!btn) return;
+    btn.classList.toggle('on', !!aircraftAlertSound);
+    btn.title = aircraftAlertSound
+        ? 'Alertes vocales actives — clic pour désactiver'
+        : 'Alertes vocales désactivées — clic pour activer';
+}
+
 function _liveBindHandlers(overlay) {
     const q = sel => overlay.querySelector(sel);
     q('#lm-btn-stopall') && q('#lm-btn-stopall').addEventListener('click', _liveStopAllFlights);
     q('#lm-btn-clear-stats') && q('#lm-btn-clear-stats').addEventListener('click', _liveClearFlightStats);
     q('#lm-btn-exit') && q('#lm-btn-exit').addEventListener('click', exitLiveMode);
-    // Toggle alertes vocales + sélecteur d'intervalle de refresh ADS-B
-    const alertBtn = q('#lm-btn-alert');
-    if (alertBtn) {
-        const sync = () => { alertBtn.classList.toggle('on', !!aircraftAlertSound); alertBtn.title = aircraftAlertSound ? 'Alertes vocales actives — clic pour désactiver' : 'Alertes vocales désactivées — clic pour activer'; };
-        sync();
-        alertBtn.addEventListener('click', () => {
-            if (typeof toggleAircraftAlert === 'function') toggleAircraftAlert(!aircraftAlertSound);
-            sync();
-        });
-    }
+    // Toggle alertes vocales : on passe par la délégation data-action pour
+    // garantir que le clic sur le SVG enfant remonte bien.
+    _liveSyncAlertBtn();
     const refreshSel = q('#lm-adsb-refresh');
     if (refreshSel) {
         refreshSel.value = String(aircraftRefreshSec || 5);
@@ -10707,6 +10711,11 @@ function _liveBindHandlers(overlay) {
         if (!t) return;
         const a = t.dataset.action;
         const mat = t.dataset.mat;
+        if (a === 'toggle-alert') {
+            if (typeof toggleAircraftAlert === 'function') toggleAircraftAlert(!aircraftAlertSound);
+            _liveSyncAlertBtn();
+            return;
+        }
         if (a === 'start-choose') { _liveRowStateFor(mat).state = 'choosing'; _liveRenderFlights(); }
         else if (a === 'cancel-choose') { _liveRowStateFor(mat).state = 'idle'; _liveRenderFlights(); }
         else if (a === 'change-drone') { _liveRowStateFor(mat).state = 'choosing'; _liveRenderFlights(); }
@@ -10786,8 +10795,8 @@ function _liveModeHtml() {
                     <label class="lm-adsb-lowonly" title="N'afficher que les aéronefs sous 500 m">
                         <input type="checkbox" id="lm-adsb-lowonly"> &lt; 500 m
                     </label>
-                    <button id="lm-btn-alert" type="button" title="Alertes vocales aéronefs hélico / basse altitude / urgence">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
+                    <button id="lm-btn-alert" type="button" data-action="toggle-alert" title="Alertes vocales aéronefs hélico / basse altitude / urgence">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
                     </button>
                     <select id="lm-adsb-refresh" title="Intervalle de rafraîchissement ADS-B">
                         <option value="1">1 s</option>
