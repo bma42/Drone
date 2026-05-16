@@ -10763,8 +10763,22 @@ function _liveBindHandlers(overlay) {
         const a = t.dataset.action;
         const mat = t.dataset.mat;
         if (a === 'toggle-alert') {
-            if (typeof toggleAircraftAlert === 'function') toggleAircraftAlert(!aircraftAlertSound);
-            _liveSyncAlertBtn();
+            // On lit l'état actuel directement depuis la classe du bouton
+            // plutôt que la variable globale (qui peut être désynchronisée).
+            const btn = document.getElementById('lm-btn-alert');
+            const wasOn = !!(btn && btn.classList.contains('on'));
+            const next = !wasOn;
+            console.log('[live] toggle-alert: was=', wasOn, '→ next=', next);
+            if (typeof toggleAircraftAlert === 'function') {
+                try { toggleAircraftAlert(next); } catch (err) { console.warn('toggleAircraftAlert threw:', err); }
+            }
+            // Force la synchro visuelle de manière déterministe (sans dépendre
+            // de aircraftAlertSound qui pourrait ne pas avoir été mis à jour
+            // si toggleAircraftAlert a thrown avant son assignment).
+            if (btn) {
+                btn.classList.toggle('on', next);
+                btn.title = next ? 'Alertes vocales actives — clic pour désactiver' : 'Alertes vocales désactivées — clic pour activer';
+            }
             return;
         }
         if (a === 'start-choose') { _liveRowStateFor(mat).state = 'choosing'; _liveRenderFlights(); }
