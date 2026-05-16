@@ -10524,6 +10524,9 @@ function enterLiveMode() {
         try { localStorage.setItem('drone_aircraft_refresh_sec', '5'); } catch (e) {}
         if (typeof toggleAircraftAuto === 'function') toggleAircraftAuto(true);
         if (typeof toggleAircraftAlert === 'function') toggleAircraftAlert(true);
+        // Re-sync de l'icône cloche après le toggle (sinon le visuel reste
+        // figé sur l'état précédent et le 1er clic semble inopérant).
+        _liveSyncAlertBtn();
     } catch (e) { console.warn('[live] ADS-B sync failed:', e); }
     try { _liveRenderFlights(); } catch (e) { console.warn('[live] renderFlights:', e); }
     try { _liveRefreshAdsb(); } catch (e) { console.warn('[live] refreshAdsb:', e); }
