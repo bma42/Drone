@@ -8840,7 +8840,7 @@ function _buildAircraftMarkerSpec(a) {
         ? `<div style="background:rgba(15,23,42,.78); color:#fff; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; line-height:1.15; letter-spacing:.2px; white-space:nowrap; box-shadow:0 1px 2px rgba(0,0,0,.4);">${Math.round(a.altM)} m</div>`
         : '';
     const arrowLine = (showInfo && a.track != null)
-        ? `<svg width="10" height="10" viewBox="0 0 10 10" style="transform:rotate(${Math.round(a.track)}deg); filter:drop-shadow(0 1px 1px rgba(0,0,0,.5));" aria-hidden="true"><polygon points="5,1 8.5,8.7 5,7 1.5,8.7" fill="#fff" stroke="rgba(0,0,0,.35)" stroke-width=".4"/></svg>`
+        ? `<svg width="14" height="14" viewBox="0 0 10 10" style="transform:rotate(${Math.round(a.track)}deg); filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.55));" aria-hidden="true"><polygon points="5,0.5 8.8,9 5,7 1.2,9" fill="#fff" stroke="rgba(0,0,0,.45)" stroke-width=".5"/></svg>`
         : '';
     const infoHtml = (altLine || arrowLine)
         ? `<div style="position:absolute; top:${size + 1}px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:1px; pointer-events:none;">${altLine}${arrowLine}</div>`
@@ -11483,16 +11483,28 @@ function _liveTickActiveFlights() {
         const el = document.querySelector(`[data-mat="${f.mat}"]`);
         if (el) el.textContent = _liveFormatDuration(now - new Date(f.startedAt));
     });
+    // Total jour : se met à jour en continu, vols terminés + vols en cours
+    // (somme des durées en parallèle si plusieurs télépilotes volent en même temps).
+    _liveUpdateTotals();
 }
 
 function _liveUpdateTotals() {
+    const el = document.getElementById('lm-totals');
+    if (!el) return;
     const flights = _liveFlights();
     const today = new Date().toISOString().slice(0, 10);
     const todayFlights = flights.filter(f => f.startedAt.startsWith(today));
     const completed = todayFlights.filter(f => f.stoppedAt);
-    const totalMs = completed.reduce((s, f) => s + (new Date(f.stoppedAt) - new Date(f.startedAt)), 0);
-    document.getElementById('lm-totals').innerHTML =
-        `Total jour : <strong style="color:#fbbf24;">${_liveFormatDuration(totalMs)}</strong> · ${completed.length} vol(s) terminé(s) · ${todayFlights.filter(f => !f.stoppedAt).length} en cours`;
+    const active = todayFlights.filter(f => !f.stoppedAt);
+    const now = Date.now();
+    const completedMs = completed.reduce((s, f) => s + (new Date(f.stoppedAt) - new Date(f.startedAt)), 0);
+    const activeMs = active.reduce((s, f) => s + (now - new Date(f.startedAt)), 0);
+    const totalMs = completedMs + activeMs;
+    const liveTag = active.length > 0
+        ? ` · <span style="color:#22c55e; font-weight:700;">${active.length} en cours</span>`
+        : '';
+    el.innerHTML =
+        `Total jour : <strong style="color:#fbbf24;">${_liveFormatDuration(totalMs)}</strong> · ${completed.length} vol(s) terminé(s)${liveTag}`;
 }
 
 async function _liveRefreshAdsb() {
