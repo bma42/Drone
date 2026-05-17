@@ -10649,7 +10649,47 @@ function _liveInjectStyles() {
            (pas de couleur de fond, juste la barre rouge). */
         #live-mode-overlay .lm-adsb-info button#lm-btn-alert .lm-bell-slash { opacity: 0; transition: opacity .15s; }
         #live-mode-overlay .lm-adsb-info button#lm-btn-alert:not(.on) .lm-bell-slash { opacity: 1; }
-        #live-mode-overlay .lm-adsb-info select#lm-adsb-refresh { background: #1e293b; color: #fff; border: 1px solid #334155; padding: 2px 4px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        #live-mode-overlay select#lm-adsb-refresh,
+        #live-mode-overlay select#lm-meteo-refresh {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            color: #f1f5f9;
+            border: 1px solid rgba(148, 163, 184, .35);
+            border-radius: 999px;
+            padding: 4px 28px 4px 12px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .3px;
+            line-height: 1.4;
+            cursor: pointer;
+            text-transform: none;
+            background-image:
+                url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2393c5fd' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>"),
+                linear-gradient(180deg, rgba(30, 41, 59, .96), rgba(15, 23, 42, .96));
+            background-repeat: no-repeat, no-repeat;
+            background-position: right 9px center, center;
+            background-size: 11px 11px, auto;
+            box-shadow: 0 1px 0 rgba(255, 255, 255, .06) inset, 0 1px 2px rgba(0, 0, 0, .4);
+            transition: border-color .15s, box-shadow .15s, background-color .15s;
+        }
+        #live-mode-overlay select#lm-adsb-refresh:hover,
+        #live-mode-overlay select#lm-meteo-refresh:hover {
+            border-color: rgba(147, 197, 253, .65);
+            box-shadow: 0 1px 0 rgba(255, 255, 255, .08) inset, 0 0 0 3px rgba(147, 197, 253, .12);
+        }
+        #live-mode-overlay select#lm-adsb-refresh:focus,
+        #live-mode-overlay select#lm-meteo-refresh:focus {
+            outline: none;
+            border-color: #93c5fd;
+            box-shadow: 0 1px 0 rgba(255, 255, 255, .08) inset, 0 0 0 3px rgba(147, 197, 253, .25);
+        }
+        #live-mode-overlay select#lm-adsb-refresh option,
+        #live-mode-overlay select#lm-meteo-refresh option {
+            background: #0f172a;
+            color: #e2e8f0;
+            font-weight: 600;
+        }
         #live-mode-overlay .lm-adsb-info .lm-adsb-radius { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; color: #cbd5e1; white-space: nowrap; flex: 0 0 auto; background: #0f172a; border: 1px solid #334155; padding: 3px 10px; border-radius: 999px; font-weight: 600; }
         #live-mode-overlay .lm-adsb-info .lm-adsb-radius .lm-radius-val { color: #fff; font-weight: 700; font-family: ui-monospace, monospace; min-width: 48px; text-align: right; }
         #live-mode-overlay .lm-adsb-info .lm-adsb-radius input[type=range] { width: 100px; accent-color: #22c55e; cursor: pointer; }
@@ -10956,7 +10996,7 @@ function _liveModeHtml() {
         <div class="lm-panel">
             <h3 style="display:flex; align-items:center; gap:8px;">
                 Météo live
-                <select id="lm-meteo-refresh" style="margin-left:auto; background:#1e293b; color:#e2e8f0; border:1px solid #334155; padding:2px 4px; border-radius:4px; font-size:11px; font-weight:600; text-transform:none; letter-spacing:0;">
+                <select id="lm-meteo-refresh" style="margin-left:auto;">
                     <option value="60" selected>↻ 1 min</option>
                     <option value="300">↻ 5 min</option>
                     <option value="600">↻ 10 min</option>
