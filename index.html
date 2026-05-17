@@ -8833,6 +8833,18 @@ function _buildAircraftMarkerSpec(a) {
     const labelHtml = isPrio
         ? `<div style="position:absolute; top:-17px; left:50%; transform:translateX(-50%); background:#ef4444; color:#fff; padding:2px 7px; border-radius:6px; font-size:10px; font-weight:700; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,.45); pointer-events:none;">${(a.callsign || a.reg || 'PRIO').slice(0, 12)}</div>`
         : '';
+    // Infos discrètes sous la pastille : altitude + flèche de cap.
+    // Affichées uniquement pour les aéronefs « à risque » (rouge / orange / jaune).
+    const showInfo = isPrio || isHeli || a.isLowAlt;
+    const altLine = (showInfo && a.altM != null)
+        ? `<div style="background:rgba(15,23,42,.78); color:#fff; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; line-height:1.15; letter-spacing:.2px; white-space:nowrap; box-shadow:0 1px 2px rgba(0,0,0,.4);">${Math.round(a.altM)} m</div>`
+        : '';
+    const arrowLine = (showInfo && a.track != null)
+        ? `<svg width="10" height="10" viewBox="0 0 10 10" style="transform:rotate(${Math.round(a.track)}deg); filter:drop-shadow(0 1px 1px rgba(0,0,0,.5));" aria-hidden="true"><polygon points="5,1 8.5,8.7 5,7 1.5,8.7" fill="#fff" stroke="rgba(0,0,0,.35)" stroke-width=".4"/></svg>`
+        : '';
+    const infoHtml = (altLine || arrowLine)
+        ? `<div style="position:absolute; top:${size + 1}px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:1px; pointer-events:none;">${altLine}${arrowLine}</div>`
+        : '';
     // Disque coloré avec bord blanc + ombre douce ; SVG centré (padding intérieur pour l'aération).
     const pad = Math.max(4, Math.round(size * 0.18));
     const html = `<div style="position:relative; width:${size}px; height:${size}px;">
@@ -8840,6 +8852,7 @@ function _buildAircraftMarkerSpec(a) {
         <div class="${isPrio ? 'ac-priority' : 'ac-normal'}" style="width:${size}px; height:${size}px; background:${color}; border:2.5px solid #fff; border-radius:50%; box-shadow:0 2px 5px rgba(0,0,0,0.35); box-sizing:border-box; padding:${pad}px;">
             <div style="width:100%; height:100%; transform:rotate(${rot}deg);">${svg}</div>
         </div>
+        ${infoHtml}
     </div>`;
     const textColor = isPrio ? '#b91c1c' : isHeli ? '#c2410c' : a.isLowAlt ? '#a16207' : '#0e7490';
     const popup = `
