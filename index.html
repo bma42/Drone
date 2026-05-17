@@ -10996,7 +10996,57 @@ function _liveBindHandlers(overlay) {
     });
 }
 
+let _liveExitConfirmed = false;
+function _liveShowExitConfirm(activeCount) {
+    let dlg = document.getElementById('lm-exit-confirm');
+    if (!dlg) {
+        dlg = document.createElement('div');
+        dlg.id = 'lm-exit-confirm';
+        dlg.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.72); display:flex; align-items:center; justify-content:center; z-index:100001; backdrop-filter:blur(2px);';
+        dlg.innerHTML = `
+            <div style="background:linear-gradient(180deg,#1e293b,#0f172a); border:1px solid #334155; border-radius:10px; padding:22px 24px; width:min(420px, 92vw); box-shadow:0 12px 40px rgba(0,0,0,.6); color:#e2e8f0; font-family:inherit;">
+                <h3 style="margin:0 0 8px; font-size:15px; color:#fbbf24; letter-spacing:.3px;">⚠ Vols en cours</h3>
+                <p style="margin:0 0 18px; font-size:13px; line-height:1.45; color:#cbd5e1;">
+                    <strong id="lm-exit-count" style="color:#fff;">0</strong> vol(s) sont encore en cours.<br>
+                    Terminer les vols et effacer les stats du jour avant de quitter ?
+                </p>
+                <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
+                    <button type="button" data-act="cancel" style="background:#0f172a; color:#cbd5e1; border:1px solid #334155; padding:7px 14px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;">Annuler</button>
+                    <button type="button" data-act="keep" style="background:#1e293b; color:#e2e8f0; border:1px solid #475569; padding:7px 14px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;">Non, garder en mémoire</button>
+                    <button type="button" data-act="end" style="background:linear-gradient(135deg,#dc2626,#b91c1c); color:#fff; border:0; padding:7px 14px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.4);">Oui, terminer</button>
+                </div>
+            </div>`;
+        document.body.appendChild(dlg);
+        dlg.addEventListener('click', (e) => {
+            const act = e.target.closest('[data-act]')?.dataset.act;
+            if (!act) return;
+            if (act === 'cancel') { dlg.style.display = 'none'; return; }
+            if (act === 'end') {
+                // Termine tous les vols puis vide complètement les stats du jour.
+                _liveStopAllFlights();
+                _setLiveFlights([]);
+                Object.keys(_liveRowState).forEach(k => { _liveRowState[k] = { state: 'idle', drone: '', battery: null }; });
+                try { _liveRenderFlights(); } catch (e) {}
+            }
+            // 'keep' : on ne touche à rien, les vols restent en mémoire et continuent à tourner
+            dlg.style.display = 'none';
+            _liveExitConfirmed = true;
+            exitLiveMode();
+        });
+    }
+    const cnt = dlg.querySelector('#lm-exit-count');
+    if (cnt) cnt.textContent = activeCount;
+    dlg.style.display = 'flex';
+}
+
 function exitLiveMode() {
+    // Si des vols sont en cours on demande la marche à suivre avant de quitter.
+    const active = _liveFlights().filter(f => !f.stoppedAt);
+    if (active.length > 0 && !_liveExitConfirmed) {
+        _liveShowExitConfirm(active.length);
+        return;
+    }
+    _liveExitConfirmed = false;
     const overlay = document.getElementById('live-mode-overlay');
     if (overlay) overlay.style.display = 'none';
     document.body.style.overflow = '';
