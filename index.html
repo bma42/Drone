@@ -10564,6 +10564,39 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-panel { background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; padding: 12px; overflow: auto; min-width: 0; min-height: 0; }
         #live-mode-overlay .lm-adsb { grid-row: 1 / 3; padding: 0; position: relative; overflow: hidden; }
         #live-mode-overlay .lm-adsb-map { width: 100%; height: 100%; background: #0a1224; }
+        #live-mode-overlay .lm-adsb-sweep { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 400; mix-blend-mode: screen; opacity: .55; }
+        #live-mode-overlay .lm-adsb-sweep::before {
+            content: ''; position: absolute; top: 50%; left: 50%;
+            width: 220%; height: 220%;
+            transform: translate(-50%, -50%) rotate(0deg);
+            background: conic-gradient(from 0deg,
+                rgba(0, 255, 150, 0.55) 0deg,
+                rgba(0, 255, 150, 0.22) 10deg,
+                rgba(0, 255, 150, 0.08) 26deg,
+                rgba(0, 255, 150, 0.02) 50deg,
+                rgba(0, 255, 150, 0) 75deg,
+                rgba(0, 255, 150, 0) 360deg);
+            animation: lm-radar-sweep 5s linear infinite;
+            will-change: transform;
+            filter: blur(1.5px);
+        }
+        #live-mode-overlay .lm-adsb-sweep::after {
+            content: ''; position: absolute; top: 50%; left: 50%;
+            width: 220%; height: 220%;
+            transform: translate(-50%, -50%);
+            background:
+                radial-gradient(circle at center, transparent 0, transparent calc(50% - 1px), rgba(0,255,150,0.18) calc(50% - .5px), rgba(0,255,150,0.18) 50%, transparent calc(50% + .5px)),
+                radial-gradient(circle at center, transparent 0, transparent calc(33% - 1px), rgba(0,255,150,0.12) calc(33% - .5px), rgba(0,255,150,0.12) 33%, transparent calc(33% + .5px)),
+                radial-gradient(circle at center, transparent 0, transparent calc(16% - 1px), rgba(0,255,150,0.10) calc(16% - .5px), rgba(0,255,150,0.10) 16%, transparent calc(16% + .5px));
+            opacity: .45;
+        }
+        @keyframes lm-radar-sweep {
+            from { transform: translate(-50%, -50%) rotate(0deg); }
+            to   { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #live-mode-overlay .lm-adsb-sweep::before { animation: none; }
+        }
         #live-mode-overlay .lm-panel h3 { margin: 0 0 10px; font-size: 13px; color: #93c5fd; text-transform: uppercase; letter-spacing: .8px; border-bottom: 1px solid #1e293b; padding-bottom: 6px; }
         #live-mode-overlay .lm-meteo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
         #live-mode-overlay .lm-tile { background: #1e293b; border-radius: 6px; padding: 8px 10px; }
@@ -10918,6 +10951,7 @@ function _liveModeHtml() {
             </div>
             <div class="lm-adsb-list" id="lm-adsb-list"></div>
             <div class="lm-adsb-map" id="lm-adsb-map"></div>
+            <div class="lm-adsb-sweep" aria-hidden="true"></div>
         </div>
         <div class="lm-panel">
             <h3 style="display:flex; align-items:center; gap:8px;">
