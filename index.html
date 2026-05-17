@@ -8266,9 +8266,18 @@ function setAircraftRefreshSec(sec) {
 }
 
 function toggleAircraftAlert(enabled) {
+    const wasOff = !aircraftAlertSound;
     aircraftAlertSound = !!enabled;
     try { localStorage.setItem('drone_aircraft_alert', aircraftAlertSound ? '1' : '0'); } catch (e) {}
     if (aircraftAlertSound) {
+        // Activation : on vide les "déjà alertés" pour ré-annoncer immédiatement
+        // les aéronefs critiques déjà présents (sinon transition OFF→ON silencieuse).
+        if (wasOff) {
+            _alertedHexes.clear();
+            if (Array.isArray(STATE.aircraft) && STATE.aircraft.length) {
+                try { _checkHeliAlerts(STATE.aircraft); } catch (e) {}
+            }
+        }
         // Coup de beep court pour confirmer l'activation (et débloquer l'audio iOS)
         try {
             if (!_alertAudioCtx) _alertAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -8322,6 +8331,11 @@ if (aircraftAlertSound) _startAlertReminderLoop();
 // plus loin si plusieurs apparaissent en même temps). Le beep ne se déclenche QU'en zone
 // danger (<1 km) — pour le reste, priorité à la synthèse vocale (cf. demande utilisateur).
 function _checkHeliAlerts(aircraft) {
+    // Si les alertes sont désactivées on ne touche PAS à _alertedHexes : sinon
+    // les aéronefs détectés silencieusement (page chargée avant l'entrée en
+    // Live Mode) seraient marqués comme "déjà alertés" et la vocale ne se
+    // déclencherait jamais une fois l'alerte activée.
+    if (!aircraftAlertSound) return;
     const close = aircraft.filter(a => a.dist <= _alertRadiusM() && a.hex
         && (a.isHelicopter || a.isPriority || (a.altM != null && a.altM < 500)));
     const fresh = close.filter(a => !_alertedHexes.has(a.hex));
@@ -10642,12 +10656,16 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-adsb-info button#lm-btn-alert .lm-bell-slash { opacity: 0; transition: opacity .15s; }
         #live-mode-overlay .lm-adsb-info button#lm-btn-alert:not(.on) .lm-bell-slash { opacity: 1; }
         #live-mode-overlay select#lm-adsb-refresh,
-        #live-mode-overlay select#lm-meteo-refresh {
+        #live-mode-overlay select#lm-meteo-refresh,
+        #live-mode-overlay select#lm-adsb-refresh:hover,
+        #live-mode-overlay select#lm-meteo-refresh:hover,
+        #live-mode-overlay select#lm-adsb-refresh:focus,
+        #live-mode-overlay select#lm-meteo-refresh:focus {
             appearance: none;
             -webkit-appearance: none;
             -moz-appearance: none;
             color: #f1f5f9;
-            border: 1px solid rgba(147, 197, 253, .55);
+            border: 1px solid #93c5fd;
             border-radius: 999px;
             padding: 4px 28px 4px 12px;
             font-size: 11px;
@@ -10656,24 +10674,13 @@ function _liveInjectStyles() {
             line-height: 1.4;
             cursor: pointer;
             text-transform: none;
+            outline: none;
             background-image:
                 url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2393c5fd' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>"),
                 linear-gradient(180deg, rgba(37, 53, 78, .98), rgba(17, 26, 46, .98));
             background-repeat: no-repeat, no-repeat;
             background-position: right 9px center, center;
             background-size: 11px 11px, auto;
-            box-shadow: 0 1px 0 rgba(255, 255, 255, .08) inset, 0 0 0 3px rgba(147, 197, 253, .14), 0 1px 2px rgba(0, 0, 0, .4);
-            transition: border-color .15s, box-shadow .15s, background-color .15s;
-        }
-        #live-mode-overlay select#lm-adsb-refresh:hover,
-        #live-mode-overlay select#lm-meteo-refresh:hover {
-            border-color: rgba(147, 197, 253, .8);
-            box-shadow: 0 1px 0 rgba(255, 255, 255, .1) inset, 0 0 0 3px rgba(147, 197, 253, .22), 0 1px 2px rgba(0, 0, 0, .4);
-        }
-        #live-mode-overlay select#lm-adsb-refresh:focus,
-        #live-mode-overlay select#lm-meteo-refresh:focus {
-            outline: none;
-            border-color: #93c5fd;
             box-shadow: 0 1px 0 rgba(255, 255, 255, .1) inset, 0 0 0 3px rgba(147, 197, 253, .35), 0 1px 2px rgba(0, 0, 0, .4);
         }
         #live-mode-overlay select#lm-adsb-refresh option,
