@@ -11113,6 +11113,13 @@ function exitLiveMode() {
     _liveModeAlertsArmed = false;
     try { if (typeof toggleAircraftAlert === 'function') toggleAircraftAlert(false); } catch (e) {}
     try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
+    // Annule un retour-mission auto-pan en attente : sinon la callback panTo
+    // tape sur le mapPane après map.remove() → erreur _leaflet_pos.
+    if (typeof _liveReturnTimer !== 'undefined' && _liveReturnTimer) {
+        clearTimeout(_liveReturnTimer); _liveReturnTimer = null;
+    }
+    // Stoppe toute animation Leaflet en vol avant remove() pour la même raison.
+    try { if (_liveAdsbMap && _liveAdsbMap._stop) _liveAdsbMap._stop(); } catch (e) {}
     const overlay = document.getElementById('live-mode-overlay');
     if (overlay) overlay.style.display = 'none';
     document.body.style.overflow = '';
@@ -11940,54 +11947,124 @@ function _liveRenderAdsbList(planes) {
 // SVG superposé sur la carte, le cône est dessiné en coordonnées pixel
 // recalculées à chaque move/zoom. Animation via <animateTransform> SVG
 // natif → universellement supporté (Safari compris).
-// Balayage radar = SVG ancré à des LatLngBounds géographiques via L.svgOverlay.
-// C'est EXACTEMENT le même mécanisme que L.circle (qui marche pour les 4 anneaux)
-// → si les anneaux suivent le pan, le sweep aussi, sans aucune logique manuelle.
+// Balayage radar : on injecte un <g> directement dans la <svg> du SVG renderer
+// que les anneaux verts utilisent. Le <g> partage le même conteneur que les
+// L.circle des anneaux → il suit pan / zoom à l'identique, garanti. Tout est
+// construit en createElementNS pour éviter les bugs de namespace HTML/SVG
+// (innerHTML / DOMParser sont notoirement capricieux sur Safari).
 function _liveAttachRadarSweep(map, radiusM) {
     if (!map || STATE.lat == null) return;
-    // Cleanup d'éventuelles anciennes implémentations qui traînent dans le DOM
-    // (versions container-based via appendChild ou Marker overlayPane).
+    // Récupère le renderer SVG via un layer existant (1er anneau) ou en crée un
+    // dédié si rien n'est encore rendu.
+    let svg = null;
+    try {
+        if (map._rings && typeof map._rings.getLayers === 'function') {
+            const first = map._rings.getLayers()[0];
+            if (first && first._renderer && first._renderer._container) svg = first._renderer._container;
+        }
+    } catch (e) {}
+    if (!svg) {
+        if (!map._sweepRenderer) {
+            map._sweepRenderer = L.svg({ pane: 'overlayPane' }).addTo(map);
+        }
+        svg = map._sweepRenderer._container;
+    }
+    if (!svg) { console.warn('[radar sweep v3] no SVG renderer container'); return; }
+    // Cleanup éventuel de versions précédentes (n'importe où dans le DOM).
     try {
         const c = map.getContainer();
-        if (c) c.querySelectorAll('.lm-radar-sweep-svg, .lm-radar-sweep-marker').forEach(n => n.remove());
+        if (c) c.querySelectorAll('.lm-radar-sweep-svg, .lm-radar-sweep-marker, .lm-sweep-g').forEach(n => n.remove());
     } catch (e) {}
     if (map._radarSweepOverlay) { try { map.removeLayer(map._radarSweepOverlay); } catch (e) {} map._radarSweepOverlay = null; }
     if (map._radarSweepMarker)  { try { map.removeLayer(map._radarSweepMarker);  } catch (e) {} map._radarSweepMarker  = null; }
 
-    // Conversion approximative mètres → degrés. Au cosinus(lat) près sur la
-    // longitude pour compenser la projection Mercator → la bounding box devient
-    // approximativement carrée en pixels écran, donc le faisceau circulaire
-    // reste circulaire à l'œil.
-    const dLat = radiusM / 111320;
-    const dLon = radiusM / (111320 * Math.cos(STATE.lat * Math.PI / 180));
-    const bounds = L.latLngBounds(
-        [STATE.lat - dLat, STATE.lon - dLon],
-        [STATE.lat + dLat, STATE.lon + dLon]
-    );
+    const NS = 'http://www.w3.org/2000/svg';
+    const gradId = 'lm-sweep-grad-' + Date.now();
 
-    // SVG construit via DOMParser : Safari/Firefox parsent les enfants dans
-    // le bon namespace (le innerHTML sur un createElementNS('svg') crée les
-    // <path>/<g>/<defs> en namespace HTML, ce qui ne rend rien à l'écran).
-    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200" preserveAspectRatio="xMidYMid meet" style="pointer-events:none;">
-        <defs>
-            <radialGradient id="lm-sweep-grad-ovl" cx="0" cy="0" r="100" gradientUnits="userSpaceOnUse">
-                <stop offset="0%"  stop-color="rgba(34,197,94,0.85)"/>
-                <stop offset="40%" stop-color="rgba(34,197,94,0.35)"/>
-                <stop offset="100%" stop-color="rgba(34,197,94,0)"/>
-            </radialGradient>
-        </defs>
-        <g>
-            <path d="M 0 0 L 100 0 A 100 100 0 0 1 70.71 70.71 Z" fill="url(#lm-sweep-grad-ovl)" opacity="0.92"/>
-            <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="0 0 0" to="360 0 0" dur="4s" repeatCount="indefinite"/>
-        </g>
-        <circle cx="0" cy="0" r="3.5" fill="#22c55e" opacity="0.95">
-            <animate attributeName="r" values="3.5;5;3.5" dur="1.6s" repeatCount="indefinite"/>
-        </circle>
-    </svg>`;
-    const svgEl = new DOMParser().parseFromString(svgString, 'image/svg+xml').documentElement;
-    const overlay = L.svgOverlay(svgEl, bounds, { interactive: false }).addTo(map);
-    map._radarSweepOverlay = overlay;
-    console.log('[radar sweep v2] L.svgOverlay attached @', STATE.lat, STATE.lon, 'radius', radiusM, 'm — bounds', bounds.toBBoxString(), '— svg element:', svgEl);
+    // <g class="lm-sweep-g"> : ce groupe est translaté en coord layer-pixel
+    // pour pointer le centre de mission. Il accueille la défs + le sous-groupe
+    // qui tourne.
+    const g = document.createElementNS(NS, 'g');
+    g.setAttribute('class', 'lm-sweep-g');
+    g.setAttribute('pointer-events', 'none');
+
+    // <defs><radialGradient ...>
+    const defs = document.createElementNS(NS, 'defs');
+    const grad = document.createElementNS(NS, 'radialGradient');
+    grad.setAttribute('id', gradId);
+    grad.setAttribute('cx', '0'); grad.setAttribute('cy', '0');
+    grad.setAttribute('r', '100'); grad.setAttribute('gradientUnits', 'userSpaceOnUse');
+    const mkStop = (off, col) => {
+        const s = document.createElementNS(NS, 'stop');
+        s.setAttribute('offset', off);
+        s.setAttribute('stop-color', col);
+        return s;
+    };
+    grad.appendChild(mkStop('0%',   'rgba(34,197,94,0.85)'));
+    grad.appendChild(mkStop('40%',  'rgba(34,197,94,0.35)'));
+    grad.appendChild(mkStop('100%', 'rgba(34,197,94,0)'));
+    defs.appendChild(grad);
+    g.appendChild(defs);
+
+    // Sous-groupe qui tourne autour de (0,0) — = centre de mission après
+    // translate du <g> parent.
+    const rotG = document.createElementNS(NS, 'g');
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', 'M 0 0 L 100 0 A 100 100 0 0 1 70.71 70.71 Z');
+    path.setAttribute('fill', `url(#${gradId})`);
+    path.setAttribute('opacity', '0.92');
+    rotG.appendChild(path);
+    const anim = document.createElementNS(NS, 'animateTransform');
+    anim.setAttribute('attributeName', 'transform');
+    anim.setAttribute('type', 'rotate');
+    anim.setAttribute('from', '0 0 0');
+    anim.setAttribute('to', '360 0 0');
+    anim.setAttribute('dur', '4s');
+    anim.setAttribute('repeatCount', 'indefinite');
+    rotG.appendChild(anim);
+    g.appendChild(rotG);
+
+    // Cœur lumineux (pulsation)
+    const core = document.createElementNS(NS, 'circle');
+    core.setAttribute('cx', '0'); core.setAttribute('cy', '0');
+    core.setAttribute('r', '3.5'); core.setAttribute('fill', '#22c55e');
+    core.setAttribute('opacity', '0.95');
+    const coreAnim = document.createElementNS(NS, 'animate');
+    coreAnim.setAttribute('attributeName', 'r');
+    coreAnim.setAttribute('values', '3.5;5;3.5');
+    coreAnim.setAttribute('dur', '1.6s');
+    coreAnim.setAttribute('repeatCount', 'indefinite');
+    core.appendChild(coreAnim);
+    g.appendChild(core);
+
+    svg.appendChild(g);
+    map._sweepG = g;
+    map._sweepRadiusM = radiusM;
+
+    // Recalcule translate + scale à chaque viewreset (zoom) et moveend (pan
+    // discret) et zoom — pour rester pile sur le mission point en coord
+    // layer-pixel.
+    const updateSweep = () => {
+        if (!map._sweepG || STATE.lat == null) return;
+        try {
+            const p = map.latLngToLayerPoint([STATE.lat, STATE.lon]);
+            const e = map.latLngToLayerPoint(
+                L.latLng(STATE.lat, STATE.lon).toBounds((map._sweepRadiusM || radiusM) * 2).getNorthEast()
+            );
+            const rPx = Math.max(60, Math.hypot(e.x - p.x, e.y - p.y));
+            const scale = rPx / 100;
+            map._sweepG.setAttribute(
+                'transform',
+                `translate(${p.x.toFixed(2)},${p.y.toFixed(2)}) scale(${scale.toFixed(3)})`
+            );
+        } catch (err) {}
+    };
+    updateSweep();
+    if (!map._sweepUpdateBound) {
+        map.on('viewreset zoomend moveend resize', updateSweep);
+        map._sweepUpdateBound = true;
+    }
+    console.log('[radar sweep v3] <g> injected into renderer SVG @', STATE.lat, STATE.lon, '— radius', radiusM, 'm');
 }
 
 let _liveLastMeteo = {};      // mémorise les dernières valeurs pour calculer la flèche d'évolution
