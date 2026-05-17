@@ -2181,7 +2181,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.11</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.12</strong></span>
             </div>
         </div>
 
@@ -2192,7 +2192,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.11';
+const APP_VERSION = 'v2026.05.17.12';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -10948,6 +10948,22 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-adsb-list td { padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,.04); color: #cbd5e1; vertical-align: middle; }
         #live-mode-overlay .lm-adsb-list tr:last-child td { border-bottom: 0; }
         #live-mode-overlay .lm-adsb-list .lm-badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 9px; font-weight: 700; letter-spacing: .3px; color: #fff; white-space: nowrap; }
+        /* Ligne cliquable de la liste aéronefs : hover discret + curseur main. */
+        #live-mode-overlay .lm-adsb-list .lm-ac-row { cursor: pointer; transition: background-color .12s; }
+        #live-mode-overlay .lm-adsb-list .lm-ac-row:hover { background: rgba(34, 197, 94, .12); }
+        /* Bouton "Retour mission" — pill verte en haut-droite du panneau carte. */
+        #live-mode-overlay .lm-return-btn {
+            display: none; position: absolute; top: 56px; right: 14px; z-index: 1001;
+            background: linear-gradient(135deg, #15803d, #166534);
+            color: #fff; border: 1px solid rgba(134, 239, 172, .55);
+            padding: 6px 12px; border-radius: 999px;
+            font-size: 12px; font-weight: 700; cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,.45), 0 0 12px rgba(34, 197, 94, .35);
+            align-items: center; gap: 6px;
+            transition: filter .15s, transform .05s;
+        }
+        #live-mode-overlay .lm-return-btn:hover { filter: brightness(1.15); }
+        #live-mode-overlay .lm-return-btn:active { transform: scale(.97); }
         /* Contrôles Leaflet TOUJOURS visibles en Live Mode (la règle globale les
            cache par défaut et ne les montre qu'au survol via .map-controls-visible). */
         #live-mode-overlay .leaflet-control-container { opacity: 1 !important; pointer-events: auto !important; }
@@ -12250,9 +12266,6 @@ function _liveRenderAdsbList(planes) {
     const list = document.getElementById('lm-adsb-list');
     if (!list) return;
     if (!planes.length) { list.innerHTML = ''; return; }
-    // Réutilise le tri / le critère de visibilité de la page principale :
-    // priority > heli > basse altitude > autres ; on n'affiche que ce qui mérite
-    // qu'on l'ait à l'œil (≤ 500 m d'altitude ou hélico ou prio).
     const visible = planes
         .filter(a => a.isPriority || a.emergency || a.isHelicopter || (a.altM != null && a.altM < 500))
         .slice(0, 8);
@@ -12271,7 +12284,7 @@ function _liveRenderAdsbList(planes) {
             : '—';
         const dist = (a.dist != null && a.dist !== Infinity) ? `${(a.dist / 1000).toFixed(1)} km` : '—';
         const spd = a.gs != null ? `${Math.round(a.gs * 1.852)} km/h` : '—';
-        return `<tr>
+        return `<tr class="lm-ac-row" data-hex="${a.hex || ''}" title="Cliquer pour centrer la carte sur cet aéronef">
             <td style="width:80px;">${badge}</td>
             <td><strong style="color:#fff;">${cs}</strong>${a.type ? ' <span style="color:#64748b;">' + a.type + '</span>' : ''}</td>
             <td style="text-align:right; white-space:nowrap;">${alt}</td>
@@ -12280,6 +12293,61 @@ function _liveRenderAdsbList(planes) {
         </tr>`;
     }).join('');
     list.innerHTML = `<table><tbody>${rows}</tbody></table>`;
+    // Event delegation : 1 listener pour toutes les lignes, survit aux re-renders.
+    if (!list._rowsBound) {
+        list.addEventListener('click', (e) => {
+            const tr = e.target && e.target.closest && e.target.closest('.lm-ac-row');
+            if (!tr) return;
+            const hex = tr.dataset.hex;
+            if (!hex) return;
+            const a = (STATE.aircraft || []).find(x => x.hex === hex);
+            if (!a || a.lat == null || a.lon == null) return;
+            _liveFocusOnAircraft(a);
+        });
+        list._rowsBound = true;
+    }
+}
+
+// Centre la carte sur un aéronef + affiche le bouton "Retour mission"
+// (qui ramène au centre d'élongation).
+function _liveFocusOnAircraft(a) {
+    if (!_liveAdsbMap || !a) return;
+    try {
+        // Annule un retour-mission en attente (auto-pan vocal) — la cible
+        // courante doit rester verrouillée tant que l'utilisateur n'a pas
+        // explicitement cliqué "Retour".
+        if (typeof _liveReturnTimer !== 'undefined' && _liveReturnTimer) {
+            clearTimeout(_liveReturnTimer); _liveReturnTimer = null;
+        }
+        _liveAdsbMap.flyTo([a.lat, a.lon], Math.max(_liveAdsbMap.getZoom(), 13), { duration: 0.7 });
+        try { _liveSpotlightAircraft && _liveSpotlightAircraft(a); } catch (e) {}
+        _liveShowReturnBtn(a.callsign || a.reg || a.hex);
+    } catch (e) {}
+}
+
+function _liveShowReturnBtn(label) {
+    let btn = document.getElementById('lm-return-mission');
+    if (!btn) {
+        btn = document.createElement('button');
+        btn.id = 'lm-return-mission';
+        btn.type = 'button';
+        btn.className = 'lm-return-btn';
+        btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><path d="M3 12l3-3 3 3"/><path d="M6 9v9a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/></svg> <span id="lm-return-label">Retour mission</span>';
+        btn.addEventListener('click', () => {
+            if (!_liveAdsbMap || STATE.lat == null) return;
+            try {
+                _liveAdsbMap.flyTo([STATE.lat, STATE.lon], 11, { duration: 0.7 });
+            } catch (e) {}
+            btn.style.display = 'none';
+        });
+        // On l'attache au panneau radar pour qu'il reste cliquable au-dessus
+        // de la carte mais à côté des autres contrôles.
+        const panel = document.querySelector('#live-mode-overlay .lm-adsb');
+        if (panel) panel.appendChild(btn);
+    }
+    const lbl = document.getElementById('lm-return-label');
+    if (lbl) lbl.textContent = label ? ('Retour mission — quitter ' + label) : 'Retour mission';
+    btn.style.display = 'inline-flex';
 }
 
 // Balayage radar SVG superposé sur la carte. Version simple et défensive :
