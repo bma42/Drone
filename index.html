@@ -2181,7 +2181,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.1</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.2</strong></span>
             </div>
         </div>
 
@@ -2192,7 +2192,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.1';
+const APP_VERSION = 'v2026.05.17.2';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -11153,6 +11153,12 @@ function exitLiveMode() {
     }
     // Stoppe toute animation Leaflet en vol avant remove() pour la même raison.
     try { if (_liveAdsbMap && _liveAdsbMap._stop) _liveAdsbMap._stop(); } catch (e) {}
+    // Stoppe la boucle de rotation du sweep (sinon raf continue à tourner
+    // sur des layers déjà détruits).
+    if (_liveAdsbMap && _liveAdsbMap._sweepRaf) {
+        try { cancelAnimationFrame(_liveAdsbMap._sweepRaf); } catch (e) {}
+        _liveAdsbMap._sweepRaf = null;
+    }
     const overlay = document.getElementById('live-mode-overlay');
     if (overlay) overlay.style.display = 'none';
     document.body.style.overflow = '';
@@ -12019,129 +12025,79 @@ function _liveRenderAdsbList(planes) {
 // L.circle des anneaux → il suit pan / zoom à l'identique, garanti. Tout est
 // construit en createElementNS pour éviter les bugs de namespace HTML/SVG
 // (innerHTML / DOMParser sont notoirement capricieux sur Safari).
+// Balayage radar (v5) — implémentation en L.polygon piloté par Leaflet.
+// On utilise L.polygon (frère de L.circle des anneaux) → Leaflet gère seul
+// 100% du positionnement géographique, sur tous les events de pan / zoom /
+// fullscreen / resize, par construction. La rotation est obtenue en
+// recalculant les vertices du polygone à chaque frame (requestAnimationFrame).
 function _liveAttachRadarSweep(map, radiusM) {
     if (!map || STATE.lat == null) return;
-    // Cleanup d'éventuelles anciennes implémentations qui traînent dans le DOM.
+    // Cleanup des versions précédentes (DOM résiduel + layers).
     try {
         const c = map.getContainer();
         if (c) c.querySelectorAll('.lm-radar-sweep-svg, .lm-radar-sweep-marker, .lm-sweep-g').forEach(n => n.remove());
     } catch (e) {}
+    if (map._sweepRaf) { try { cancelAnimationFrame(map._sweepRaf); } catch (e) {} map._sweepRaf = null; }
+    if (map._sweepPolygon) { try { map.removeLayer(map._sweepPolygon); } catch (e) {} map._sweepPolygon = null; }
+    if (map._sweepCore) { try { map.removeLayer(map._sweepCore); } catch (e) {} map._sweepCore = null; }
     if (map._radarSweepOverlay) { try { map.removeLayer(map._radarSweepOverlay); } catch (e) {} map._radarSweepOverlay = null; }
     if (map._radarSweepMarker)  { try { map.removeLayer(map._radarSweepMarker);  } catch (e) {} map._radarSweepMarker  = null; }
+    if (map._sweepG && map._sweepG.parentNode) { try { map._sweepG.parentNode.removeChild(map._sweepG); } catch (e) {} map._sweepG = null; }
 
-    // CRITIQUE : on append le <g> EXACTEMENT au même parent que les <path> des
-    // anneaux (Leaflet 1.9.4 wrappe les paths dans un rootGroup à l'intérieur
-    // du <svg>). Append au <svg> directement met le <g> hors rootGroup et il
-    // ne reçoit pas les transformations de pan/zoom appliquées au rootGroup.
-    let parentNode = null;
-    try {
-        if (map._rings && typeof map._rings.getLayers === 'function') {
-            const first = map._rings.getLayers()[0];
-            if (first && first._path && first._path.parentNode) parentNode = first._path.parentNode;
+    // Fabrique les vertices d'un secteur en lat/lng :
+    // centre + arc de N points de startDeg à startDeg+sweepDeg + retour centre.
+    // L.polygon ferme automatiquement le contour → pas besoin de répéter le 1er point.
+    const NUM = 14;            // résolution de l'arc — assez fluide
+    const SWEEP = 50;          // ouverture angulaire du cône en degrés
+    const buildSector = (startDeg) => {
+        const pts = [[STATE.lat, STATE.lon]];
+        for (let i = 0; i <= NUM; i++) {
+            const a = (startDeg + (SWEEP * i / NUM)) * Math.PI / 180;
+            // 0° = nord (haut). cos = nord/sud, sin = est/ouest.
+            const dLat = (radiusM * Math.cos(a)) / 111320;
+            const dLng = (radiusM * Math.sin(a)) / (111320 * Math.cos(STATE.lat * Math.PI / 180));
+            pts.push([STATE.lat + dLat, STATE.lon + dLng]);
         }
-    } catch (e) {}
-    if (!parentNode) {
-        // Fallback : créer un renderer dédié + un anneau invisible pour avoir
-        // un path-frère dont on prend le parent.
-        if (!map._sweepRenderer) {
-            map._sweepRenderer = L.svg({ pane: 'overlayPane' }).addTo(map);
-        }
+        return pts;
+    };
+
+    // Le polygone est ancré à des LatLng → Leaflet le repositionne et le
+    // re-projette à chaque event de pan/zoom. AUCUN positionnement manuel.
+    map._sweepPolygon = L.polygon(buildSector(0), {
+        stroke: false,
+        fill: true,
+        fillColor: '#22c55e',
+        fillOpacity: 0.45,
+        interactive: false,
+        className: 'lm-sweep-poly'
+    }).addTo(map);
+    // Petit cœur au centre de mission (visuel d'ancrage).
+    map._sweepCore = L.circleMarker([STATE.lat, STATE.lon], {
+        radius: 5,
+        color: '#22c55e',
+        fillColor: '#22c55e',
+        fillOpacity: 1,
+        weight: 0,
+        interactive: false,
+        className: 'lm-sweep-core-mk'
+    }).addTo(map);
+
+    // Boucle de rotation : 90°/s = 1 tour en 4 s.
+    map._sweepAngle = 0;
+    let _last = performance.now();
+    const tick = (now) => {
+        const dt = (now - _last) / 1000;
+        _last = now;
+        map._sweepAngle = (map._sweepAngle + 90 * dt) % 360;
         try {
-            if (!map._sweepAnchor) {
-                map._sweepAnchor = L.circle([STATE.lat, STATE.lon], { radius: 1, stroke: false, fill: false, interactive: false, renderer: map._sweepRenderer }).addTo(map);
-            }
-            if (map._sweepAnchor && map._sweepAnchor._path) parentNode = map._sweepAnchor._path.parentNode;
+            if (map._sweepPolygon) map._sweepPolygon.setLatLngs(buildSector(map._sweepAngle));
+            if (map._sweepCore) map._sweepCore.setLatLng([STATE.lat, STATE.lon]);
         } catch (e) {}
-    }
-    if (!parentNode) { console.warn('[radar sweep v4] no parent — abort'); return; }
-
-    const NS = 'http://www.w3.org/2000/svg';
-    const gradId = 'lm-sweep-grad-' + Date.now();
-
-    // <g class="lm-sweep-g"> : ce groupe est translaté en coord layer-pixel
-    // pour pointer le centre de mission. Il accueille la défs + le sous-groupe
-    // qui tourne.
-    const g = document.createElementNS(NS, 'g');
-    g.setAttribute('class', 'lm-sweep-g');
-    g.setAttribute('pointer-events', 'none');
-
-    // <defs><radialGradient ...>
-    const defs = document.createElementNS(NS, 'defs');
-    const grad = document.createElementNS(NS, 'radialGradient');
-    grad.setAttribute('id', gradId);
-    grad.setAttribute('cx', '0'); grad.setAttribute('cy', '0');
-    grad.setAttribute('r', '100'); grad.setAttribute('gradientUnits', 'userSpaceOnUse');
-    const mkStop = (off, col) => {
-        const s = document.createElementNS(NS, 'stop');
-        s.setAttribute('offset', off);
-        s.setAttribute('stop-color', col);
-        return s;
+        map._sweepRaf = requestAnimationFrame(tick);
     };
-    grad.appendChild(mkStop('0%',   'rgba(34,197,94,0.85)'));
-    grad.appendChild(mkStop('40%',  'rgba(34,197,94,0.35)'));
-    grad.appendChild(mkStop('100%', 'rgba(34,197,94,0)'));
-    defs.appendChild(grad);
-    g.appendChild(defs);
+    map._sweepRaf = requestAnimationFrame(tick);
 
-    // Sous-groupe qui tourne autour de (0,0) — = centre de mission après
-    // translate du <g> parent.
-    const rotG = document.createElementNS(NS, 'g');
-    const path = document.createElementNS(NS, 'path');
-    path.setAttribute('d', 'M 0 0 L 100 0 A 100 100 0 0 1 70.71 70.71 Z');
-    path.setAttribute('fill', `url(#${gradId})`);
-    path.setAttribute('opacity', '0.92');
-    rotG.appendChild(path);
-    const anim = document.createElementNS(NS, 'animateTransform');
-    anim.setAttribute('attributeName', 'transform');
-    anim.setAttribute('type', 'rotate');
-    anim.setAttribute('from', '0 0 0');
-    anim.setAttribute('to', '360 0 0');
-    anim.setAttribute('dur', '4s');
-    anim.setAttribute('repeatCount', 'indefinite');
-    rotG.appendChild(anim);
-    g.appendChild(rotG);
-
-    // Cœur lumineux (pulsation)
-    const core = document.createElementNS(NS, 'circle');
-    core.setAttribute('cx', '0'); core.setAttribute('cy', '0');
-    core.setAttribute('r', '3.5'); core.setAttribute('fill', '#22c55e');
-    core.setAttribute('opacity', '0.95');
-    const coreAnim = document.createElementNS(NS, 'animate');
-    coreAnim.setAttribute('attributeName', 'r');
-    coreAnim.setAttribute('values', '3.5;5;3.5');
-    coreAnim.setAttribute('dur', '1.6s');
-    coreAnim.setAttribute('repeatCount', 'indefinite');
-    core.appendChild(coreAnim);
-    g.appendChild(core);
-
-    parentNode.appendChild(g);
-    map._sweepG = g;
-    map._sweepRadiusM = radiusM;
-
-    // Recalcule translate + scale à chaque viewreset (zoom) et moveend (pan
-    // discret) et zoom — pour rester pile sur le mission point en coord
-    // layer-pixel.
-    const updateSweep = () => {
-        if (!map._sweepG || STATE.lat == null) return;
-        try {
-            const p = map.latLngToLayerPoint([STATE.lat, STATE.lon]);
-            const e = map.latLngToLayerPoint(
-                L.latLng(STATE.lat, STATE.lon).toBounds((map._sweepRadiusM || radiusM) * 2).getNorthEast()
-            );
-            const rPx = Math.max(60, Math.hypot(e.x - p.x, e.y - p.y));
-            const scale = rPx / 100;
-            map._sweepG.setAttribute(
-                'transform',
-                `translate(${p.x.toFixed(2)},${p.y.toFixed(2)}) scale(${scale.toFixed(3)})`
-            );
-        } catch (err) {}
-    };
-    updateSweep();
-    if (!map._sweepUpdateBound) {
-        map.on('viewreset zoomend moveend resize', updateSweep);
-        map._sweepUpdateBound = true;
-    }
-    console.log('[radar sweep v4] <g> attached as sibling of ring path @ layerPoint=' + JSON.stringify(map.latLngToLayerPoint([STATE.lat, STATE.lon])) + ' parent=' + (parentNode.tagName || '?') + ' build=' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : '?'));
+    console.log('[radar sweep v5] L.polygon @' + STATE.lat + ',' + STATE.lon + ' build=' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : '?'));
 }
 
 let _liveLastMeteo = {};      // mémorise les dernières valeurs pour calculer la flèche d'évolution
