@@ -11520,6 +11520,9 @@ async function _liveRefreshAdsb() {
             dark.addTo(_liveAdsbMap);
             _liveAdsbMap._rings = L.layerGroup().addTo(_liveAdsbMap);
             _liveRebuildAdsbRings();
+            // Rings adaptatifs : on rebuild à chaque zoom / pan pour qu'ils
+            // restent visibles même fortement zoomé.
+            _liveAdsbMap.on('zoomend moveend', () => { try { _liveRebuildAdsbRings(); } catch (e) {} });
             // Radar pluie RainViewer désactivé pour l'instant (qualité limitée
             // au-delà de z11). Réactiver en décommentant la ligne ci-dessous.
             // _liveAddRainOverlay();
@@ -11595,7 +11598,21 @@ async function _liveAddRainOverlay() {
 function _liveRebuildAdsbRings() {
     if (!_liveAdsbMap || !_liveAdsbMap._rings) return;
     _liveAdsbMap._rings.clearLayers();
-    const R = (aircraftSearchRadiusKm || 20) * 1000;
+    if (STATE.lat == null) return;
+    const searchR = (aircraftSearchRadiusKm || 20) * 1000;
+    // Rayon visible à l'écran : on calcule la moitié du plus petit côté de la
+    // bounding box courante. Tant qu'on est dézoomé, l'anneau extérieur reste
+    // calé sur le rayon de recherche ; dès qu'on zoome au point que le rayon
+    // dépasse l'écran, on rétrécit pour garder les 4 anneaux visibles.
+    let visibleR = Infinity;
+    try {
+        const c = _liveAdsbMap.getCenter();
+        const b = _liveAdsbMap.getBounds();
+        const halfW = _liveAdsbMap.distance(c, L.latLng(c.lat, b.getEast()));
+        const halfH = _liveAdsbMap.distance(c, L.latLng(b.getNorth(), c.lng));
+        visibleR = Math.min(halfW, halfH) * 0.92;
+    } catch (e) {}
+    const R = Math.max(50, Math.min(searchR, visibleR));
     for (let i = 1; i <= 4; i++) {
         L.circle([STATE.lat, STATE.lon], {
             radius: (R * i) / 4,
