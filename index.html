@@ -207,8 +207,10 @@
             .maplibregl-ctrl-top-left, .maplibregl-ctrl-top-right,
             .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right { opacity: 1 !important; }
             .map-loader { display: none !important; }
-            /* Exclus de l'archivage PDF : module §18 Trafic aérien LIVE, radar météo §4 */
-            .module-no-export, .radar-no-export { display: none !important; }
+            /* Exclus de l'archivage PDF : module §18 Trafic aérien LIVE,
+               radar météo §4, et le footer (info opérationnelle, pas
+               pertinente sur le rapport imprimé). */
+            .module-no-export, .radar-no-export, .doc-footer { display: none !important; }
         }
         @media print { .drone-logo, .drone-logo .prop { animation: none !important; transform: none !important; } }
         @keyframes fastfly-pulse {
@@ -718,9 +720,26 @@
             box-shadow: var(--shadow-sm);
         }
         .doc-footer-grid {
-            display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px;
+            display: grid;
+            /* Colonne Sources nettement plus large + ses items répartis en 2
+               sous-colonnes via column-count → les 3 colonnes finissent
+               quasiment à la même hauteur visuelle. */
+            grid-template-columns: 2.2fr 1fr 1fr;
+            gap: 24px;
+            align-items: start;
         }
-        @media (max-width: 720px) { .doc-footer-grid { grid-template-columns: 1fr; gap: 14px; } }
+        .doc-footer-grid > div:first-child ul {
+            column-count: 2; column-gap: 24px;
+            -webkit-column-count: 2; -webkit-column-gap: 24px;
+        }
+        .doc-footer-grid > div:first-child ul li { break-inside: avoid; -webkit-column-break-inside: avoid; }
+        @media (max-width: 900px) {
+            .doc-footer-grid { grid-template-columns: 1.6fr 1fr 1fr; gap: 16px; }
+        }
+        @media (max-width: 720px) {
+            .doc-footer-grid { grid-template-columns: 1fr; gap: 14px; }
+            .doc-footer-grid > div:first-child ul { column-count: 1; }
+        }
         .doc-footer h4 {
             margin: 0 0 6px; font-size: 11px; font-weight: 700;
             color: var(--c-primary); text-transform: uppercase; letter-spacing: .6px;
@@ -2181,7 +2200,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.17</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.18</strong></span>
             </div>
         </div>
 
@@ -2192,7 +2211,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.17';
+const APP_VERSION = 'v2026.05.17.18';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -2276,7 +2295,12 @@ function addFullscreenControl(map, fullscreenTarget) {
     map.addControl(new Ctl());
 }
 
-/* -------- Monkey-patch L.map() : loader auto pour toutes les cartes Leaflet -------- */
+/* -------- Monkey-patch L.map() : loader auto pour toutes les cartes Leaflet
+            + enregistrement dans un registre global pour pouvoir les ré-inval
+            quand une card collapsed est dépliée (sinon la map a été créée
+            avec des dimensions à 0 et reste mal cadrée). -------- */
+window._allLeafletMaps = window._allLeafletMaps || [];
+window._allMapLibre    = window._allMapLibre    || [];
 (function () {
     if (typeof L === 'undefined' || !L.map) return;
     const orig = L.map;
@@ -2287,6 +2311,10 @@ function addFullscreenControl(map, fullscreenTarget) {
         const t0 = Date.now();
         if (el) showMapLoader(el);
         const m = orig.apply(this, arguments);
+        try { window._allLeafletMaps.push(m); m.on('remove', () => {
+            const i = window._allLeafletMaps.indexOf(m);
+            if (i >= 0) window._allLeafletMaps.splice(i, 1);
+        }); } catch (e) {}
         if (el) {
             let hidden = false;
             const hide = () => {
@@ -2307,6 +2335,44 @@ function addFullscreenControl(map, fullscreenTarget) {
         return m;
     };
 })();
+// Monkey-patch MapLibre aussi (utilisée par les cartes 3D IGH).
+(function () {
+    if (typeof maplibregl === 'undefined' || !maplibregl.Map) return;
+    const Orig = maplibregl.Map;
+    maplibregl.Map = function (opts) {
+        const m = new Orig(opts);
+        try { window._allMapLibre.push(m); m.on('remove', () => {
+            const i = window._allMapLibre.indexOf(m);
+            if (i >= 0) window._allMapLibre.splice(i, 1);
+        }); } catch (e) {}
+        return m;
+    };
+    // préserve les méthodes statiques essentielles
+    Object.keys(Orig).forEach(k => { try { maplibregl.Map[k] = Orig[k]; } catch (e) {} });
+    maplibregl.Map.prototype = Orig.prototype;
+})();
+// Force toutes les cartes contenues dans `card` à recalculer leurs dimensions.
+function _invalidateMapsInCard(card) {
+    if (!card) return;
+    try {
+        window._allLeafletMaps.forEach(m => {
+            try {
+                if (m && m.getContainer && card.contains(m.getContainer())) {
+                    setTimeout(() => { try { m.invalidateSize(); } catch (e) {} }, 60);
+                    setTimeout(() => { try { m.invalidateSize(); } catch (e) {} }, 220);
+                }
+            } catch (e) {}
+        });
+        window._allMapLibre.forEach(m => {
+            try {
+                if (m && m.getContainer && card.contains(m.getContainer())) {
+                    setTimeout(() => { try { m.resize(); } catch (e) {} }, 60);
+                    setTimeout(() => { try { m.resize(); } catch (e) {} }, 220);
+                }
+            } catch (e) {}
+        });
+    } catch (e) {}
+}
 
 /* -------- Système de collapse des modules (chevron par card + toggle global) -------- */
 function _saveCollapseState() {
@@ -2328,11 +2394,10 @@ function _restoreCollapseState() {
 }
 function toggleAllCardsCollapsed() {
     const cards = document.querySelectorAll('section.card');
-    // Si au moins une est dépliée, on replie tout. Sinon on déplie tout.
     const anyOpen = Array.from(cards).some(c => !c.classList.contains('collapsed'));
     cards.forEach(c => {
         if (anyOpen) c.classList.add('collapsed');
-        else c.classList.remove('collapsed');
+        else { c.classList.remove('collapsed'); _invalidateMapsInCard(c); }
     });
     _saveCollapseState();
 }
@@ -2348,18 +2413,21 @@ function _initCardsCollapse() {
         btn.innerHTML = '<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
+            const wasCollapsed = card.classList.contains('collapsed');
             card.classList.toggle('collapsed');
             _saveCollapseState();
+            if (wasCollapsed) _invalidateMapsInCard(card);
         });
         head.appendChild(btn);
-        // Le titre est aussi cliquable pour toggler (sauf clic sur boutons internes au titre)
         const title = head.querySelector('.card-title');
         if (title) {
             title.style.cursor = 'pointer';
             title.addEventListener('click', (e) => {
                 if (e.target.closest('button, input, a')) return;
+                const wasCollapsed = card.classList.contains('collapsed');
                 card.classList.toggle('collapsed');
                 _saveCollapseState();
+                if (wasCollapsed) _invalidateMapsInCard(card);
             });
         }
     });
