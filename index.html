@@ -11965,15 +11965,10 @@ function _liveAttachRadarSweep(map, radiusM) {
         [STATE.lat + dLat, STATE.lon + dLon]
     );
 
-    // SVG avec viewBox carré centré sur (0,0). L.svgOverlay redimensionne
-    // l'élément pour qu'il colle pile aux bounds → tous les pans / zooms
-    // sont gérés par Leaflet, identiques aux L.circle des anneaux.
-    const NS = 'http://www.w3.org/2000/svg';
-    const svgEl = document.createElementNS(NS, 'svg');
-    svgEl.setAttribute('viewBox', '-100 -100 200 200');
-    svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-    svgEl.style.pointerEvents = 'none';
-    svgEl.innerHTML = `
+    // SVG construit via DOMParser : Safari/Firefox parsent les enfants dans
+    // le bon namespace (le innerHTML sur un createElementNS('svg') crée les
+    // <path>/<g>/<defs> en namespace HTML, ce qui ne rend rien à l'écran).
+    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200" preserveAspectRatio="xMidYMid meet" style="pointer-events:none;">
         <defs>
             <radialGradient id="lm-sweep-grad-ovl" cx="0" cy="0" r="100" gradientUnits="userSpaceOnUse">
                 <stop offset="0%"  stop-color="rgba(34,197,94,0.85)"/>
@@ -11985,13 +11980,14 @@ function _liveAttachRadarSweep(map, radiusM) {
             <path d="M 0 0 L 100 0 A 100 100 0 0 1 70.71 70.71 Z" fill="url(#lm-sweep-grad-ovl)" opacity="0.92"/>
             <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="0 0 0" to="360 0 0" dur="4s" repeatCount="indefinite"/>
         </g>
-        <circle cx="0" cy="0" r="3" fill="#22c55e" opacity="0.95">
-            <animate attributeName="r" values="3;4.5;3" dur="1.6s" repeatCount="indefinite"/>
+        <circle cx="0" cy="0" r="3.5" fill="#22c55e" opacity="0.95">
+            <animate attributeName="r" values="3.5;5;3.5" dur="1.6s" repeatCount="indefinite"/>
         </circle>
-    `;
+    </svg>`;
+    const svgEl = new DOMParser().parseFromString(svgString, 'image/svg+xml').documentElement;
     const overlay = L.svgOverlay(svgEl, bounds, { interactive: false }).addTo(map);
     map._radarSweepOverlay = overlay;
-    console.log('[radar sweep] L.svgOverlay attached @', STATE.lat, STATE.lon, 'radius', radiusM, 'm — bounds', bounds.toBBoxString());
+    console.log('[radar sweep v2] L.svgOverlay attached @', STATE.lat, STATE.lon, 'radius', radiusM, 'm — bounds', bounds.toBBoxString(), '— svg element:', svgEl);
 }
 
 let _liveLastMeteo = {};      // mémorise les dernières valeurs pour calculer la flèche d'évolution
