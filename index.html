@@ -2217,7 +2217,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.20</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.21</strong></span>
             </div>
         </div>
 
@@ -2228,7 +2228,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.20';
+const APP_VERSION = 'v2026.05.17.21';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -3664,8 +3664,6 @@ const _VIGI_COLORS = {
 
 async function fetchVigilance(dept) {
     if (!dept) { STATE.vigilance = null; _injectVigilanceBanner(); return; }
-    // Le nom exact du champ département varie selon les datasets opendatasoft —
-    // on essaie plusieurs variantes pour rester robuste si le schéma évolue.
     const tries = [
         `code_insee_dep="${dept}"`,
         `code_insee="${dept}"`,
@@ -3674,11 +3672,13 @@ async function fetchVigilance(dept) {
         `departement="${dept}"`
     ];
     let records = [];
+    let anySuccess = false;   // au moins 1 requête HTTP 200 ?
     for (const w of tries) {
         try {
             const url = `https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/weatherref-france-vigilance-meteo-departement/records?where=${encodeURIComponent(w)}&limit=30`;
             const r = await fetchWithTimeout(url, {}, 8000);
             if (r.ok) {
+                anySuccess = true;
                 const j = await r.json();
                 if ((j.results || []).length) { records = j.results; break; }
             }
@@ -3691,7 +3691,11 @@ async function fetchVigilance(dept) {
         fin: r.fin_validite || r.date_fin || r.dt_fin_evt || r.date_fin_validite || ''
     })).filter(r => r.niveau >= 1 && r.niveau <= 4);
     norm.sort((a, b) => b.niveau - a.niveau);
-    STATE.vigilance = { dept, items: norm };
+    // Si AUCUNE requête n'a abouti (CORS / réseau / 4xx-5xx), on marque
+    // l'état "indisponible" : sinon on annoncerait une vigilance verte
+    // alors qu'on n'a pas l'info (cas Safari / GitHub Pages → opendatasoft
+    // CORS bloqué qu'on a observé).
+    STATE.vigilance = { dept, items: norm, unavailable: !anySuccess };
     _injectVigilanceBanner();
 }
 
@@ -3702,6 +3706,14 @@ function _injectVigilanceBanner() {
     if (!slot) return;
     const v = STATE.vigilance;
     if (!v) { slot.innerHTML = ''; return; }
+    if (v.unavailable) {
+        slot.innerHTML = `<div style="display:flex; align-items:center; gap:8px; padding:6px 12px; background:#fef3c7; border:1px solid #fcd34d; border-left:4px solid #d97706; border-radius:4px; font-size:12px; color:#92400e; margin-bottom:10px;">
+            <span style="background:#d97706; color:#fff; padding:2px 8px; border-radius:3px; font-size:10px; font-weight:700; letter-spacing:.5px;">⚠ INDISPONIBLE</span>
+            <span><strong>Vigilance Météo-France inaccessible</strong> (réseau / CORS bloqué). Vérifier manuellement le département ${v.dept}.</span>
+            <a href="https://vigilance.meteofrance.fr/fr/${v.dept}" target="_blank" rel="noopener" style="margin-left:auto; font-size:11px; color:#92400e; opacity:.9; text-decoration:underline;">↗ vigilance.meteofrance.fr</a>
+        </div>`;
+        return;
+    }
     if (!v.items.length) {
         slot.innerHTML = `<div style="display:flex; align-items:center; gap:8px; padding:6px 12px; background:#dcfce7; border:1px solid #86efac; border-left:4px solid #16a34a; border-radius:4px; font-size:12px; color:#166534; margin-bottom:10px;">
             <span style="background:#16a34a; color:#fff; padding:2px 8px; border-radius:3px; font-size:10px; font-weight:700; letter-spacing:.5px;">VIGILANCE VERTE</span>
