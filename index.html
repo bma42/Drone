@@ -2251,7 +2251,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.23</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.24</strong></span>
             </div>
         </div>
 
@@ -2262,7 +2262,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.23';
+const APP_VERSION = 'v2026.05.17.24';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -3705,18 +3705,33 @@ async function fetchVigilance(dept) {
         `code_dept="${dept}"`,
         `departement="${dept}"`
     ];
+    // Cascade : direct → corsproxy.io → allorigins.win. Sur Safari/GitHub
+    // Pages l'appel direct à opendatasoft est CORS-bloqué — on bascule
+    // automatiquement sur un proxy public pour ramener la donnée réelle.
+    const buildUrls = (w) => {
+        const direct = `https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/weatherref-france-vigilance-meteo-departement/records?where=${encodeURIComponent(w)}&limit=30`;
+        return [
+            direct,
+            'https://corsproxy.io/?url=' + encodeURIComponent(direct),
+            'https://api.allorigins.win/raw?url=' + encodeURIComponent(direct)
+        ];
+    };
     let records = [];
-    let anySuccess = false;   // au moins 1 requête HTTP 200 ?
-    for (const w of tries) {
-        try {
-            const url = `https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/weatherref-france-vigilance-meteo-departement/records?where=${encodeURIComponent(w)}&limit=30`;
-            const r = await fetchWithTimeout(url, {}, 8000);
-            if (r.ok) {
+    let anySuccess = false;
+    outer: for (const w of tries) {
+        for (const url of buildUrls(w)) {
+            try {
+                const r = await fetchWithTimeout(url, {}, 8000);
+                if (!r.ok) continue;
                 anySuccess = true;
                 const j = await r.json();
-                if ((j.results || []).length) { records = j.results; break; }
-            }
-        } catch (e) { /* essai suivant */ }
+                if ((j.results || []).length) { records = j.results; break outer; }
+                // 0 records via cette where-clause : on n'essaie pas d'autre
+                // proxy (donnée valide reçue, juste vide), on passe à la
+                // clause suivante.
+                break;
+            } catch (e) { /* proxy suivant, puis clause suivante */ }
+        }
     }
     const norm = records.map(r => ({
         niveau: parseInt(r.couleur || r.niveau || r.color_id || r.niveau_couleur || r.color || 1, 10),
