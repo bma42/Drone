@@ -2181,7 +2181,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.1</strong></span>
             </div>
         </div>
 
@@ -2192,6 +2192,8 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
+const APP_VERSION = 'v2026.05.17.1';
+console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
 // SVG inline du logo drone — utilisé partout (loader, header, lock screen).
@@ -10607,18 +10609,17 @@ function enterLiveMode() {
         _liveSavedAdsb = {
             auto: typeof aircraftAutoRefresh !== 'undefined' ? aircraftAutoRefresh : false,
             alert: typeof aircraftAlertSound !== 'undefined' ? aircraftAlertSound : false,
-            sec: typeof aircraftRefreshSec !== 'undefined' ? aircraftRefreshSec : 15
+            sec: typeof aircraftRefreshSec !== 'undefined' ? aircraftRefreshSec : 15,
+            radius: typeof aircraftSearchRadiusKm !== 'undefined' ? aircraftSearchRadiusKm : 20
         };
         aircraftRefreshSec = 5;
         try { localStorage.setItem('drone_aircraft_refresh_sec', '5'); } catch (e) {}
+        // Force le rayon de détection à 20 km à chaque entrée en Live Mode.
+        if (typeof setAircraftRadius === 'function') setAircraftRadius(20);
         if (typeof toggleAircraftAuto === 'function') toggleAircraftAuto(true);
-        // toggleAircraftAlert(true) est différé : on l'arme une fois que les
-        // tuiles sont chargées (cf. dark.on('load') / osm.on('load') dans
-        // l'init de la carte). Cela évite que la voix annonce un aéronef
-        // pendant que la carte est encore en chargement (impossible à localiser).
+        // Cloche : OFF par défaut à chaque entrée (cloche barrée).
+        // L'utilisateur l'active manuellement quand il est prêt.
         if (typeof toggleAircraftAlert === 'function') toggleAircraftAlert(false);
-        // Re-sync de l'icône cloche après le toggle (sinon le visuel reste
-        // figé sur l'état précédent et le 1er clic semble inopérant).
         _liveSyncAlertBtn();
     } catch (e) { console.warn('[live] ADS-B sync failed:', e); }
     try { _liveRenderFlights(); } catch (e) { console.warn('[live] renderFlights:', e); }
@@ -10742,6 +10743,38 @@ function _liveInjectStyles() {
            (pas de couleur de fond, juste la barre rouge). */
         #live-mode-overlay .lm-adsb-info button#lm-btn-alert .lm-bell-slash { opacity: 0; transition: opacity .15s; }
         #live-mode-overlay .lm-adsb-info button#lm-btn-alert:not(.on) .lm-bell-slash { opacity: 1; }
+        /* Tooltip BD sous la cloche. Visible tant que la cloche est barrée. */
+        #live-mode-overlay .lm-bell-tip {
+            position: absolute; top: calc(100% + 11px); left: 50%; transform: translateX(-50%);
+            background: #fef3c7; color: #78350f; font-size: 10.5px; font-weight: 700;
+            padding: 5px 10px; border-radius: 10px; border: 2px solid #1f2937;
+            white-space: nowrap; box-shadow: 2px 2px 0 rgba(0,0,0,.35);
+            pointer-events: none; z-index: 10001;
+            animation: lm-bell-tip-bob 1.6s ease-in-out infinite;
+        }
+        #live-mode-overlay .lm-bell-tip::before {
+            content: ''; position: absolute; top: -8px; left: 50%; transform: translateX(-50%);
+            width: 0; height: 0;
+            border-left: 7px solid transparent; border-right: 7px solid transparent;
+            border-bottom: 8px solid #1f2937;
+        }
+        #live-mode-overlay .lm-bell-tip::after {
+            content: ''; position: absolute; top: -5px; left: 50%; transform: translateX(-50%);
+            width: 0; height: 0;
+            border-left: 5px solid transparent; border-right: 5px solid transparent;
+            border-bottom: 6px solid #fef3c7;
+        }
+        @keyframes lm-bell-tip-bob {
+            0%, 100% { transform: translateX(-50%) translateY(0); }
+            50%      { transform: translateX(-50%) translateY(-3px); }
+        }
+        #live-mode-overlay .lm-bell-wrap:has(button#lm-btn-alert.on) .lm-bell-tip { display: none; }
+        /* divIcon aéronefs : neutralise le fond blanc Leaflet par défaut. */
+        #live-mode-overlay .lm-ac-divicon {
+            background: transparent !important;
+            border: 0 !important;
+            overflow: visible !important;
+        }
         /* Spotlight : effet ripple vert sur la carte quand la vocale parle d'un aéronef.
            Deux ondes successives + un cœur pulsé pour bien localiser la cible. */
         #live-mode-overlay .lm-spot-ring {
@@ -11131,13 +11164,24 @@ function exitLiveMode() {
     if (_liveWindAnimTimer) { clearInterval(_liveWindAnimTimer); _liveWindAnimTimer = null; }
     if (_liveRainTimer) { clearTimeout(_liveRainTimer); _liveRainTimer = null; }
     _liveRainLayer = null;
+    // Détache les handlers fullscreen / resize globaux AVANT de virer la carte.
+    if (_liveAdsbMap && _liveAdsbMap._fsChangeHandler) {
+        try {
+            document.removeEventListener('fullscreenchange', _liveAdsbMap._fsChangeHandler);
+            document.removeEventListener('webkitfullscreenchange', _liveAdsbMap._fsChangeHandler);
+            window.removeEventListener('resize', _liveAdsbMap._fsChangeHandler);
+        } catch (e) {}
+    }
     if (_liveAdsbMap) { try { _liveAdsbMap.remove(); } catch (e) {} _liveAdsbMap = null; }
-    // Restaure l'état ADS-B antérieur (auto / alertes / intervalle).
+    // Restaure l'état ADS-B antérieur (auto / alertes / intervalle / rayon).
     if (_liveSavedAdsb) {
         aircraftRefreshSec = _liveSavedAdsb.sec;
         try { localStorage.setItem('drone_aircraft_refresh_sec', String(_liveSavedAdsb.sec)); } catch (e) {}
         toggleAircraftAuto(_liveSavedAdsb.auto);
         toggleAircraftAlert(_liveSavedAdsb.alert);
+        if (typeof setAircraftRadius === 'function' && _liveSavedAdsb.radius != null) {
+            setAircraftRadius(_liveSavedAdsb.radius);
+        }
         _liveSavedAdsb = null;
     }
 }
@@ -11181,13 +11225,16 @@ function _liveModeHtml() {
                     <label class="lm-adsb-lowonly" title="Masquer les avions au-dessus de 500 m — les hélicoptères restent affichés à toute altitude">
                         <input type="checkbox" id="lm-adsb-lowonly"> &lt; 500 m
                     </label>
-                    <button id="lm-btn-alert" type="button" data-action="toggle-alert" title="Alertes vocales aéronefs hélico / basse altitude / urgence">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none; overflow:visible;">
-                            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
-                            <path d="M10 21a2 2 0 0 0 4 0"/>
-                            <line class="lm-bell-slash" x1="3" y1="3" x2="21" y2="21" stroke-width="2.6" stroke="#ef4444"/>
-                        </svg>
-                    </button>
+                    <div class="lm-bell-wrap" style="position:relative; display:inline-flex;">
+                        <button id="lm-btn-alert" type="button" data-action="toggle-alert" title="Alertes aéronefs (sons + balayage + auto-pan)">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none; overflow:visible;">
+                                <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
+                                <path d="M10 21a2 2 0 0 0 4 0"/>
+                                <line class="lm-bell-slash" x1="3" y1="3" x2="21" y2="21" stroke-width="2.6" stroke="#ef4444"/>
+                            </svg>
+                        </button>
+                        <div class="lm-bell-tip" id="lm-bell-tip" aria-hidden="true">Activer les alarmes sonores</div>
+                    </div>
                     <select id="lm-adsb-refresh" title="Intervalle de rafraîchissement ADS-B">
                         <option value="1">1 s</option>
                         <option value="5" selected>5 s</option>
@@ -11739,7 +11786,11 @@ async function _liveRefreshAdsb() {
                 _armRequested = true;
                 setTimeout(() => {
                     _liveModeAlertsArmed = true;
-                    try { if (typeof toggleAircraftAlert === 'function') toggleAircraftAlert(true); } catch (e) {}
+                    // On NE force PAS toggleAircraftAlert(true) ici : la cloche
+                    // reste OFF par défaut, l'utilisateur l'active à la main
+                    // quand il est prêt. Le master-gate signale juste que la
+                    // carte est chargée et que les alertes seront émises si
+                    // l'utilisateur active la cloche.
                 }, 1500);
             };
             dark.on('load', armAlerts);
@@ -11768,12 +11819,26 @@ async function _liveRefreshAdsb() {
                 color: '#0066cc', fillColor: '#0066cc', fillOpacity: 0.12, weight: 2
             }).addTo(_liveAdsbMap);
             _liveAdsbMap._planes = L.layerGroup().addTo(_liveAdsbMap);
-            // Le balayage radar est cosmétique : si quoi que ce soit foire,
-            // on continue sans, plutôt que de bloquer toute la carte.
+            // Ordre crucial : invalidateSize() AVANT _liveAttachRadarSweep,
+            // sinon latLngToLayerPoint utilise des dimensions stale (fullscreen
+            // pas encore appliqué) et le <g> se retrouve décalé.
             setTimeout(() => {
-                try { _liveAttachRadarSweep(_liveAdsbMap, R); } catch (e) { console.warn('[radar sweep] désactivé:', e); }
                 try { _liveAdsbMap.invalidateSize(); } catch (e) {}
-            }, 200);
+                try { _liveAttachRadarSweep(_liveAdsbMap, R); } catch (e) { console.warn('[radar sweep] désactivé:', e); }
+            }, 250);
+            // Hook fullscreenchange + resize : à chaque transition on invalide
+            // la taille et force un viewreset → tous les overlays (rings,
+            // sweep <g>) se recalent.
+            const onFsChange = () => {
+                setTimeout(() => {
+                    try { _liveAdsbMap && _liveAdsbMap.invalidateSize(); } catch (e) {}
+                    try { _liveAdsbMap && _liveAdsbMap.fire('viewreset'); } catch (e) {}
+                }, 60);
+            };
+            document.addEventListener('fullscreenchange', onFsChange);
+            document.addEventListener('webkitfullscreenchange', onFsChange);
+            window.addEventListener('resize', onFsChange);
+            _liveAdsbMap._fsChangeHandler = onFsChange;
         } catch (e) {
             console.warn('[live ADS-B map init]', e);
             if (info) info.innerHTML = '<span style="color:#ef4444;">●</span> Carte indispo (voir console)';
@@ -11876,7 +11941,10 @@ function _liveUpdateAdsbMarkers() {
         try {
             const spec = (typeof _buildAircraftMarkerSpec === 'function') ? _buildAircraftMarkerSpec(a) : null;
             if (spec && spec.html) {
-                const icon = L.divIcon({ className: '', html: spec.html, iconAnchor: [spec.size / 2 || 17, spec.size / 2 || 17] });
+                const s = spec.size || 34;
+                // iconSize OBLIGATOIRE : sans ça Safari peut clipper le wrapper
+                // à 0×0 et la pastille disparaît selon le zoom.
+                const icon = L.divIcon({ className: 'lm-ac-divicon', html: spec.html, iconSize: [s, s], iconAnchor: [s / 2, s / 2] });
                 const marker = L.marker([a.lat, a.lon], { icon }).addTo(_liveAdsbMap._planes);
                 if (spec.popup) marker.bindPopup(spec.popup);
             }
@@ -11890,7 +11958,7 @@ function _liveRenderAdsbInfo(planes) {
     const stats = document.getElementById('lm-adsb-stats');
     if (!stats) return;
     if (!planes.length) {
-        stats.innerHTML = `<span class="lm-pill">0 ac</span><span style="color:#94a3b8;">Aucun aéronef détecté</span>${STATE.aircraftSource ? '<span style="color:#64748b; font-size:10px;">via ' + STATE.aircraftSource + '</span>' : ''}`;
+        stats.innerHTML = `<span class="lm-pill">0 ac</span><span style="color:#94a3b8;">Aucun aéronef détecté</span>`;
         return;
     }
     const heli = planes.filter(a => a.isHelicopter).length;
@@ -11900,7 +11968,6 @@ function _liveRenderAdsbInfo(planes) {
     if (prio) parts.push(`<span class="lm-pill prio">🚨 ${prio} prio</span>`);
     if (heli) parts.push(`<span class="lm-pill heli">${heli} hélico${heli > 1 ? 's' : ''}</span>`);
     if (low)  parts.push(`<span class="lm-pill low">${low} &lt; 500 m / 1640 ft</span>`);
-    if (STATE.aircraftSource) parts.push(`<span style="color:#64748b; font-size:10px;">via ${STATE.aircraftSource}</span>`);
     stats.innerHTML = parts.join(' ');
 }
 
@@ -11954,29 +12021,39 @@ function _liveRenderAdsbList(planes) {
 // (innerHTML / DOMParser sont notoirement capricieux sur Safari).
 function _liveAttachRadarSweep(map, radiusM) {
     if (!map || STATE.lat == null) return;
-    // Récupère le renderer SVG via un layer existant (1er anneau) ou en crée un
-    // dédié si rien n'est encore rendu.
-    let svg = null;
-    try {
-        if (map._rings && typeof map._rings.getLayers === 'function') {
-            const first = map._rings.getLayers()[0];
-            if (first && first._renderer && first._renderer._container) svg = first._renderer._container;
-        }
-    } catch (e) {}
-    if (!svg) {
-        if (!map._sweepRenderer) {
-            map._sweepRenderer = L.svg({ pane: 'overlayPane' }).addTo(map);
-        }
-        svg = map._sweepRenderer._container;
-    }
-    if (!svg) { console.warn('[radar sweep v3] no SVG renderer container'); return; }
-    // Cleanup éventuel de versions précédentes (n'importe où dans le DOM).
+    // Cleanup d'éventuelles anciennes implémentations qui traînent dans le DOM.
     try {
         const c = map.getContainer();
         if (c) c.querySelectorAll('.lm-radar-sweep-svg, .lm-radar-sweep-marker, .lm-sweep-g').forEach(n => n.remove());
     } catch (e) {}
     if (map._radarSweepOverlay) { try { map.removeLayer(map._radarSweepOverlay); } catch (e) {} map._radarSweepOverlay = null; }
     if (map._radarSweepMarker)  { try { map.removeLayer(map._radarSweepMarker);  } catch (e) {} map._radarSweepMarker  = null; }
+
+    // CRITIQUE : on append le <g> EXACTEMENT au même parent que les <path> des
+    // anneaux (Leaflet 1.9.4 wrappe les paths dans un rootGroup à l'intérieur
+    // du <svg>). Append au <svg> directement met le <g> hors rootGroup et il
+    // ne reçoit pas les transformations de pan/zoom appliquées au rootGroup.
+    let parentNode = null;
+    try {
+        if (map._rings && typeof map._rings.getLayers === 'function') {
+            const first = map._rings.getLayers()[0];
+            if (first && first._path && first._path.parentNode) parentNode = first._path.parentNode;
+        }
+    } catch (e) {}
+    if (!parentNode) {
+        // Fallback : créer un renderer dédié + un anneau invisible pour avoir
+        // un path-frère dont on prend le parent.
+        if (!map._sweepRenderer) {
+            map._sweepRenderer = L.svg({ pane: 'overlayPane' }).addTo(map);
+        }
+        try {
+            if (!map._sweepAnchor) {
+                map._sweepAnchor = L.circle([STATE.lat, STATE.lon], { radius: 1, stroke: false, fill: false, interactive: false, renderer: map._sweepRenderer }).addTo(map);
+            }
+            if (map._sweepAnchor && map._sweepAnchor._path) parentNode = map._sweepAnchor._path.parentNode;
+        } catch (e) {}
+    }
+    if (!parentNode) { console.warn('[radar sweep v4] no parent — abort'); return; }
 
     const NS = 'http://www.w3.org/2000/svg';
     const gradId = 'lm-sweep-grad-' + Date.now();
@@ -12037,7 +12114,7 @@ function _liveAttachRadarSweep(map, radiusM) {
     core.appendChild(coreAnim);
     g.appendChild(core);
 
-    svg.appendChild(g);
+    parentNode.appendChild(g);
     map._sweepG = g;
     map._sweepRadiusM = radiusM;
 
@@ -12064,7 +12141,7 @@ function _liveAttachRadarSweep(map, radiusM) {
         map.on('viewreset zoomend moveend resize', updateSweep);
         map._sweepUpdateBound = true;
     }
-    console.log('[radar sweep v3] <g> injected into renderer SVG @', STATE.lat, STATE.lon, '— radius', radiusM, 'm');
+    console.log('[radar sweep v4] <g> attached as sibling of ring path @ layerPoint=' + JSON.stringify(map.latLngToLayerPoint([STATE.lat, STATE.lon])) + ' parent=' + (parentNode.tagName || '?') + ' build=' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : '?'));
 }
 
 let _liveLastMeteo = {};      // mémorise les dernières valeurs pour calculer la flèche d'évolution
