@@ -2181,7 +2181,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.13</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.15</strong></span>
             </div>
         </div>
 
@@ -2192,7 +2192,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.13';
+const APP_VERSION = 'v2026.05.17.15';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -8526,13 +8526,37 @@ function _liveScheduleReturnToMission() {
 function _liveSpotlightAircraft(a) {
     if (typeof _liveAdsbMap === 'undefined' || !_liveAdsbMap || !a || a.lat == null || a.lon == null) return;
     if (typeof L === 'undefined') return;
+    // Couleur dynamique du ripple :
+    //   • rouge   si vol prioritaire / urgence OU distance < 5 km (drone-conflict zone)
+    //   • orange  si hélicoptère
+    //   • vert    sinon (avion <500 m basique)
+    const isPrio = !!(a.isPriority || a.emergency);
+    const isHeli = !!a.isHelicopter;
+    const tooClose = (typeof a.dist === 'number' && a.dist < 5000);
+    let c, ring, glow;
+    if (tooClose || isPrio) {
+        c    = 'rgba(239, 68, 68, .85)';
+        ring = 'rgba(239, 68, 68, .9)';
+        glow = 'rgba(239, 68, 68, .85)';
+    } else if (isHeli) {
+        c    = 'rgba(251, 146, 60, .85)';
+        ring = 'rgba(251, 146, 60, .9)';
+        glow = 'rgba(251, 146, 60, .85)';
+    } else {
+        c    = 'rgba(34, 197, 94, .85)';
+        ring = 'rgba(34, 197, 94, .9)';
+        glow = 'rgba(34, 197, 94, .85)';
+    }
+    const style = `--lm-spot-core:${c}; --lm-spot-ring:${ring}; --lm-spot-glow:${glow};`;
     const icon = L.divIcon({
         className: 'lm-spot-icon',
         iconSize: [16, 16],
         iconAnchor: [8, 8],
-        html: '<div class="lm-spot-ring"></div>'
+        html: '<div class="lm-spot-ring" style="' + style + '"></div>'
     });
-    const m = L.marker([a.lat, a.lon], { icon, interactive: false, keyboard: false, zIndexOffset: 9999 });
+    // pane: 'overlayPane' → rendu DERRIÈRE markerPane (où sont les pastilles
+    // aéronef) → l'animation passe sous l'icône, plus dessus.
+    const m = L.marker([a.lat, a.lon], { icon, interactive: false, keyboard: false, pane: 'overlayPane' });
     try { m.addTo(_liveAdsbMap); } catch (e) { return; }
     setTimeout(() => { try { _liveAdsbMap.removeLayer(m); } catch (e) {} }, 2600);
 }
@@ -10742,19 +10766,20 @@ function _liveInjectStyles() {
             border: 0 !important;
             overflow: visible !important;
         }
-        /* Spotlight : effet ripple vert sur la carte quand la vocale parle d'un aéronef.
-           Deux ondes successives + un cœur pulsé pour bien localiser la cible. */
+        /* Spotlight : effet ripple couleur dynamique (vert / orange / rouge).
+           La couleur est passée via 3 CSS variables --lm-spot-core/ring/glow.
+           Posé dans overlayPane → rendu DERRIÈRE les pastilles aéronef. */
         #live-mode-overlay .lm-spot-ring {
             width: 16px; height: 16px; border-radius: 50%;
-            background: rgba(34, 197, 94, .85);
-            box-shadow: 0 0 12px 2px rgba(34, 197, 94, .85);
+            background: var(--lm-spot-core, rgba(34, 197, 94, .85));
+            box-shadow: 0 0 12px 2px var(--lm-spot-glow, rgba(34, 197, 94, .85));
             animation: lm-spot-core 1.2s ease-in-out 2;
             position: relative;
         }
         #live-mode-overlay .lm-spot-ring::before,
         #live-mode-overlay .lm-spot-ring::after {
             content: ''; position: absolute; inset: 0; border-radius: 50%;
-            border: 2.5px solid rgba(34, 197, 94, .9);
+            border: 2.5px solid var(--lm-spot-ring, rgba(34, 197, 94, .9));
         }
         #live-mode-overlay .lm-spot-ring::before { animation: lm-spot-wave 1.6s ease-out infinite; }
         #live-mode-overlay .lm-spot-ring::after  { animation: lm-spot-wave 1.6s ease-out .55s infinite; }
@@ -10812,16 +10837,22 @@ function _liveInjectStyles() {
         }
         #live-mode-overlay .lm-card-ne { top: 56px;    right: 22px; }
         #live-mode-overlay .lm-card-nw { top: 56px;    left:  22px; }
-        #live-mode-overlay .lm-card-se { bottom: 50px; right: 22px; transition: bottom .2s ease; }
+        /* SE remonté à 90px pour passer au-dessus des contrôles zoom +/- de
+           Leaflet (position bottomright, ~60px de hauteur depuis bottom:10). */
+        #live-mode-overlay .lm-card-se { bottom: 90px; right: 22px; transition: bottom .2s ease; }
         #live-mode-overlay .lm-card-sw { bottom: 50px; left:  22px; transition: bottom .2s ease; }
-        /* Quand la liste d'aéronefs est non vide elle prend ~ max-height 180px
-           + 10px de margin → on remonte SE / SO au-dessus pour qu'ils restent
-           lisibles. Backstop via :has() (Safari 15.4+ / Chrome / Firefox récents)
-           ET via la classe .has-aclist toggled par JS pour les vieux navigateurs. */
+        /* Quand la liste d'aéronefs est non vide on lit sa hauteur réelle via
+           --lm-aclist-h (mis à jour à chaque render) et on remonte SE / SO
+           juste au-dessus, +30 px de marge. La règle :has() reste comme
+           filet de sécurité avec une valeur par défaut élevée. */
+        #live-mode-overlay .lm-adsb.has-aclist .lm-card-se,
+        #live-mode-overlay .lm-adsb.has-aclist .lm-card-sw {
+            bottom: calc(var(--lm-aclist-h, 200px) + 30px);
+        }
         #live-mode-overlay .lm-adsb:has(.lm-adsb-list:not(:empty)) .lm-card-se,
-        #live-mode-overlay .lm-adsb.has-aclist .lm-card-se { bottom: 210px; }
-        #live-mode-overlay .lm-adsb:has(.lm-adsb-list:not(:empty)) .lm-card-sw,
-        #live-mode-overlay .lm-adsb.has-aclist .lm-card-sw { bottom: 210px; }
+        #live-mode-overlay .lm-adsb:has(.lm-adsb-list:not(:empty)) .lm-card-sw {
+            bottom: calc(var(--lm-aclist-h, 200px) + 30px);
+        }
         /* Barre d'échelle dynamique style IGN, intégrée dans le bandeau info. */
         #live-mode-overlay .lm-scalebar {
             pointer-events: none;
@@ -12273,10 +12304,21 @@ function _liveRenderAdsbInfo(planes) {
 function _liveRenderAdsbList(planes) {
     const list = document.getElementById('lm-adsb-list');
     if (!list) return;
-    // Toggle .has-aclist sur le panneau .lm-adsb → CSS remonte SE/SO en
-    // conséquence pour rester lisibles au-dessus de la liste.
+    // Toggle .has-aclist sur le panneau .lm-adsb + measure RÉELLE de la
+    // hauteur visible de la liste → CSS custom property utilisée pour
+    // remonter SE/SO juste au-dessus, quelle que soit la longueur.
     const panel = list.closest('.lm-adsb');
-    const setHasList = (v) => { if (panel) panel.classList.toggle('has-aclist', !!v); };
+    const applyListHeight = () => {
+        if (!panel) return;
+        const h = list.offsetHeight || 0;
+        if (h > 0) panel.style.setProperty('--lm-aclist-h', h + 'px');
+        else panel.style.removeProperty('--lm-aclist-h');
+    };
+    const setHasList = (v) => {
+        if (!panel) return;
+        panel.classList.toggle('has-aclist', !!v);
+        if (!v) panel.style.removeProperty('--lm-aclist-h');
+    };
     if (!planes.length) { list.innerHTML = ''; setHasList(false); return; }
     const visible = planes
         .filter(a => a.isPriority || a.emergency || a.isHelicopter || (a.altM != null && a.altM < 500))
@@ -12306,6 +12348,7 @@ function _liveRenderAdsbList(planes) {
         </tr>`;
     }).join('');
     list.innerHTML = `<table><tbody>${rows}</tbody></table>`;
+    applyListHeight();
     // Event delegation : 1 listener pour toutes les lignes, survit aux re-renders.
     if (!list._rowsBound) {
         list.addEventListener('click', (e) => {
