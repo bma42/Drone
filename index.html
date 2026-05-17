@@ -2181,7 +2181,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.7</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.9</strong></span>
             </div>
         </div>
 
@@ -2192,7 +2192,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.7';
+const APP_VERSION = 'v2026.05.17.9';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -10805,6 +10805,44 @@ function _liveInjectStyles() {
             flex-direction: row; gap: 4px;
         }
         #live-mode-overlay .lm-card-w .lm-card-tick { width: 14px; height: 2px; }
+        /* Cardinaux intermédiaires : un peu plus discrets (taille réduite,
+           opacité moindre). Posés aux 4 coins, en retrait des bords. */
+        #live-mode-overlay .lm-card-inter {
+            font-size: 11px; opacity: .8; letter-spacing: 1px;
+        }
+        #live-mode-overlay .lm-card-ne { top: 56px;    right: 22px; }
+        #live-mode-overlay .lm-card-nw { top: 56px;    left:  22px; }
+        #live-mode-overlay .lm-card-se { bottom: 50px; right: 22px; }
+        #live-mode-overlay .lm-card-sw { bottom: 50px; left:  22px; }
+        /* Barre d'échelle dynamique style IGN — coin bas-droit du panneau carte. */
+        #live-mode-overlay .lm-scalebar {
+            position: absolute; bottom: 50px; right: 60px;
+            z-index: 901; pointer-events: none;
+            background: rgba(15, 23, 42, .82);
+            border: 1px solid rgba(134, 239, 172, .35);
+            border-radius: 5px;
+            padding: 5px 9px 4px;
+            font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+            box-shadow: 0 2px 6px rgba(0,0,0,.4);
+            display: flex; flex-direction: column; gap: 3px; align-items: stretch;
+        }
+        #live-mode-overlay .lm-scalebar-line {
+            position: relative;
+            height: 8px; width: 100px;
+            border-bottom: 2px solid rgba(134, 239, 172, .95);
+            box-shadow: 0 0 4px rgba(34, 197, 94, .55);
+        }
+        #live-mode-overlay .lm-scalebar-tick {
+            position: absolute; bottom: -2px; width: 2px; height: 8px;
+            background: rgba(134, 239, 172, .95);
+        }
+        #live-mode-overlay .lm-scalebar-tick-l { left: 0; }
+        #live-mode-overlay .lm-scalebar-tick-r { right: 0; }
+        #live-mode-overlay .lm-scalebar-labels {
+            display: flex; justify-content: space-between;
+            font-size: 11px; font-weight: 700; color: #f1f5f9; letter-spacing: .3px;
+            line-height: 1.1;
+        }
         /* Disque radar (v8) — div CSS posé dans overlayPane par
            _liveAttachRadarSweep, dimensionné/positionné via JS pour rester
            centré sur le point de mission. Le conic-gradient + la rotation
@@ -10926,11 +10964,26 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-meteo-updated { font-size: 10px; color: #64748b; white-space: nowrap; }
         #live-mode-overlay .lm-meteo-footer { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
         #live-mode-overlay .lm-meteo-footer .lm-progress-bar { flex: 1; }
-        /* Barre de progression du prochain refresh (fine, sombre, fill teal/ambre) */
-        #live-mode-overlay .lm-progress-bar { position: relative; height: 3px; background: rgba(255,255,255,.08); border-radius: 2px; overflow: hidden; min-width: 60px; }
-        #live-mode-overlay .lm-progress-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; background: linear-gradient(90deg, #0e7490, #22d3ee); border-radius: 2px; transition: width .2s linear; }
-        #live-mode-overlay .lm-progress-bar-adsb { flex: 1; min-width: 80px; max-width: 220px; }
-        #live-mode-overlay .lm-progress-bar-adsb .lm-progress-fill { background: linear-gradient(90deg, #15803d, #22c55e); }
+        /* Barre de progression du prochain refresh. Plus haute, plus lisible,
+           avec un léger inner shadow et un glow vert pour la barre ADS-B. */
+        #live-mode-overlay .lm-progress-bar {
+            position: relative; height: 8px;
+            background: rgba(255,255,255,.06);
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: 4px; overflow: hidden; min-width: 60px;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,.4);
+        }
+        #live-mode-overlay .lm-progress-fill {
+            position: absolute; left: 0; top: 0; bottom: 0; width: 0%;
+            background: linear-gradient(90deg, #0e7490, #22d3ee);
+            border-radius: 3px; transition: width .2s linear;
+            box-shadow: 0 0 6px rgba(34, 211, 238, .55);
+        }
+        #live-mode-overlay .lm-progress-bar-adsb { flex: 1; min-width: 140px; max-width: 360px; height: 10px; }
+        #live-mode-overlay .lm-progress-bar-adsb .lm-progress-fill {
+            background: linear-gradient(90deg, #15803d, #22c55e, #86efac);
+            box-shadow: 0 0 8px rgba(34, 197, 94, .7);
+        }
         @media (max-width: 900px) {
             #live-mode-overlay .lm-grid { grid-template-columns: 1fr; grid-template-rows: 1fr auto auto; }
             #live-mode-overlay .lm-adsb { grid-row: auto; min-height: 50vh; }
@@ -11277,11 +11330,20 @@ function _liveModeHtml() {
             </div>
             <div class="lm-adsb-list" id="lm-adsb-list"></div>
             <div class="lm-adsb-map" id="lm-adsb-map"></div>
-            <!-- Mire cardinaux : indicateurs N / E / S / O sur les bords du panneau carte. -->
+            <!-- Mire cardinaux : 4 cardinaux + 4 intermédiaires (NE / SE / SO / NO). -->
             <div class="lm-cardinal lm-card-n" aria-hidden="true"><span class="lm-card-tick"></span><span class="lm-card-lbl">N</span></div>
             <div class="lm-cardinal lm-card-s" aria-hidden="true"><span class="lm-card-tick"></span><span class="lm-card-lbl">S</span></div>
             <div class="lm-cardinal lm-card-e" aria-hidden="true"><span class="lm-card-tick"></span><span class="lm-card-lbl">E</span></div>
             <div class="lm-cardinal lm-card-w" aria-hidden="true"><span class="lm-card-tick"></span><span class="lm-card-lbl">O</span></div>
+            <div class="lm-cardinal lm-card-ne lm-card-inter" aria-hidden="true"><span class="lm-card-lbl">NE</span></div>
+            <div class="lm-cardinal lm-card-se lm-card-inter" aria-hidden="true"><span class="lm-card-lbl">SE</span></div>
+            <div class="lm-cardinal lm-card-sw lm-card-inter" aria-hidden="true"><span class="lm-card-lbl">SO</span></div>
+            <div class="lm-cardinal lm-card-nw lm-card-inter" aria-hidden="true"><span class="lm-card-lbl">NO</span></div>
+            <!-- Barre d'échelle dynamique (mis à jour sur zoom). -->
+            <div class="lm-scalebar" aria-hidden="true">
+                <div class="lm-scalebar-line"><span class="lm-scalebar-tick lm-scalebar-tick-l"></span><span class="lm-scalebar-tick lm-scalebar-tick-r"></span></div>
+                <div class="lm-scalebar-labels"><span id="lm-scalebar-dist">—</span><span id="lm-scalebar-cm" style="margin-left:10px; color:#86efac;">1&nbsp;cm&nbsp;=&nbsp;—</span></div>
+            </div>
         </div>
         <div class="lm-panel">
             <h3 style="display:flex; align-items:center; gap:8px;">
@@ -11617,28 +11679,50 @@ function _liveStopAllFlights() {
 
 // Ouvre le panneau de stats agrégées (batteries, drones, global) pour le jour
 // en cours. Lecture seule : se base sur _liveFlights() actuel.
+let _liveStatsTab = 'today';   // 'today' ou 'history'
+
 function _liveOpenStats() {
     const panel = document.getElementById('lm-stats-panel');
     if (!panel) return;
     panel.style.display = 'block';
+    _liveStatsTab = 'today';
     _liveRenderStats();
 }
 
-function _liveRenderStats() {
-    const wrap = document.getElementById('lm-stats-content');
-    if (!wrap) return;
-    const today = new Date().toISOString().slice(0, 10);
-    const flights = _liveFlights().filter(f => f.startedAt && f.startedAt.startsWith(today));
-    const now = Date.now();
-    const durMs = (f) => (f.stoppedAt ? new Date(f.stoppedAt) : new Date(now)) - new Date(f.startedAt);
+// Map d'un mat (matricule) vers son nom de télépilote, agrégé depuis
+// _livePilots() + les "custom" du formulaire mission.
+function _liveAllPilotsByMat() {
+    const map = {};
+    const all = (typeof _liveEffectivePilots === 'function') ? _liveEffectivePilots() : (typeof _livePilots === 'function' ? _livePilots() : []);
+    all.forEach(p => { if (p && p.mat) map[p.mat] = p.nom || ''; });
+    // Backfill : si un vol a un mat inconnu (pilote effacé depuis),
+    // on garde "Mat XXX" comme label de secours.
+    _liveFlights().forEach(f => {
+        if (f.mat && !map[f.mat]) map[f.mat] = '(supprimé · ' + f.mat + ')';
+    });
+    return map;
+}
 
-    // Global
+// Construit l'objet de stats pour une liste de vols donnée.
+// Retourne : { totalMs, active, byPilot, byDrone, byBatt, uniqAgents, uniqDrones }
+function _liveBuildStats(flights, now) {
+    const durMs = (f) => (f.stoppedAt ? new Date(f.stoppedAt) : new Date(now)) - new Date(f.startedAt);
     const totalMs = flights.reduce((s, f) => s + durMs(f), 0);
     const active = flights.filter(f => !f.stoppedAt).length;
+    const pilotsByMat = _liveAllPilotsByMat();
     const uniqAgents = new Set(flights.map(f => f.mat)).size;
     const uniqDrones = new Set(flights.filter(f => f.drone).map(f => f.drone)).size;
 
-    // Par drone (label complet, modèle + serial)
+    const byPilot = {};
+    flights.forEach(f => {
+        const k = f.mat || '(?)';
+        if (!byPilot[k]) byPilot[k] = { mat: k, nom: pilotsByMat[k] || ('Mat ' + k), count: 0, ms: 0, lastEnd: '', dronesUsed: new Set() };
+        byPilot[k].count++;
+        byPilot[k].ms += durMs(f);
+        if (f.drone) byPilot[k].dronesUsed.add(f.drone);
+        if (f.stoppedAt && f.stoppedAt > byPilot[k].lastEnd) byPilot[k].lastEnd = f.stoppedAt;
+    });
+
     const byDrone = {};
     flights.forEach(f => {
         const k = f.drone || '(drone non précisé)';
@@ -11647,7 +11731,39 @@ function _liveRenderStats() {
         byDrone[k].ms += durMs(f);
         if (f.stoppedAt && f.stoppedAt > byDrone[k].lastEnd) byDrone[k].lastEnd = f.stoppedAt;
     });
-    const droneRows = Object.entries(byDrone)
+
+    const byBatt = {};
+    flights.forEach(f => {
+        if (!f.battery) return;
+        const model = _liveDroneModelKey(f.drone);
+        const k = model + '|B' + f.battery;
+        if (!byBatt[k]) byBatt[k] = { model, num: f.battery, count: 0, ms: 0 };
+        byBatt[k].count++;
+        byBatt[k].ms += durMs(f);
+    });
+
+    return { totalMs, active, uniqAgents, uniqDrones, byPilot, byDrone, byBatt };
+}
+
+function _liveStatsTables(stats) {
+    const tbl = (rows, headers, empty) => rows
+        ? `<table style="width:100%; border-collapse:collapse;">
+            <thead><tr style="border-bottom:1px solid #334155;">${headers.map(h => '<th style="text-align:' + h.align + '; padding:6px 8px; color:#93c5fd; font-size:10px; font-weight:700; letter-spacing:.5px; text-transform:uppercase;">' + h.label + '</th>').join('')}</tr></thead>
+            <tbody>${rows.split('</tr>').map(r => r ? r.replace(/<td/g, '<td style="padding:6px 8px; border-bottom:1px solid #1e293b;"').replace(/style="padding:6px 8px; border-bottom:1px solid #1e293b;" style="/g, 'style="padding:6px 8px; border-bottom:1px solid #1e293b; ').replace(/<\/tr/g, '</tr') : '').join('</tr>')}</tbody>
+           </table>`
+        : '<div style="color:#64748b; font-size:11px; padding:8px;">' + (empty || 'Aucune donnée.') + '</div>';
+
+    const pilotRows = Object.values(stats.byPilot)
+        .sort((a, b) => b.ms - a.ms)
+        .map(s => `<tr>
+            <td><strong style="color:#fff;">${s.nom || '—'}</strong><br><span style="color:#64748b; font-family:ui-monospace,monospace; font-size:10px;">Mat ${s.mat}</span></td>
+            <td style="text-align:right; font-family:ui-monospace,monospace; color:#fbbf24; font-weight:700;">${_liveFormatDuration(s.ms)}</td>
+            <td style="text-align:right;">${s.count}</td>
+            <td style="text-align:right; color:#cbd5e1; font-size:11px;">${s.dronesUsed.size}</td>
+            <td style="text-align:right; color:#94a3b8; font-size:10px;">${s.lastEnd ? s.lastEnd.slice(11, 16) : '—'}</td>
+        </tr>`).join('');
+
+    const droneRows = Object.entries(stats.byDrone)
         .sort((a, b) => b[1].ms - a[1].ms)
         .map(([drone, s]) => {
             const idx = drone.indexOf(' · ');
@@ -11661,17 +11777,7 @@ function _liveRenderStats() {
             </tr>`;
         }).join('');
 
-    // Par batterie (clé = modèle + N°)
-    const byBatt = {};
-    flights.forEach(f => {
-        if (!f.battery) return;
-        const model = _liveDroneModelKey(f.drone);
-        const k = model + '|B' + f.battery;
-        if (!byBatt[k]) byBatt[k] = { model, num: f.battery, count: 0, ms: 0 };
-        byBatt[k].count++;
-        byBatt[k].ms += durMs(f);
-    });
-    const battRows = Object.values(byBatt)
+    const battRows = Object.values(stats.byBatt)
         .sort((a, b) => a.model.localeCompare(b.model) || a.num - b.num)
         .map(s => `<tr>
             <td><strong style="color:#fff;">B${s.num}</strong></td>
@@ -11680,42 +11786,153 @@ function _liveRenderStats() {
             <td style="text-align:right;">${s.count} vol${s.count > 1 ? 's' : ''}</td>
         </tr>`).join('');
 
-    const tbl = (rows, headers) => rows
-        ? `<table style="width:100%; border-collapse:collapse;">
-            <thead><tr style="border-bottom:1px solid #334155;">${headers.map(h => '<th style="text-align:' + h.align + '; padding:6px 8px; color:#93c5fd; font-size:10px; font-weight:700; letter-spacing:.5px; text-transform:uppercase;">' + h.label + '</th>').join('')}</tr></thead>
-            <tbody>${rows.split('</tr>').map(r => r ? r.replace(/<td/g, '<td style="padding:6px 8px; border-bottom:1px solid #1e293b;"').replace(/style="padding:6px 8px; border-bottom:1px solid #1e293b;" style="/g, 'style="padding:6px 8px; border-bottom:1px solid #1e293b; ').replace(/<\/tr/g, '</tr') : '').join('</tr>')}</tbody>
-           </table>`
-        : '<div style="color:#64748b; font-size:11px; padding:8px;">Aucune donnée pour le jour en cours.</div>';
+    return { pilotRows, droneRows, battRows, tbl };
+}
 
-    wrap.innerHTML = `
-        <section>
-            <div style="font-size:11px; color:#93c5fd; font-weight:700; letter-spacing:.5px; margin-bottom:8px; text-transform:uppercase;">Global</div>
-            <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
-                <div style="background:#1e293b; padding:10px; border-radius:6px;"><div style="font-size:10px; color:#94a3b8; text-transform:uppercase;">Temps total</div><div style="font-size:18px; font-weight:800; color:#fbbf24; font-family:ui-monospace,monospace;">${_liveFormatDuration(totalMs)}</div></div>
-                <div style="background:#1e293b; padding:10px; border-radius:6px;"><div style="font-size:10px; color:#94a3b8; text-transform:uppercase;">Vols</div><div style="font-size:18px; font-weight:800; color:#fff;">${flights.length}${active ? ' <span style="font-size:10px; color:#22c55e;">(' + active + ' en cours)</span>' : ''}</div></div>
-                <div style="background:#1e293b; padding:10px; border-radius:6px;"><div style="font-size:10px; color:#94a3b8; text-transform:uppercase;">Télépilotes</div><div style="font-size:18px; font-weight:800; color:#fff;">${uniqAgents}</div></div>
-                <div style="background:#1e293b; padding:10px; border-radius:6px;"><div style="font-size:10px; color:#94a3b8; text-transform:uppercase;">Drones</div><div style="font-size:18px; font-weight:800; color:#fff;">${uniqDrones}</div></div>
+function _liveRenderStats() {
+    const wrap = document.getElementById('lm-stats-content');
+    if (!wrap) return;
+    const now = Date.now();
+    const today = new Date().toISOString().slice(0, 10);
+    const todayLabel = new Date().toLocaleDateString('fr-FR', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+    });
+
+    const tab = (id, label, active) => `<button type="button" data-stats-tab="${id}"
+        style="background:${active ? 'linear-gradient(135deg,#1e3a8a,#0f172a)' : 'transparent'};
+               color:${active ? '#fff' : '#94a3b8'};
+               border:1px solid ${active ? '#3b82f6' : '#334155'};
+               padding:6px 14px; border-radius:999px; font-size:12px; font-weight:700;
+               cursor:pointer; letter-spacing:.3px; transition:all .15s;">${label}</button>`;
+
+    const dateHeader = `
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:200px;">
+                <div style="font-size:10px; color:#94a3b8; text-transform:uppercase; letter-spacing:.7px;">Date du jour</div>
+                <div style="font-size:15px; font-weight:700; color:#fbbf24; text-transform:capitalize;">${todayLabel}</div>
             </div>
-        </section>
-        <section>
-            <div style="font-size:11px; color:#93c5fd; font-weight:700; letter-spacing:.5px; margin-bottom:8px; text-transform:uppercase;">Par drone</div>
-            ${tbl(droneRows, [
-                { align:'left',  label:'Drone' },
-                { align:'right', label:'Temps cumulé' },
-                { align:'right', label:'Vols' },
-                { align:'right', label:'Dernier' }
-            ])}
-        </section>
-        <section>
-            <div style="font-size:11px; color:#93c5fd; font-weight:700; letter-spacing:.5px; margin-bottom:8px; text-transform:uppercase;">Par batterie</div>
-            ${tbl(battRows, [
-                { align:'left',  label:'Batterie' },
-                { align:'left',  label:'Modèle drone' },
-                { align:'right', label:'Temps cumulé' },
-                { align:'right', label:'Utilisations' }
-            ])}
-        </section>
-    `;
+            <div style="display:flex; gap:6px;">
+                ${tab('today', 'Aujourd’hui', _liveStatsTab === 'today')}
+                ${tab('history', 'Jours précédents', _liveStatsTab === 'history')}
+            </div>
+        </div>`;
+
+    if (_liveStatsTab === 'today') {
+        const flights = _liveFlights().filter(f => f.startedAt && f.startedAt.startsWith(today));
+        const stats = _liveBuildStats(flights, now);
+        const { pilotRows, droneRows, battRows, tbl } = _liveStatsTables(stats);
+        wrap.innerHTML = dateHeader + `
+            <section>
+                <div style="font-size:11px; color:#93c5fd; font-weight:700; letter-spacing:.5px; margin-bottom:8px; text-transform:uppercase;">Global</div>
+                <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
+                    <div style="background:#1e293b; padding:10px; border-radius:6px;"><div style="font-size:10px; color:#94a3b8; text-transform:uppercase;">Temps total</div><div style="font-size:18px; font-weight:800; color:#fbbf24; font-family:ui-monospace,monospace;">${_liveFormatDuration(stats.totalMs)}</div></div>
+                    <div style="background:#1e293b; padding:10px; border-radius:6px;"><div style="font-size:10px; color:#94a3b8; text-transform:uppercase;">Vols</div><div style="font-size:18px; font-weight:800; color:#fff;">${flights.length}${stats.active ? ' <span style="font-size:10px; color:#22c55e;">(' + stats.active + ' en cours)</span>' : ''}</div></div>
+                    <div style="background:#1e293b; padding:10px; border-radius:6px;"><div style="font-size:10px; color:#94a3b8; text-transform:uppercase;">Télépilotes</div><div style="font-size:18px; font-weight:800; color:#fff;">${stats.uniqAgents}</div></div>
+                    <div style="background:#1e293b; padding:10px; border-radius:6px;"><div style="font-size:10px; color:#94a3b8; text-transform:uppercase;">Drones</div><div style="font-size:18px; font-weight:800; color:#fff;">${stats.uniqDrones}</div></div>
+                </div>
+            </section>
+            <section>
+                <div style="font-size:11px; color:#93c5fd; font-weight:700; letter-spacing:.5px; margin-bottom:8px; text-transform:uppercase;">Par télépilote</div>
+                ${tbl(pilotRows, [
+                    { align:'left',  label:'Télépilote' },
+                    { align:'right', label:'Temps cumulé' },
+                    { align:'right', label:'Vols' },
+                    { align:'right', label:'Drones' },
+                    { align:'right', label:'Dernier' }
+                ], 'Aucun vol pour le jour en cours.')}
+            </section>
+            <section>
+                <div style="font-size:11px; color:#93c5fd; font-weight:700; letter-spacing:.5px; margin-bottom:8px; text-transform:uppercase;">Par drone</div>
+                ${tbl(droneRows, [
+                    { align:'left',  label:'Drone' },
+                    { align:'right', label:'Temps cumulé' },
+                    { align:'right', label:'Vols' },
+                    { align:'right', label:'Dernier' }
+                ], 'Aucun vol pour le jour en cours.')}
+            </section>
+            <section>
+                <div style="font-size:11px; color:#93c5fd; font-weight:700; letter-spacing:.5px; margin-bottom:8px; text-transform:uppercase;">Par batterie</div>
+                ${tbl(battRows, [
+                    { align:'left',  label:'Batterie' },
+                    { align:'left',  label:'Modèle drone' },
+                    { align:'right', label:'Temps cumulé' },
+                    { align:'right', label:'Utilisations' }
+                ], 'Aucun vol pour le jour en cours.')}
+            </section>
+        `;
+    } else {
+        // Historique : groupe par jour (hors aujourd'hui), tri décroissant.
+        const flights = _liveFlights().filter(f => f.startedAt && !f.startedAt.startsWith(today));
+        const byDay = {};
+        flights.forEach(f => {
+            const d = f.startedAt.slice(0, 10);
+            if (!byDay[d]) byDay[d] = [];
+            byDay[d].push(f);
+        });
+        const days = Object.keys(byDay).sort().reverse();
+        if (!days.length) {
+            wrap.innerHTML = dateHeader + `
+                <div style="color:#64748b; font-size:12px; padding:24px; text-align:center; background:#1e293b; border-radius:8px;">
+                    Aucun vol enregistré sur les jours précédents.
+                </div>`;
+            return;
+        }
+        const sections = days.map(d => {
+            const dayFlights = byDay[d];
+            const stats = _liveBuildStats(dayFlights, now);
+            const { pilotRows, droneRows, battRows, tbl } = _liveStatsTables(stats);
+            const lbl = new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', {
+                weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+            });
+            return `
+                <details style="background:#1e293b; border-radius:8px; overflow:hidden; border:1px solid #334155;">
+                    <summary style="padding:12px 14px; cursor:pointer; font-weight:700; color:#fff; display:flex; gap:12px; align-items:center; list-style:none;">
+                        <span style="color:#93c5fd; text-transform:capitalize; flex:1;">${lbl}</span>
+                        <span style="font-family:ui-monospace,monospace; color:#fbbf24;">${_liveFormatDuration(stats.totalMs)}</span>
+                        <span style="color:#94a3b8; font-size:11px; font-weight:600;">${dayFlights.length} vol${dayFlights.length > 1 ? 's' : ''} · ${stats.uniqAgents} pilote${stats.uniqAgents > 1 ? 's' : ''} · ${stats.uniqDrones} drone${stats.uniqDrones > 1 ? 's' : ''}</span>
+                    </summary>
+                    <div style="padding:14px; border-top:1px solid #334155; display:flex; flex-direction:column; gap:14px;">
+                        <div>
+                            <div style="font-size:10px; color:#93c5fd; font-weight:700; letter-spacing:.5px; margin-bottom:6px; text-transform:uppercase;">Par télépilote</div>
+                            ${tbl(pilotRows, [
+                                { align:'left',  label:'Télépilote' },
+                                { align:'right', label:'Temps cumulé' },
+                                { align:'right', label:'Vols' },
+                                { align:'right', label:'Drones' },
+                                { align:'right', label:'Dernier' }
+                            ])}
+                        </div>
+                        <div>
+                            <div style="font-size:10px; color:#93c5fd; font-weight:700; letter-spacing:.5px; margin-bottom:6px; text-transform:uppercase;">Par drone</div>
+                            ${tbl(droneRows, [
+                                { align:'left',  label:'Drone' },
+                                { align:'right', label:'Temps cumulé' },
+                                { align:'right', label:'Vols' },
+                                { align:'right', label:'Dernier' }
+                            ])}
+                        </div>
+                        <div>
+                            <div style="font-size:10px; color:#93c5fd; font-weight:700; letter-spacing:.5px; margin-bottom:6px; text-transform:uppercase;">Par batterie</div>
+                            ${tbl(battRows, [
+                                { align:'left',  label:'Batterie' },
+                                { align:'left',  label:'Modèle drone' },
+                                { align:'right', label:'Temps cumulé' },
+                                { align:'right', label:'Utilisations' }
+                            ])}
+                        </div>
+                    </div>
+                </details>`;
+        }).join('');
+        wrap.innerHTML = dateHeader + `<div style="display:flex; flex-direction:column; gap:10px;">${sections}</div>`;
+    }
+
+    // Bind les onglets (après chaque render parce qu'on a réécrit le DOM).
+    wrap.querySelectorAll('[data-stats-tab]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const t = e.currentTarget.dataset.statsTab;
+            if (t && t !== _liveStatsTab) { _liveStatsTab = t; _liveRenderStats(); }
+        });
+    });
 }
 
 // Efface l'historique des vols (chronos cumulés par télépilote et drone/batterie
@@ -11875,7 +12092,9 @@ async function _liveRefreshAdsb() {
                     const R = (aircraftSearchRadiusKm || 20) * 1000;
                     _liveAttachRadarSweep(_liveAdsbMap, R);
                 } catch (e) { console.warn('[radar sweep] désactivé:', e); }
+                try { _liveUpdateScaleBar(); } catch (e) {}
             }, 250);
+            _liveAdsbMap.on('zoomend moveend resize', () => { try { _liveUpdateScaleBar(); } catch (e) {} });
             // Hook fullscreenchange + resize : à chaque transition on invalide
             // la taille et force un viewreset → tous les overlays (rings,
             // sweep <g>) se recalent.
@@ -12074,6 +12293,38 @@ function _liveRenderAdsbList(planes) {
 // 100% du positionnement géographique, sur tous les events de pan / zoom /
 // fullscreen / resize, par construction. La rotation est obtenue en
 // recalculant les vertices du polygone à chaque frame (requestAnimationFrame).
+// Met à jour la barre d'échelle dynamique. Calcule la distance géo de
+// la largeur de la barre CSS (100px) et le ratio km par cm CSS.
+function _liveUpdateScaleBar() {
+    if (!_liveAdsbMap) return;
+    const barEl = document.querySelector('#live-mode-overlay .lm-scalebar-line');
+    const distEl = document.getElementById('lm-scalebar-dist');
+    const cmEl = document.getElementById('lm-scalebar-cm');
+    if (!barEl || !distEl || !cmEl) return;
+    try {
+        // Largeur réelle de la barre en pixels CSS (peut varier si overridden).
+        const barPx = barEl.getBoundingClientRect().width || 100;
+        // Distance géo correspondant à barPx pixels au centre de la carte.
+        const c = _liveAdsbMap.getCenter();
+        const a = _liveAdsbMap.latLngToContainerPoint(c);
+        const b = _liveAdsbMap.containerPointToLatLng([a.x + barPx, a.y]);
+        const meters = c.distanceTo(b);
+        // 1 cm CSS ≈ 96 / 2.54 = 37.7953 px (constante CSS standard).
+        const PX_PER_CM = 96 / 2.54;
+        const metersPerCm = meters * (PX_PER_CM / barPx);
+
+        const fmt = (m) => {
+            if (m >= 1000) {
+                const km = m / 1000;
+                return (km >= 100 ? km.toFixed(0) : km >= 10 ? km.toFixed(1) : km.toFixed(2)) + ' km';
+            }
+            return Math.round(m) + ' m';
+        };
+        distEl.textContent = fmt(meters);
+        cmEl.innerHTML = '1&nbsp;cm&nbsp;=&nbsp;' + fmt(metersPerCm);
+    } catch (e) {}
+}
+
 function _liveAttachRadarSweep(map, radiusM) {
     if (!map || STATE.lat == null) return;
     // Cleanup intégral des versions précédentes (DOM + layers + raf).
