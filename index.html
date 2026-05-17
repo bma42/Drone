@@ -2181,7 +2181,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.12</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.13</strong></span>
             </div>
         </div>
 
@@ -2192,7 +2192,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.12';
+const APP_VERSION = 'v2026.05.17.13';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -10812,8 +10812,16 @@ function _liveInjectStyles() {
         }
         #live-mode-overlay .lm-card-ne { top: 56px;    right: 22px; }
         #live-mode-overlay .lm-card-nw { top: 56px;    left:  22px; }
-        #live-mode-overlay .lm-card-se { bottom: 50px; right: 22px; }
-        #live-mode-overlay .lm-card-sw { bottom: 50px; left:  22px; }
+        #live-mode-overlay .lm-card-se { bottom: 50px; right: 22px; transition: bottom .2s ease; }
+        #live-mode-overlay .lm-card-sw { bottom: 50px; left:  22px; transition: bottom .2s ease; }
+        /* Quand la liste d'aéronefs est non vide elle prend ~ max-height 180px
+           + 10px de margin → on remonte SE / SO au-dessus pour qu'ils restent
+           lisibles. Backstop via :has() (Safari 15.4+ / Chrome / Firefox récents)
+           ET via la classe .has-aclist toggled par JS pour les vieux navigateurs. */
+        #live-mode-overlay .lm-adsb:has(.lm-adsb-list:not(:empty)) .lm-card-se,
+        #live-mode-overlay .lm-adsb.has-aclist .lm-card-se { bottom: 210px; }
+        #live-mode-overlay .lm-adsb:has(.lm-adsb-list:not(:empty)) .lm-card-sw,
+        #live-mode-overlay .lm-adsb.has-aclist .lm-card-sw { bottom: 210px; }
         /* Barre d'échelle dynamique style IGN, intégrée dans le bandeau info. */
         #live-mode-overlay .lm-scalebar {
             pointer-events: none;
@@ -12265,11 +12273,16 @@ function _liveRenderAdsbInfo(planes) {
 function _liveRenderAdsbList(planes) {
     const list = document.getElementById('lm-adsb-list');
     if (!list) return;
-    if (!planes.length) { list.innerHTML = ''; return; }
+    // Toggle .has-aclist sur le panneau .lm-adsb → CSS remonte SE/SO en
+    // conséquence pour rester lisibles au-dessus de la liste.
+    const panel = list.closest('.lm-adsb');
+    const setHasList = (v) => { if (panel) panel.classList.toggle('has-aclist', !!v); };
+    if (!planes.length) { list.innerHTML = ''; setHasList(false); return; }
     const visible = planes
         .filter(a => a.isPriority || a.emergency || a.isHelicopter || (a.altM != null && a.altM < 500))
         .slice(0, 8);
-    if (!visible.length) { list.innerHTML = ''; return; }
+    if (!visible.length) { list.innerHTML = ''; setHasList(false); return; }
+    setHasList(true);
     const rows = visible.map(a => {
         const isPrio = a.isPriority || a.emergency;
         const isHeli = a.isHelicopter;
