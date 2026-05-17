@@ -2181,7 +2181,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.3</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.4</strong></span>
             </div>
         </div>
 
@@ -2192,7 +2192,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.3';
+const APP_VERSION = 'v2026.05.17.4';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -11767,8 +11767,19 @@ async function _liveRefreshAdsb() {
                 if (mapEl._leaflet_id) { try { delete mapEl._leaflet_id; } catch (e) {} }
                 mapEl.innerHTML = '';
             }
-            _liveAdsbMap = L.map('lm-adsb-map', { zoomControl: false, attributionControl: false })
-                .setView([STATE.lat, STATE.lon], 11);
+            _liveAdsbMap = L.map('lm-adsb-map', {
+                zoomControl: false,
+                attributionControl: false,
+                // CSS transitions Leaflet désactivées : sinon Safari, lors de
+                // l'entrée en plein écran, déclenche un transitionend bidon
+                // sur la classe .leaflet-zoom-animated → _onZoomTransitionEnd
+                // tape sur un _mapPane._leaflet_pos undefined (erreur visible
+                // dans la console). Pan/zoom restent fonctionnels, juste sans
+                // animation CSS.
+                zoomAnimation: false,
+                fadeAnimation: false,
+                markerZoomAnimation: false
+            }).setView([STATE.lat, STATE.lon], 11);
             // Zoom +/- relocalisés en bas-droite pour ne plus chevaucher le bandeau info.
             L.control.zoom({ position: 'bottomright' }).addTo(_liveAdsbMap);
             // Fond sombre (CARTO Dark Matter) avec fallback OSM si le tile renvoie une erreur.
@@ -11830,7 +11841,10 @@ async function _liveRefreshAdsb() {
             // pas encore appliqué) et le <g> se retrouve décalé.
             setTimeout(() => {
                 try { _liveAdsbMap.invalidateSize(); } catch (e) {}
-                try { _liveAttachRadarSweep(_liveAdsbMap, R); } catch (e) { console.warn('[radar sweep] désactivé:', e); }
+                try {
+                    const R = (aircraftSearchRadiusKm || 20) * 1000;
+                    _liveAttachRadarSweep(_liveAdsbMap, R);
+                } catch (e) { console.warn('[radar sweep] désactivé:', e); }
             }, 250);
             // Hook fullscreenchange + resize : à chaque transition on invalide
             // la taille et force un viewreset → tous les overlays (rings,
