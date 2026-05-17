@@ -10740,6 +10740,39 @@ function _liveInjectStyles() {
             0%   { transform: scale(1);   opacity: .9; }
             100% { transform: scale(5.5); opacity: 0; }
         }
+        /* Balayage radar : disque conique vert qui tourne. Le marqueur Leaflet
+           qui le porte est ancré à STATE.lat/lon → Leaflet gère seul la
+           position, ce disque ne fait QUE tourner. Aucune chance de décalage. */
+        #live-mode-overlay .lm-radar-sweep-disk {
+            width: 100%; height: 100%;
+            border-radius: 50%;
+            background: conic-gradient(from 0deg,
+                rgba(34, 197, 94, 0.85)  0deg,
+                rgba(34, 197, 94, 0.45)  14deg,
+                rgba(34, 197, 94, 0.18)  32deg,
+                rgba(34, 197, 94, 0.04)  60deg,
+                rgba(34, 197, 94, 0)     80deg,
+                rgba(34, 197, 94, 0)    360deg);
+            animation: lm-radar-rot 4s linear infinite;
+            will-change: transform;
+            transform-origin: center;
+            pointer-events: none;
+            mix-blend-mode: screen;
+        }
+        #live-mode-overlay .lm-radar-sweep-core {
+            position: absolute; top: 50%; left: 50%;
+            width: 8px; height: 8px; margin: -4px 0 0 -4px;
+            border-radius: 50%;
+            background: #22c55e;
+            box-shadow: 0 0 8px rgba(34, 197, 94, .9);
+            animation: lm-radar-core 1.6s ease-in-out infinite;
+            pointer-events: none;
+        }
+        @keyframes lm-radar-rot { to { transform: rotate(360deg); } }
+        @keyframes lm-radar-core {
+            0%, 100% { transform: scale(1);    opacity: 1; }
+            50%      { transform: scale(1.5);  opacity: .8; }
+        }
         #live-mode-overlay select#lm-adsb-refresh,
         #live-mode-overlay select#lm-meteo-refresh,
         #live-mode-overlay select#lm-adsb-refresh:hover,
@@ -11851,51 +11884,66 @@ function _liveRenderAdsbList(planes) {
 // recalculées à chaque move/zoom. Animation via <animateTransform> SVG
 // natif → universellement supporté (Safari compris).
 function _liveAttachRadarSweep(map, radiusM) {
-    const container = map.getContainer();
-    if (!container) { console.warn('[radar] no container'); return; }
-    container.querySelectorAll('.lm-radar-sweep-svg').forEach(n => n.remove());
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('class', 'lm-radar-sweep-svg');
-    svg.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:450;';
-    // Structure statique : on la pose UNE FOIS, puis on déplace seulement le
-    // <g> extérieur via setAttribute('transform', …). Sans cela on relançait
-    // l'animation SMIL à chaque event 'move' → rotation qui se reset et
-    // recalages visuels saccadés.
-    svg.innerHTML = `
-        <defs>
-            <radialGradient id="lm-sweep-grad" cx="0" cy="0" r="100" gradientUnits="userSpaceOnUse">
-                <stop offset="0%"  stop-color="rgba(34,197,94,0.85)"/>
-                <stop offset="40%" stop-color="rgba(34,197,94,0.35)"/>
-                <stop offset="100%" stop-color="rgba(34,197,94,0)"/>
-            </radialGradient>
-        </defs>
-        <g class="lm-sweep-outer">
-            <g class="lm-sweep-rot">
-                <path class="lm-sweep-path" d="" fill="url(#lm-sweep-grad)" opacity="0.95"/>
-                <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="0" to="360" dur="4s" repeatCount="indefinite"/>
-            </g>
-            <circle cx="0" cy="0" r="4" fill="#22c55e" opacity="0.95">
-                <animate attributeName="r" values="4;6;4" dur="1.6s" repeatCount="indefinite"/>
-            </circle>
-        </g>`;
-    container.appendChild(svg);
-    const outer = svg.querySelector('.lm-sweep-outer');
-    const path = svg.querySelector('.lm-sweep-path');
-    const grad = svg.querySelector('#lm-sweep-grad');
+    if (!map || STATE.lat == null) return;
+    // On purge toute ancienne implémentation SVG si elle traîne dans le DOM
+    // (versions précédentes basées sur container.appendChild → décalage observé
+    // pendant les pans animés).
+    try {
+        const c = map.getContainer();
+        if (c) c.querySelectorAll('.lm-radar-sweep-svg').forEach(n => n.remove());
+    } catch (e) {}
+    // Si un marqueur existe déjà, on le repositionne et on sort (zoom -> on
+    // veut juste recalculer la taille en pixels).
+    if (_liveAdsbMap && _liveAdsbMap._radarSweepMarker) {
+        try { _liveAdsbMap.removeLayer(_liveAdsbMap._radarSweepMarker); } catch (e) {}
+        _liveAdsbMap._radarSweepMarker = null;
+    }
+    // Taille pixel = diamètre du faisceau. À l'init on prend le rayon visible
+    // équivalent au search radius ; on rebuild via _liveResizeRadarSweep sur
+    // chaque zoom.
+    const sizePx = _liveComputeSweepSizePx(map, radiusM);
+    const icon = L.divIcon({
+        className: 'lm-radar-sweep-marker',
+        iconSize: [sizePx, sizePx],
+        iconAnchor: [sizePx / 2, sizePx / 2],
+        html: '<div class="lm-radar-sweep-disk"></div><div class="lm-radar-sweep-core"></div>'
+    });
+    const m = L.marker([STATE.lat, STATE.lon], {
+        icon, interactive: false, keyboard: false, zIndexOffset: -500
+    }).addTo(map);
+    _liveAdsbMap._radarSweepMarker = m;
+    _liveAdsbMap._radarSweepRadiusM = radiusM;
+    // Recalcule la taille pixel à chaque zoom. Le centre est géré par Leaflet
+    // via la latLng du marqueur → AUCUNE chance de décalage au pan.
+    if (!_liveAdsbMap._radarSweepZoomBound) {
+        _liveAdsbMap.on('zoomend', () => {
+            try { _liveResizeRadarSweep(_liveAdsbMap); } catch (e) {}
+        });
+        _liveAdsbMap._radarSweepZoomBound = true;
+    }
+}
 
-    const update = () => {
-        if (STATE.lat == null || !outer || !path || !grad) return;
-        const center = map.latLngToContainerPoint([STATE.lat, STATE.lon]);
-        const edge = map.latLngToContainerPoint(L.latLng(STATE.lat, STATE.lon).toBounds(radiusM * 2).getNorthEast());
-        const px = Math.max(60, Math.hypot(edge.x - center.x, edge.y - center.y));
-        const x2 = (px * Math.cos(Math.PI / 4)).toFixed(2);
-        const y2 = (px * Math.sin(Math.PI / 4)).toFixed(2);
-        outer.setAttribute('transform', `translate(${center.x.toFixed(2)} ${center.y.toFixed(2)})`);
-        path.setAttribute('d', `M 0 0 L ${px.toFixed(0)} 0 A ${px.toFixed(0)} ${px.toFixed(0)} 0 0 1 ${x2} ${y2} Z`);
-        grad.setAttribute('r', px.toFixed(0));
-    };
-    update();
-    map.on('move zoom resize viewreset', update);
+function _liveComputeSweepSizePx(map, radiusM) {
+    try {
+        const c = L.latLng(STATE.lat, STATE.lon);
+        const east = map.latLngToContainerPoint(c.toBounds(radiusM * 2).getNorthEast());
+        const ctr = map.latLngToContainerPoint(c);
+        const px = Math.hypot(east.x - ctr.x, east.y - ctr.y);
+        return Math.max(120, Math.round(px * 2));   // diamètre = 2 * rayon
+    } catch (e) { return 400; }
+}
+
+function _liveResizeRadarSweep(map) {
+    if (!map || !map._radarSweepMarker || STATE.lat == null) return;
+    const sizePx = _liveComputeSweepSizePx(map, map._radarSweepRadiusM || (aircraftSearchRadiusKm * 1000));
+    const icon = L.divIcon({
+        className: 'lm-radar-sweep-marker',
+        iconSize: [sizePx, sizePx],
+        iconAnchor: [sizePx / 2, sizePx / 2],
+        html: '<div class="lm-radar-sweep-disk"></div><div class="lm-radar-sweep-core"></div>'
+    });
+    map._radarSweepMarker.setIcon(icon);
+    map._radarSweepMarker.setLatLng([STATE.lat, STATE.lon]);
 }
 
 let _liveLastMeteo = {};      // mémorise les dernières valeurs pour calculer la flèche d'évolution
