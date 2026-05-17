@@ -2217,7 +2217,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.19</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.20</strong></span>
             </div>
         </div>
 
@@ -2228,7 +2228,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.19';
+const APP_VERSION = 'v2026.05.17.20';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -3930,19 +3930,37 @@ function renderWeather(j, dateISO) {
             </tr>`);
     }
 
-    // Mini-graphes vent et rafales pour visualiser l'évolution
+    // Mini-graphes vent / rafales + courbe température (axe Y droit)
     const wvals = h.wind_speed_10m.slice(iStart, iEnd + 1);
     const gvals = h.wind_gusts_10m.slice(iStart, iEnd + 1);
+    const tvals = (h.temperature_2m || []).slice(iStart, iEnd + 1);
     const labels = h.time.slice(iStart, iEnd + 1).map(t => t.slice(11, 16));
     const allMax = Math.max(...wvals, ...gvals, 50, 45);
-    const W = 460, Hh = 90, P = 14;
-    const xPos = (i, n) => P + (n <= 1 ? (W - 2 * P) / 2 : (i / (n - 1)) * (W - 2 * P));
+    const W = 460, Hh = 90, P = 14, PR = 30; // padding droit élargi pour les labels température
+    const xPos = (i, n) => P + (n <= 1 ? (W - P - PR) / 2 : (i / (n - 1)) * (W - P - PR));
     const yPos = v => Hh - P - (v / allMax) * (Hh - 2 * P);
     const mkPath = arr => arr.map((v, i) => (i === 0 ? 'M' : 'L') + xPos(i, arr.length).toFixed(1) + ',' + yPos(v).toFixed(1)).join(' ');
+    // Axe température : on prend l'enveloppe min/max + une marge de ±2°C arrondie.
+    const validT = tvals.filter(v => typeof v === 'number');
+    const tMin = validT.length ? Math.floor(Math.min(...validT) - 1) : 0;
+    const tMax = validT.length ? Math.ceil(Math.max(...validT) + 1) : 1;
+    const tRange = (tMax - tMin) || 1;
+    const yPosT = v => Hh - P - ((v - tMin) / tRange) * (Hh - 2 * P);
+    const mkPathT = arr => arr
+        .map((v, i) => typeof v === 'number'
+            ? (i === 0 || typeof arr[i-1] !== 'number' ? 'M' : 'L') + xPos(i, arr.length).toFixed(1) + ',' + yPosT(v).toFixed(1)
+            : null)
+        .filter(Boolean).join(' ');
     const xLabels = labels.map((l, i) => `<text x="${xPos(i, labels.length).toFixed(1)}" y="${Hh - 2}" text-anchor="middle" font-size="9" fill="#6b7280">${l}</text>`).join('');
-    const yGrid = [10, 20, 30, 40, 50].filter(v => v <= allMax).map(v => `<line x1="${P}" x2="${W-P}" y1="${yPos(v)}" y2="${yPos(v)}" stroke="#e5e7eb" stroke-width=".5"/><text x="${P-2}" y="${yPos(v)+3}" text-anchor="end" font-size="9" fill="#6b7280">${v}</text>`).join('');
+    const yGrid = [10, 20, 30, 40, 50].filter(v => v <= allMax).map(v => `<line x1="${P}" x2="${W-PR}" y1="${yPos(v)}" y2="${yPos(v)}" stroke="#e5e7eb" stroke-width=".5"/><text x="${P-2}" y="${yPos(v)+3}" text-anchor="end" font-size="9" fill="#6b7280">${v}</text>`).join('');
+    // Échelle température à droite : tickStep adaptatif (≤ 4 ticks pour ne pas saturer).
+    const tStep = tRange <= 4 ? 1 : tRange <= 10 ? 2 : tRange <= 20 ? 5 : 10;
+    const tTicks = [];
+    for (let v = Math.ceil(tMin / tStep) * tStep; v <= tMax; v += tStep) tTicks.push(v);
+    const yGridT = validT.length ? tTicks.map(v => `<text x="${W - PR + 4}" y="${yPosT(v) + 3}" text-anchor="start" font-size="9" fill="#b45309" font-weight="600">${v}°</text>`).join('') : '';
     const wPath = mkPath(wvals);
     const gPath = mkPath(gvals);
+    const tPath = validT.length ? mkPathT(tvals) : '';
 
     const html = `
         <div class="verdict ${verdict}">
@@ -3958,17 +3976,20 @@ function renderWeather(j, dateISO) {
                     const isMin = idx === 0;
                     const color = isMin ? '#dc2626' : '#d97706';
                     const opacity = isMin ? .65 : .5;
-                    return `<line x1="${P}" x2="${W-P}" y1="${yPos(lim)}" y2="${yPos(lim)}" stroke="${color}" stroke-width=".8" stroke-dasharray="3,2" opacity="${opacity}"/>
-                            <text x="${W-P}" y="${(yPos(lim) - 2).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" fill="${color}">${lim.toLocaleString('fr-FR')} km/h</text>`;
+                    return `<line x1="${P}" x2="${W-PR}" y1="${yPos(lim)}" y2="${yPos(lim)}" stroke="${color}" stroke-width=".8" stroke-dasharray="3,2" opacity="${opacity}"/>
+                            <text x="${W-PR}" y="${(yPos(lim) - 2).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" fill="${color}">${lim.toLocaleString('fr-FR')} km/h</text>`;
                 }).join('')}
                 <path d="${gPath} L${xPos(gvals.length-1, gvals.length)},${Hh-P} L${xPos(0, gvals.length)},${Hh-P} Z" fill="#fed7aa" fill-opacity=".5"/>
                 <path d="${gPath}" fill="none" stroke="#d97706" stroke-width="1.6"/>
                 <path d="${wPath}" fill="none" stroke="#0066cc" stroke-width="1.6"/>
+                ${tPath ? `<path d="${tPath}" fill="none" stroke="#b45309" stroke-width="1.6" stroke-dasharray="3,2"/>` : ''}
+                ${yGridT}
                 ${xLabels}
             </svg>
             <div style="margin-top:4px; font-size:11px;">
                 <span style="display:inline-flex; align-items:center; gap:6px; margin-right:14px;"><span style="width:14px; height:3px; background:#0066cc; display:inline-block; border-radius:2px;"></span>Vent moyen</span>
-                <span style="display:inline-flex; align-items:center; gap:6px;"><span style="width:14px; height:3px; background:#d97706; display:inline-block; border-radius:2px;"></span>Rafales</span>
+                <span style="display:inline-flex; align-items:center; gap:6px; margin-right:14px;"><span style="width:14px; height:3px; background:#d97706; display:inline-block; border-radius:2px;"></span>Rafales</span>
+                ${tPath ? `<span style="display:inline-flex; align-items:center; gap:6px;"><span style="width:14px; height:0; border-top:2px dashed #b45309; display:inline-block;"></span>Température (°C — axe droit)</span>` : ''}
                 ${droneLimits.length === 0
                     ? `<span style="display:inline-flex; align-items:center; gap:6px; margin-left:14px; color:#dc2626;"><span style="width:14px; height:0; border-top:1.5px dashed #dc2626; display:inline-block;"></span>Seuil NO-GO 43,2 km/h (par défaut)</span>`
                     : droneLimits.map((lim, idx) => {
@@ -6514,11 +6535,15 @@ function initZicadMap(items, lat, lon) {
     zicadMap = L.map(el, { scrollWheelZoom: false }).setView([lat, lon], 11);
     _frTileLayer().addTo(zicadMap);
 
-    items.forEach(z => {
+    // Trie par distance pour identifier la plus proche → on cadrera dessus.
+    const sorted = items.slice().sort((a, b) => (a.dist || 0) - (b.dist || 0));
+    let nearestLayer = null;
+    sorted.forEach((z, idx) => {
         try {
-            L.geoJSON(z.geom, {
+            const layer = L.geoJSON(z.geom, {
                 style: { color: '#dc2626', weight: 2, opacity: .9, fillColor: '#dc2626', fillOpacity: z.inside ? 0.35 : 0.18 }
             }).bindPopup(`<b>${z.name}</b>${z.type ? '<br>' + z.type : ''}<br>${z.inside ? '<strong style="color:#dc2626;">⚠ Point de mission DANS la ZICAD</strong>' : 'Distance : ' + fmtDist(z.dist)}<br><span style="font-size:11px; color:#6b7280;">Captation interdite sans autorisation préfectorale</span>`).addTo(zicadMap);
+            if (idx === 0) nearestLayer = layer;
         } catch (e) { /* skip */ }
     });
 
@@ -6526,7 +6551,24 @@ function initZicadMap(items, lat, lon) {
     zicadElongationCircle = STATE.radius
         ? L.circle([lat, lon], { radius: STATE.radius, color: '#d97706', fillColor: '#fbbf24', fillOpacity: .15, weight: 2 }).addTo(zicadMap).bindPopup(`<b>Élongation de vol</b><br>${STATE.radius} m`)
         : null;
-    fitMapToRadius(zicadMap, lat, lon, 15000);
+    // Par défaut on zoome sur la ZICAD la plus proche (englobe aussi le point
+    // de mission) et on ouvre son tooltip pour donner le contexte immédiat.
+    if (nearestLayer) {
+        try {
+            const b = nearestLayer.getBounds();
+            if (b && b.isValid()) {
+                // Étend les bounds pour inclure le point de mission, sinon on
+                // pourrait perdre la perspective si la ZICAD est loin.
+                b.extend([lat, lon]);
+                zicadMap.fitBounds(b, { padding: [30, 30], animate: false, maxZoom: 14 });
+                setTimeout(() => { try { nearestLayer.openPopup(); } catch (e) {} }, 250);
+            } else {
+                fitMapToRadius(zicadMap, lat, lon, 15000);
+            }
+        } catch (e) { fitMapToRadius(zicadMap, lat, lon, 15000); }
+    } else {
+        fitMapToRadius(zicadMap, lat, lon, 15000);
+    }
     setTimeout(() => zicadMap.invalidateSize(), 100);
 }
 
