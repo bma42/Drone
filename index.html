@@ -11853,44 +11853,49 @@ function _liveRenderAdsbList(planes) {
 function _liveAttachRadarSweep(map, radiusM) {
     const container = map.getContainer();
     if (!container) { console.warn('[radar] no container'); return; }
-    console.log('[radar] attach sweep');
     container.querySelectorAll('.lm-radar-sweep-svg').forEach(n => n.remove());
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'lm-radar-sweep-svg');
     svg.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:450;';
+    // Structure statique : on la pose UNE FOIS, puis on déplace seulement le
+    // <g> extérieur via setAttribute('transform', …). Sans cela on relançait
+    // l'animation SMIL à chaque event 'move' → rotation qui se reset et
+    // recalages visuels saccadés.
+    svg.innerHTML = `
+        <defs>
+            <radialGradient id="lm-sweep-grad" cx="0" cy="0" r="100" gradientUnits="userSpaceOnUse">
+                <stop offset="0%"  stop-color="rgba(34,197,94,0.85)"/>
+                <stop offset="40%" stop-color="rgba(34,197,94,0.35)"/>
+                <stop offset="100%" stop-color="rgba(34,197,94,0)"/>
+            </radialGradient>
+        </defs>
+        <g class="lm-sweep-outer">
+            <g class="lm-sweep-rot">
+                <path class="lm-sweep-path" d="" fill="url(#lm-sweep-grad)" opacity="0.95"/>
+                <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="0" to="360" dur="4s" repeatCount="indefinite"/>
+            </g>
+            <circle cx="0" cy="0" r="4" fill="#22c55e" opacity="0.95">
+                <animate attributeName="r" values="4;6;4" dur="1.6s" repeatCount="indefinite"/>
+            </circle>
+        </g>`;
     container.appendChild(svg);
+    const outer = svg.querySelector('.lm-sweep-outer');
+    const path = svg.querySelector('.lm-sweep-path');
+    const grad = svg.querySelector('#lm-sweep-grad');
 
-    const draw = () => {
-        if (STATE.lat == null) return;
+    const update = () => {
+        if (STATE.lat == null || !outer || !path || !grad) return;
         const center = map.latLngToContainerPoint([STATE.lat, STATE.lon]);
         const edge = map.latLngToContainerPoint(L.latLng(STATE.lat, STATE.lon).toBounds(radiusM * 2).getNorthEast());
         const px = Math.max(60, Math.hypot(edge.x - center.x, edge.y - center.y));
-        // 45° depuis l'axe X positif, dans le sens horaire
         const x2 = (px * Math.cos(Math.PI / 4)).toFixed(2);
         const y2 = (px * Math.sin(Math.PI / 4)).toFixed(2);
-        svg.innerHTML = `
-            <defs>
-                <radialGradient id="lm-sweep-grad" cx="0" cy="0" r="${px}" gradientUnits="userSpaceOnUse">
-                    <stop offset="0%"  stop-color="rgba(34,197,94,0.85)"/>
-                    <stop offset="40%" stop-color="rgba(34,197,94,0.35)"/>
-                    <stop offset="100%" stop-color="rgba(34,197,94,0)"/>
-                </radialGradient>
-            </defs>
-            <g transform="translate(${center.x} ${center.y})">
-                <g>
-                    <path d="M 0 0 L ${px.toFixed(0)} 0 A ${px.toFixed(0)} ${px.toFixed(0)} 0 0 1 ${x2} ${y2} Z" fill="url(#lm-sweep-grad)" opacity="0.95"/>
-                    <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="0" to="360" dur="4s" repeatCount="indefinite"/>
-                </g>
-                <circle cx="0" cy="0" r="4" fill="#22c55e" opacity="0.95">
-                    <animate attributeName="r" values="4;6;4" dur="1.6s" repeatCount="indefinite"/>
-                </circle>
-            </g>
-        `;
+        outer.setAttribute('transform', `translate(${center.x.toFixed(2)} ${center.y.toFixed(2)})`);
+        path.setAttribute('d', `M 0 0 L ${px.toFixed(0)} 0 A ${px.toFixed(0)} ${px.toFixed(0)} 0 0 1 ${x2} ${y2} Z`);
+        grad.setAttribute('r', px.toFixed(0));
     };
-    draw();
-    // Re-render à chaque changement de carte (pan / zoom / resize) pour que
-    // le centre du radar reste collé au point de mission.
-    map.on('move zoom resize', draw);
+    update();
+    map.on('move zoom resize viewreset', update);
 }
 
 let _liveLastMeteo = {};      // mémorise les dernières valeurs pour calculer la flèche d'évolution
