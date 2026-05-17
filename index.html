@@ -8462,8 +8462,39 @@ function _queueSpeak(msg) {
 }
 function speakAircraftAlert(a, opts) {
     if (!a) return;
-    _queueSpeak(_buildAlertMsg(a, opts));
+    if (!aircraftAlertSound) return;
+    const msg = _buildAlertMsg(a, opts);
     try { _liveSpotlightAircraft(a); } catch (e) {}
+    if (!('speechSynthesis' in window)) return;
+    try {
+        const u = new SpeechSynthesisUtterance(msg);
+        u.lang = 'fr-FR'; u.rate = 1.05; u.pitch = 1.0; u.volume = 1.0;
+        // Pan automatique : on suit l'aéronef pendant la vocale, on revient
+        // au centre de mission peu après la fin (à moins qu'une autre alerte
+        // ne prenne le relais entretemps).
+        u.onstart = () => { try { _liveFocusAircraft(a); } catch (e) {} };
+        u.onend = () => { try { _liveScheduleReturnToMission(); } catch (e) {} };
+        u.onerror = u.onend;
+        window.speechSynthesis.speak(u);
+    } catch (e) { console.warn('[speech]', e); }
+}
+
+// Pan vers l'aéronef en cours d'annonce + annule un retour-mission en attente.
+let _liveReturnTimer = null;
+function _liveFocusAircraft(a) {
+    if (_liveReturnTimer) { clearTimeout(_liveReturnTimer); _liveReturnTimer = null; }
+    if (typeof _liveAdsbMap === 'undefined' || !_liveAdsbMap) return;
+    if (!a || a.lat == null || a.lon == null) return;
+    try { _liveAdsbMap.panTo([a.lat, a.lon], { animate: true, duration: 0.6 }); } catch (e) {}
+}
+function _liveScheduleReturnToMission() {
+    if (_liveReturnTimer) clearTimeout(_liveReturnTimer);
+    _liveReturnTimer = setTimeout(() => {
+        _liveReturnTimer = null;
+        if (typeof _liveAdsbMap === 'undefined' || !_liveAdsbMap) return;
+        if (STATE.lat == null) return;
+        try { _liveAdsbMap.panTo([STATE.lat, STATE.lon], { animate: true, duration: 0.6 }); } catch (e) {}
+    }, 1200);
 }
 
 // Spotlight visuel sur la carte Live Mode pour identifier l'aéronef
