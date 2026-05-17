@@ -2181,7 +2181,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.2</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.3</strong></span>
             </div>
         </div>
 
@@ -2192,7 +2192,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.2';
+const APP_VERSION = 'v2026.05.17.3';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -12040,9 +12040,24 @@ function _liveAttachRadarSweep(map, radiusM) {
     if (map._sweepRaf) { try { cancelAnimationFrame(map._sweepRaf); } catch (e) {} map._sweepRaf = null; }
     if (map._sweepPolygon) { try { map.removeLayer(map._sweepPolygon); } catch (e) {} map._sweepPolygon = null; }
     if (map._sweepCore) { try { map.removeLayer(map._sweepCore); } catch (e) {} map._sweepCore = null; }
+    if (map._sweepDebugCircle) { try { map.removeLayer(map._sweepDebugCircle); } catch (e) {} map._sweepDebugCircle = null; }
     if (map._radarSweepOverlay) { try { map.removeLayer(map._radarSweepOverlay); } catch (e) {} map._radarSweepOverlay = null; }
     if (map._radarSweepMarker)  { try { map.removeLayer(map._radarSweepMarker);  } catch (e) {} map._radarSweepMarker  = null; }
     if (map._sweepG && map._sweepG.parentNode) { try { map._sweepG.parentNode.removeChild(map._sweepG); } catch (e) {} map._sweepG = null; }
+
+    // DEBUG v6 : un cercle rouge épais au point de mission. Si CE cercle suit
+    // la carte au pan mais que le polygone vert reste au centre, le bug est
+    // dans Leaflet/setLatLngs et pas dans la coord. Si tous les deux restent
+    // au centre de l'écran, c'est la carte elle-même qui ne pan pas (très
+    // improbable mais on saura).
+    try {
+        if (map._sweepDebugCircle) { map.removeLayer(map._sweepDebugCircle); map._sweepDebugCircle = null; }
+        map._sweepDebugCircle = L.circle([STATE.lat, STATE.lon], {
+            radius: 200, color: '#dc2626', weight: 4, fillColor: '#dc2626', fillOpacity: 0.5,
+            interactive: false
+        }).addTo(map);
+        console.log('[radar sweep v6] DEBUG red circle bounds:', map._sweepDebugCircle.getBounds().toBBoxString());
+    } catch (e) { console.warn('[radar sweep v6] debug circle:', e); }
 
     // Fabrique les vertices d'un secteur en lat/lng :
     // centre + arc de N points de startDeg à startDeg+sweepDeg + retour centre.
@@ -12097,7 +12112,18 @@ function _liveAttachRadarSweep(map, radiusM) {
     };
     map._sweepRaf = requestAnimationFrame(tick);
 
-    console.log('[radar sweep v5] L.polygon @' + STATE.lat + ',' + STATE.lon + ' build=' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : '?'));
+    // Diag complet : tu peux comparer dans la console les bounds du sweep,
+    // des anneaux et du cercle debug. Si tous ont les mêmes coords, c'est OK
+    // côté géo et le bug visuel vient d'ailleurs (cache / CSS / fullscreen).
+    try {
+        const first = map._rings && map._rings.getLayers && map._rings.getLayers()[0];
+        console.log('[radar sweep v6] mission =', STATE.lat, STATE.lon,
+            '| sweep bounds =', map._sweepPolygon.getBounds().toBBoxString(),
+            '| 1er anneau center =', first && first.getLatLng && first.getLatLng().toString(),
+            '| 1er anneau radius =', first && first.getRadius && first.getRadius() + 'm',
+            '| build =', (typeof APP_VERSION !== 'undefined' ? APP_VERSION : '?')
+        );
+    } catch (e) {}
 }
 
 let _liveLastMeteo = {};      // mémorise les dernières valeurs pour calculer la flèche d'évolution
