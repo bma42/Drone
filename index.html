@@ -257,6 +257,23 @@
             background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
             padding: 9px 14px; font-size: 12px;
         }
+        /* Boutons "Ajouter …" (drone, pilote, carte satellite) : même style
+           que les .gps-btn ("Ma position" / "Saisie GPS") mais avec un
+           gradient slate pour signaler un rôle secondaire et ne pas concurrencer
+           visuellement les primaires. */
+        .add-btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            width: 100%; padding: 11px 14px;
+            border: 0; border-radius: 8px;
+            font-size: 13px; font-weight: 700; color: #fff; cursor: pointer;
+            background: linear-gradient(135deg, #475569 0%, #334155 100%);
+            box-shadow: 0 2px 6px rgba(15,23,42,.12);
+            transition: transform .12s ease, box-shadow .15s ease, filter .15s ease;
+            letter-spacing: .15px;
+        }
+        .add-btn svg { width: 16px; height: 16px; flex-shrink: 0; filter: drop-shadow(0 1px 1px rgba(0,0,0,.18)); }
+        .add-btn:hover  { filter: brightness(1.1); box-shadow: 0 4px 12px rgba(15,23,42,.18); transform: translateY(-1px); }
+        .add-btn:active { transform: translateY(0); box-shadow: 0 1px 3px rgba(15,23,42,.18); }
         /* Boutons d'action généraux — partagés par tous les modules.
            Variantes couleur via .act-btn-{success,warning,danger,info,neutral}. */
         .act-btn {
@@ -1445,7 +1462,7 @@
                         <div class="hint no-print">Niveau de batterie déclenchant l'ordre de retour / atterrissage immédiat.</div>
                     </div>
                 </div>
-                <button type="button" id="sat-map-btn" class="no-print" onclick="toggleSatMap()" style="margin-top:10px; width:100%; padding:11px 14px; background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+                <button type="button" id="sat-map-btn" class="add-btn no-print" onclick="toggleSatMap()" style="margin-top:10px;">
                   <!--  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px; height:16px;"><circle cx="12" cy="12" r="3"/><path d="M12 1v6"/><path d="M12 17v6"/><path d="M4.22 4.22l4.24 4.24"/><path d="M15.54 15.54l4.24 4.24"/><path d="M1 12h6"/><path d="M17 12h6"/><path d="M4.22 19.78l4.24-4.24"/><path d="M15.54 8.46l4.24-4.24"/></svg> -->
                     <span id="sat-map-btn-label">Ajouter carte satellite</span>
                 </button>
@@ -1777,7 +1794,7 @@
                         </div>
                     </div>
                     <div id="custom-vectors"></div>
-                    <button type="button" class="btn btn-ghost no-print" style="margin-top:6px; width:100%; background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; font-size:13px; padding:9px 10px; font-weight:600; text-align:center; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="addCustomVector()">+ Ajouter un autre drone</button>
+                    <button type="button" class="add-btn no-print" style="margin-top:6px;" onclick="addCustomVector()">+ Ajouter un autre drone</button>
                     <div class="divider"></div>
                     <div class="check-option">
                         <input type="checkbox" id="kit-retrans" onchange="document.getElementById('retrans-box').style.display = this.checked ? 'block' : 'none'">
@@ -1812,7 +1829,7 @@
                         <div class="check-option"><input type="checkbox" id="p6"><label for="p6">GPX KAOULALA Nordine<br><span style="color:var(--c-muted); font-size:11px;">Matricule 235519</span></label><label class="redac-tool no-print" title="Désigner comme rédacteur de la préparation"><input type="radio" name="redac" data-name="GPX KAOULALA Nordine" data-matricule="235519" onchange="updateRedacteur()"></label><span class="redac-label-pdf">(Rédacteur de la préparation mission)</span></div>
                     </div>
                     <div id="custom-pilots"></div>
-                    <button type="button" class="no-print" onclick="addCustomPilot()" style="margin-top:8px; width:100%; background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; border-radius:6px; padding:9px 10px; font-size:13px; font-weight:600; cursor:pointer; text-align:center; display:flex; align-items:center; justify-content:center; gap:6px;">+ Ajouter un télépilote / observateur</button>
+                    <button type="button" class="add-btn no-print" onclick="addCustomPilot()" style="margin-top:8px;">+ Ajouter un télépilote / observateur</button>
                 </div>
 
                 <div class="field-group">
@@ -1830,7 +1847,7 @@
                         </thead>
                         <tbody id="auth-drone-tbody"></tbody>
                     </table>
-                    <button type="button" class="btn btn-ghost no-print" style="margin-top:8px; width:100%; background:#eef3fb; color:var(--c-primary); border:1px solid #cdd9ee; font-size:13px; padding:9px 10px; font-weight:600; text-align:center; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="addAuthDrone()">+ Ajouter un drone autorisé</button>
+                    <button type="button" class="add-btn no-print" style="margin-top:8px;" onclick="addAuthDrone()">+ Ajouter un drone autorisé</button>
                     <div class="empty-state no-print" id="auth-drone-empty">Aucun autre drone déclaré sur la zone.</div>
                 </div>
             </div>
@@ -2200,7 +2217,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.18</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.19</strong></span>
             </div>
         </div>
 
@@ -2211,7 +2228,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.18';
+const APP_VERSION = 'v2026.05.17.19';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -2737,6 +2754,21 @@ function _animateNumber(el, from, to, durMs, fmt) {
 // polylines, polygons) plutôt que le rayon théorique d'analyse, tout en gardant
 // le point de mission + le cercle d'élongation visibles. Le maxZoom évite de
 // trop zoomer quand un seul élément est très proche.
+// Cadre une carte de telle sorte que le cercle d'élongation (STATE.radius)
+// occupe environ 1/3 de la hauteur visible. Utilisé par §12 et §15.
+function _fitMapForElongation(map, lat, lon, fractionOfHeight) {
+    if (!map || lat == null || lon == null) return;
+    const r = STATE.radius || 500;
+    const dLat = r / 111000;
+    const dLon = r / (111000 * Math.cos(lat * Math.PI / 180));
+    const b = L.latLngBounds([lat - dLat, lon - dLon], [lat + dLat, lon + dLon]);
+    const sz = map.getSize();
+    if (!sz || !sz.y) { setTimeout(() => _fitMapForElongation(map, lat, lon, fractionOfHeight), 120); return; }
+    const frac = fractionOfHeight || (1 / 3);
+    const pad = Math.max(20, Math.round(sz.y * (1 - frac) / 2));
+    try { map.fitBounds(b, { padding: [pad, pad], animate: false, maxZoom: 17 }); } catch (e) {}
+}
+
 function fitMapToRadius(map, lat, lon, dataRadiusM, opts) {
     opts = opts || {};
     const maxZoom = opts.maxZoom != null ? opts.maxZoom : 15;
@@ -3214,7 +3246,8 @@ function refitAllMaps() {
     if (antennasMap) fitMapToRadius(antennasMap, lat, lon, 3000);
     // ighMap est désormais une carte MapLibre 3D : on saute fitMapToRadius (API Leaflet uniquement).
     if (railMap)     fitMapToRadius(railMap, lat, lon, 3000);
-    if (naturalMap)  fitMapToRadius(naturalMap, lat, lon, 5000);
+    if (naturalMap)  _fitMapForElongation(naturalMap, lat, lon);
+    if (uasMap)      _fitMapForElongation(uasMap, lat, lon);
     if (aircraftMap) fitMapToRadius(aircraftMap, lat, lon, aircraftSearchRadiusKm * 1000);
 }
 
@@ -5825,8 +5858,8 @@ function initNaturalMap(items, lat, lon) {
     naturalElongationCircle = STATE.radius
         ? L.circle([lat, lon], { radius: STATE.radius, color: '#d97706', fillColor: '#fbbf24', fillOpacity: .15, weight: 2 }).addTo(naturalMap).bindPopup(`<b>Élongation de vol</b><br>${STATE.radius} m`)
         : null;
-    // Cadrage ~2 km autour du point (zoom ≈ 14) → meilleur niveau de détail
-    fitMapToRadius(naturalMap, lat, lon, 2000);
+    // Cadrage adaptatif : l'élongation occupe ~1/3 de la hauteur de la carte.
+    _fitMapForElongation(naturalMap, lat, lon);
     setTimeout(() => naturalMap.invalidateSize(), 100);
 }
 
@@ -6217,6 +6250,8 @@ function initUasMap(items, lat, lon) {
     uasElongationCircle = STATE.radius
         ? L.circle([lat, lon], { radius: STATE.radius, color: '#d97706', fillColor: '#fbbf24', fillOpacity: .15, weight: 2 }).addTo(uasMap).bindPopup(`<b>Élongation de vol</b><br>${STATE.radius} m`)
         : null;
+    // Cadrage adaptatif : élongation ≈ 1/3 de la hauteur de la map.
+    _fitMapForElongation(uasMap, lat, lon);
     setTimeout(() => uasMap.invalidateSize(), 100);
 }
 
@@ -10421,14 +10456,69 @@ if (document.readyState === 'loading') {
 
 // Impression / sauvegarde PDF native du navigateur — pagination correcte, pas de coupure
 function exportPDF() {
-    waitMapReady().then(() => {
-        document.title = pdfFilename();
-        _renumberCardsForPrint();   // backup si beforeprint ne se déclenche pas (Safari iOS)
-        setTimeout(() => {
-            window.print();
-            setTimeout(() => { document.title = 'Drone mission'; _restoreCardNumbers(); }, 1500);
-        }, 200);
+    _showPdfLoader('Préparation du PDF…');
+    // 1) On force le dépliage de toutes les sections (sinon les cartes / contenus
+    //    repliés ne sont pas dans le PDF).
+    const reopened = [];
+    document.querySelectorAll('section.card.collapsed').forEach(c => {
+        c.classList.remove('collapsed');
+        reopened.push(c);
+        _invalidateMapsInCard(c);
     });
+    // 2) On laisse aux maps le temps de redessiner + tile-load (~1.5 s),
+    //    puis on lance le print. waitMapReady garde son rôle de barrière
+    //    de sécurité.
+    setTimeout(() => {
+        _showPdfLoader('Rafraîchissement des cartes…');
+        waitMapReady().then(() => {
+            _showPdfLoader('Génération du PDF…');
+            document.title = pdfFilename();
+            _renumberCardsForPrint();
+            setTimeout(() => {
+                window.print();
+                setTimeout(() => {
+                    document.title = 'Drone mission';
+                    _restoreCardNumbers();
+                    _hidePdfLoader();
+                    // Restaure l'état déplié/replié initial : on garde ouvert
+                    // (l'utilisateur peut replier manuellement à nouveau).
+                }, 1500);
+            }, 250);
+        });
+    }, 1500);
+}
+
+// Overlay loader pendant l'export PDF (utile : window.print peut être long
+// surtout sur Safari iOS quand plusieurs cartes doivent rafraîchir leurs
+// tuiles après un dépliage).
+function _showPdfLoader(msg) {
+    let lo = document.getElementById('pdf-loader');
+    if (!lo) {
+        lo = document.createElement('div');
+        lo.id = 'pdf-loader';
+        lo.className = 'no-print';
+        lo.style.cssText = 'position:fixed; inset:0; background:rgba(15,23,42,.72); display:flex; align-items:center; justify-content:center; z-index:100002; backdrop-filter:blur(2px); font-family:inherit;';
+        lo.innerHTML = `
+            <div style="background:#fff; border-radius:10px; padding:22px 28px; max-width:340px; text-align:center; box-shadow:0 12px 40px rgba(0,0,0,.45); display:flex; flex-direction:column; gap:14px; align-items:center;">
+                <svg width="38" height="38" viewBox="0 0 24 24" style="animation:lm-pdf-spin 1s linear infinite;" fill="none" stroke="#0b3d91" stroke-width="2.4" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                <div style="font-size:14px; font-weight:700; color:#0f172a;" id="pdf-loader-msg">Préparation du PDF…</div>
+                <div style="font-size:11px; color:#64748b; line-height:1.45;">Dépliage des modules, rafraîchissement des cartes, génération du document. Merci de patienter.</div>
+            </div>`;
+        document.body.appendChild(lo);
+        if (!document.getElementById('pdf-loader-style')) {
+            const st = document.createElement('style');
+            st.id = 'pdf-loader-style';
+            st.textContent = '@keyframes lm-pdf-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @media print { #pdf-loader { display: none !important; } }';
+            document.head.appendChild(st);
+        }
+    }
+    const m = document.getElementById('pdf-loader-msg');
+    if (m && msg) m.textContent = msg;
+    lo.style.display = 'flex';
+}
+function _hidePdfLoader() {
+    const lo = document.getElementById('pdf-loader');
+    if (lo) lo.style.display = 'none';
 }
 
 /* ===================================================================
