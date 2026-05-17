@@ -11721,17 +11721,26 @@ async function _liveRefreshAdsb() {
             // tuiles visibles : sinon on entend la voix avant que l'opérateur
             // n'ait visuellement la carte → impossible de localiser la cible.
             // 'load' Leaflet = toutes les tuiles visibles sont chargées.
+            // armAlerts ne se déclenche QU'une fois, et toujours après un
+            // minimum de 1,5 s VISUEL même si les tuiles sont en cache et que
+            // l'event 'load' fire instantanément. Sinon : pression sur Live
+            // Mode → load() ~50 ms après → alerte vocale immédiate, avant
+            // même que l'opérateur ait pu regarder la carte.
+            let _armRequested = false;
             const armAlerts = () => {
-                if (_liveModeAlertsArmed) return;
-                _liveModeAlertsArmed = true;
-                try { if (typeof toggleAircraftAlert === 'function') toggleAircraftAlert(true); } catch (e) {}
+                if (_liveModeAlertsArmed || _armRequested) return;
+                _armRequested = true;
+                setTimeout(() => {
+                    _liveModeAlertsArmed = true;
+                    try { if (typeof toggleAircraftAlert === 'function') toggleAircraftAlert(true); } catch (e) {}
+                }, 1500);
             };
             dark.on('load', armAlerts);
             osm.on('load', armAlerts);
             // Filet de sécurité : si 'load' ne se déclenche pas (tuiles cachées
             // par un autre événement, navigateur capricieux), on arme quand
-            // même après 3 s.
-            setTimeout(armAlerts, 3000);
+            // même après 4 s.
+            setTimeout(armAlerts, 4000);
             dark.addTo(_liveAdsbMap);
             _liveAdsbMap._rings = L.layerGroup().addTo(_liveAdsbMap);
             _liveRebuildAdsbRings();
@@ -11982,6 +11991,7 @@ function _liveAttachRadarSweep(map, radiusM) {
     `;
     const overlay = L.svgOverlay(svgEl, bounds, { interactive: false }).addTo(map);
     map._radarSweepOverlay = overlay;
+    console.log('[radar sweep] L.svgOverlay attached @', STATE.lat, STATE.lon, 'radius', radiusM, 'm — bounds', bounds.toBBoxString());
 }
 
 let _liveLastMeteo = {};      // mémorise les dernières valeurs pour calculer la flèche d'évolution
