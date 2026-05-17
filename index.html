@@ -8135,6 +8135,11 @@ let aircraftShowHighAlt = false;
 try { const v = localStorage.getItem('drone_aircraft_show_high'); if (v !== null) aircraftShowHighAlt = (v === '1'); } catch (e) {}
 let aircraftAutoRefresh = false;       // auto-refresh DÉSACTIVÉ par défaut
 let aircraftAlertSound = false;        // alerte sonore DÉSACTIVÉE par défaut
+// Master-gate : les alertes vocales / beeps ne peuvent SE DÉCLENCHER que si on
+// est en Live Mode ET que la carte radar a fini de charger ses tuiles. C'est
+// indépendant de la préférence utilisateur (aircraftAlertSound) et garantit
+// qu'on n'entend RIEN avant le moment où l'opérateur peut visualiser la cible.
+let _liveModeAlertsArmed = false;
 let aircraftRefreshSec = 15;           // intervalle de rafraîchissement (1 / 5 / 10 / 15 s) — 15 s par défaut
 try { const v = localStorage.getItem('drone_aircraft_refresh_sec'); if (v && [1,5,10,15].includes(parseInt(v,10))) aircraftRefreshSec = parseInt(v,10); } catch (e) {}
 function _alertRadiusM() { return aircraftSearchRadiusKm * 1000; }   // alerte = même rayon que la recherche
@@ -8142,7 +8147,10 @@ const ALERT_REMINDER_MS = 20000;       // re-bipe toutes les 20 s tant qu'un hé
 const _alertedHexes = new Set();       // hex déjà alertés (immédiat à la 1ʳᵉ détection)
 let _alertReminderTimer = null;
 let _alertAudioEl = null;
-try { const v = localStorage.getItem('drone_aircraft_alert'); if (v !== null) aircraftAlertSound = (v === '1'); } catch (e) {}
+// NOTE: on ne restaure PLUS aircraftAlertSound depuis localStorage. La règle est
+// désormais stricte : les alertes vocales sont activées par enterLiveMode (après
+// chargement des tuiles) et désactivées par exitLiveMode. Aucun déclenchement
+// possible quand on a juste choisi une adresse ou pressé Fast Fly.
 
 // Génère un WAV PCM 16-bit mono ~22 kHz contenant 3 tons d'alerte radar.
 // HTMLAudioElement est plus fiable que Web Audio API sur iOS Safari (qui exige
@@ -8213,6 +8221,7 @@ function _showToast(msg, kind) {
 
 // Joue le beep d'alerte. Force = true → ignore le toggle (bouton Test) et affiche un toast diagnostic.
 function playHeliAlertBeep(force) {
+    if (!force && !_liveModeAlertsArmed) return;
     if (!force && !aircraftAlertSound) return;
     const a = _getAlertAudioEl();
     if (!a) {
@@ -8331,6 +8340,8 @@ if (aircraftAlertSound) _startAlertReminderLoop();
 // plus loin si plusieurs apparaissent en même temps). Le beep ne se déclenche QU'en zone
 // danger (<1 km) — pour le reste, priorité à la synthèse vocale (cf. demande utilisateur).
 function _checkHeliAlerts(aircraft) {
+    // Master-gate : pas de Live Mode (ou carte pas encore chargée) → rien.
+    if (!_liveModeAlertsArmed) return;
     // Si les alertes sont désactivées on ne touche PAS à _alertedHexes : sinon
     // les aéronefs détectés silencieusement (page chargée avant l'entrée en
     // Live Mode) seraient marqués comme "déjà alertés" et la vocale ne se
@@ -8452,6 +8463,7 @@ function _buildAlertMsg(a, opts) {
 // Met une phrase dans la file TTS (n'interrompt PAS les phrases déjà en cours, contrairement
 // à cancel()+speak()) → permet l'enchaînement quand plusieurs aéronefs sont détectés en même temps.
 function _queueSpeak(msg) {
+    if (!_liveModeAlertsArmed) return;
     if (!aircraftAlertSound) return;
     if (!('speechSynthesis' in window)) return;
     try {
@@ -8462,6 +8474,7 @@ function _queueSpeak(msg) {
 }
 function speakAircraftAlert(a, opts) {
     if (!a) return;
+    if (!_liveModeAlertsArmed) return;
     if (!aircraftAlertSound) return;
     const msg = _buildAlertMsg(a, opts);
     try { _liveSpotlightAircraft(a); } catch (e) {}
@@ -11095,6 +11108,11 @@ function exitLiveMode() {
         return;
     }
     _liveExitConfirmed = false;
+    // Désarme les alertes : plus aucune vocale / beep ne peut sortir une fois
+    // qu'on a quitté le Live Mode (master-gate).
+    _liveModeAlertsArmed = false;
+    try { if (typeof toggleAircraftAlert === 'function') toggleAircraftAlert(false); } catch (e) {}
+    try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
     const overlay = document.getElementById('live-mode-overlay');
     if (overlay) overlay.style.display = 'none';
     document.body.style.overflow = '';
@@ -11704,8 +11722,8 @@ async function _liveRefreshAdsb() {
             // n'ait visuellement la carte → impossible de localiser la cible.
             // 'load' Leaflet = toutes les tuiles visibles sont chargées.
             const armAlerts = () => {
-                if (_liveAdsbMap && _liveAdsbMap._alertsArmed) return;
-                if (_liveAdsbMap) _liveAdsbMap._alertsArmed = true;
+                if (_liveModeAlertsArmed) return;
+                _liveModeAlertsArmed = true;
                 try { if (typeof toggleAircraftAlert === 'function') toggleAircraftAlert(true); } catch (e) {}
             };
             dark.on('load', armAlerts);
@@ -11913,70 +11931,57 @@ function _liveRenderAdsbList(planes) {
 // SVG superposé sur la carte, le cône est dessiné en coordonnées pixel
 // recalculées à chaque move/zoom. Animation via <animateTransform> SVG
 // natif → universellement supporté (Safari compris).
+// Balayage radar = SVG ancré à des LatLngBounds géographiques via L.svgOverlay.
+// C'est EXACTEMENT le même mécanisme que L.circle (qui marche pour les 4 anneaux)
+// → si les anneaux suivent le pan, le sweep aussi, sans aucune logique manuelle.
 function _liveAttachRadarSweep(map, radiusM) {
     if (!map || STATE.lat == null) return;
-    // On purge toute ancienne implémentation SVG si elle traîne dans le DOM
-    // (versions précédentes basées sur container.appendChild → décalage observé
-    // pendant les pans animés).
+    // Cleanup d'éventuelles anciennes implémentations qui traînent dans le DOM
+    // (versions container-based via appendChild ou Marker overlayPane).
     try {
         const c = map.getContainer();
-        if (c) c.querySelectorAll('.lm-radar-sweep-svg').forEach(n => n.remove());
+        if (c) c.querySelectorAll('.lm-radar-sweep-svg, .lm-radar-sweep-marker').forEach(n => n.remove());
     } catch (e) {}
-    // Si un marqueur existe déjà, on le repositionne et on sort (zoom -> on
-    // veut juste recalculer la taille en pixels).
-    if (_liveAdsbMap && _liveAdsbMap._radarSweepMarker) {
-        try { _liveAdsbMap.removeLayer(_liveAdsbMap._radarSweepMarker); } catch (e) {}
-        _liveAdsbMap._radarSweepMarker = null;
-    }
-    // Taille pixel = diamètre du faisceau. À l'init on prend le rayon visible
-    // équivalent au search radius ; on rebuild via _liveResizeRadarSweep sur
-    // chaque zoom.
-    const sizePx = _liveComputeSweepSizePx(map, radiusM);
-    const icon = L.divIcon({
-        className: 'lm-radar-sweep-marker',
-        iconSize: [sizePx, sizePx],
-        iconAnchor: [sizePx / 2, sizePx / 2],
-        html: '<div class="lm-radar-sweep-disk"></div><div class="lm-radar-sweep-core"></div>'
-    });
-    // overlayPane = celui des cercles / polygones, situé SOUS markerPane et qui
-    // pan exactement comme tout le contenu de la carte. On y met le sweep pour
-    // garantir qu'il glisse avec la carte et reste sous les icônes aéronef.
-    const m = L.marker([STATE.lat, STATE.lon], {
-        icon, interactive: false, keyboard: false, pane: 'overlayPane'
-    }).addTo(map);
-    _liveAdsbMap._radarSweepMarker = m;
-    _liveAdsbMap._radarSweepRadiusM = radiusM;
-    // Recalcule la taille pixel à chaque zoom. Le centre est géré par Leaflet
-    // via la latLng du marqueur → AUCUNE chance de décalage au pan.
-    if (!_liveAdsbMap._radarSweepZoomBound) {
-        _liveAdsbMap.on('zoomend', () => {
-            try { _liveResizeRadarSweep(_liveAdsbMap); } catch (e) {}
-        });
-        _liveAdsbMap._radarSweepZoomBound = true;
-    }
-}
+    if (map._radarSweepOverlay) { try { map.removeLayer(map._radarSweepOverlay); } catch (e) {} map._radarSweepOverlay = null; }
+    if (map._radarSweepMarker)  { try { map.removeLayer(map._radarSweepMarker);  } catch (e) {} map._radarSweepMarker  = null; }
 
-function _liveComputeSweepSizePx(map, radiusM) {
-    try {
-        const c = L.latLng(STATE.lat, STATE.lon);
-        const east = map.latLngToContainerPoint(c.toBounds(radiusM * 2).getNorthEast());
-        const ctr = map.latLngToContainerPoint(c);
-        const px = Math.hypot(east.x - ctr.x, east.y - ctr.y);
-        return Math.max(120, Math.round(px * 2));   // diamètre = 2 * rayon
-    } catch (e) { return 400; }
-}
+    // Conversion approximative mètres → degrés. Au cosinus(lat) près sur la
+    // longitude pour compenser la projection Mercator → la bounding box devient
+    // approximativement carrée en pixels écran, donc le faisceau circulaire
+    // reste circulaire à l'œil.
+    const dLat = radiusM / 111320;
+    const dLon = radiusM / (111320 * Math.cos(STATE.lat * Math.PI / 180));
+    const bounds = L.latLngBounds(
+        [STATE.lat - dLat, STATE.lon - dLon],
+        [STATE.lat + dLat, STATE.lon + dLon]
+    );
 
-function _liveResizeRadarSweep(map) {
-    if (!map || !map._radarSweepMarker || STATE.lat == null) return;
-    const sizePx = _liveComputeSweepSizePx(map, map._radarSweepRadiusM || (aircraftSearchRadiusKm * 1000));
-    const icon = L.divIcon({
-        className: 'lm-radar-sweep-marker',
-        iconSize: [sizePx, sizePx],
-        iconAnchor: [sizePx / 2, sizePx / 2],
-        html: '<div class="lm-radar-sweep-disk"></div><div class="lm-radar-sweep-core"></div>'
-    });
-    map._radarSweepMarker.setIcon(icon);
-    map._radarSweepMarker.setLatLng([STATE.lat, STATE.lon]);
+    // SVG avec viewBox carré centré sur (0,0). L.svgOverlay redimensionne
+    // l'élément pour qu'il colle pile aux bounds → tous les pans / zooms
+    // sont gérés par Leaflet, identiques aux L.circle des anneaux.
+    const NS = 'http://www.w3.org/2000/svg';
+    const svgEl = document.createElementNS(NS, 'svg');
+    svgEl.setAttribute('viewBox', '-100 -100 200 200');
+    svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    svgEl.style.pointerEvents = 'none';
+    svgEl.innerHTML = `
+        <defs>
+            <radialGradient id="lm-sweep-grad-ovl" cx="0" cy="0" r="100" gradientUnits="userSpaceOnUse">
+                <stop offset="0%"  stop-color="rgba(34,197,94,0.85)"/>
+                <stop offset="40%" stop-color="rgba(34,197,94,0.35)"/>
+                <stop offset="100%" stop-color="rgba(34,197,94,0)"/>
+            </radialGradient>
+        </defs>
+        <g>
+            <path d="M 0 0 L 100 0 A 100 100 0 0 1 70.71 70.71 Z" fill="url(#lm-sweep-grad-ovl)" opacity="0.92"/>
+            <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="0 0 0" to="360 0 0" dur="4s" repeatCount="indefinite"/>
+        </g>
+        <circle cx="0" cy="0" r="3" fill="#22c55e" opacity="0.95">
+            <animate attributeName="r" values="3;4.5;3" dur="1.6s" repeatCount="indefinite"/>
+        </circle>
+    `;
+    const overlay = L.svgOverlay(svgEl, bounds, { interactive: false }).addTo(map);
+    map._radarSweepOverlay = overlay;
 }
 
 let _liveLastMeteo = {};      // mémorise les dernières valeurs pour calculer la flèche d'évolution
