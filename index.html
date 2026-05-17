@@ -8472,7 +8472,16 @@ function speakAircraftAlert(a, opts) {
         // Pan automatique : on suit l'aéronef pendant la vocale, on revient
         // au centre de mission peu après la fin (à moins qu'une autre alerte
         // ne prenne le relais entretemps).
-        u.onstart = () => { try { _liveFocusAircraft(a); } catch (e) {} };
+        u.onstart = () => {
+            try {
+                // Re-résout l'aéronef par hex au moment où la vocale démarre
+                // réellement (la queue TTS peut avoir attendu) → on pan sur la
+                // position FRAÎCHE et le marqueur reste visible sous le pan.
+                const fresh = (a.hex && Array.isArray(STATE.aircraft))
+                    ? STATE.aircraft.find(x => x.hex === a.hex) : null;
+                _liveFocusAircraft(fresh || a);
+            } catch (e) {}
+        };
         u.onend = () => { try { _liveScheduleReturnToMission(); } catch (e) {} };
         u.onerror = u.onend;
         window.speechSynthesis.speak(u);
@@ -10590,7 +10599,11 @@ function enterLiveMode() {
         aircraftRefreshSec = 5;
         try { localStorage.setItem('drone_aircraft_refresh_sec', '5'); } catch (e) {}
         if (typeof toggleAircraftAuto === 'function') toggleAircraftAuto(true);
-        if (typeof toggleAircraftAlert === 'function') toggleAircraftAlert(true);
+        // toggleAircraftAlert(true) est différé : on l'arme une fois que les
+        // tuiles sont chargées (cf. dark.on('load') / osm.on('load') dans
+        // l'init de la carte). Cela évite que la voix annonce un aéronef
+        // pendant que la carte est encore en chargement (impossible à localiser).
+        if (typeof toggleAircraftAlert === 'function') toggleAircraftAlert(false);
         // Re-sync de l'icône cloche après le toggle (sinon le visuel reste
         // figé sur l'état précédent et le 1er clic semble inopérant).
         _liveSyncAlertBtn();
@@ -10743,28 +10756,30 @@ function _liveInjectStyles() {
         /* Balayage radar : disque conique vert qui tourne. Le marqueur Leaflet
            qui le porte est ancré à STATE.lat/lon → Leaflet gère seul la
            position, ce disque ne fait QUE tourner. Aucune chance de décalage. */
+        #live-mode-overlay .lm-radar-sweep-marker { background: transparent !important; border: 0 !important; }
         #live-mode-overlay .lm-radar-sweep-disk {
-            width: 100%; height: 100%;
+            position: absolute; inset: 0;
             border-radius: 50%;
+            overflow: hidden;
             background: conic-gradient(from 0deg,
-                rgba(34, 197, 94, 0.85)  0deg,
-                rgba(34, 197, 94, 0.45)  14deg,
-                rgba(34, 197, 94, 0.18)  32deg,
+                rgba(34, 197, 94, 0.80)  0deg,
+                rgba(34, 197, 94, 0.40)  14deg,
+                rgba(34, 197, 94, 0.16)  32deg,
                 rgba(34, 197, 94, 0.04)  60deg,
                 rgba(34, 197, 94, 0)     80deg,
                 rgba(34, 197, 94, 0)    360deg);
             animation: lm-radar-rot 4s linear infinite;
             will-change: transform;
-            transform-origin: center;
+            transform-origin: 50% 50%;
             pointer-events: none;
-            mix-blend-mode: screen;
+            opacity: .85;
         }
         #live-mode-overlay .lm-radar-sweep-core {
             position: absolute; top: 50%; left: 50%;
-            width: 8px; height: 8px; margin: -4px 0 0 -4px;
+            width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px;
             border-radius: 50%;
             background: #22c55e;
-            box-shadow: 0 0 8px rgba(34, 197, 94, .9);
+            box-shadow: 0 0 10px 1px rgba(34, 197, 94, .95);
             animation: lm-radar-core 1.6s ease-in-out infinite;
             pointer-events: none;
         }
@@ -11684,6 +11699,21 @@ async function _liveRefreshAdsb() {
             });
             const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 });
             dark.on('tileerror', () => { try { _liveAdsbMap.removeLayer(dark); osm.addTo(_liveAdsbMap); } catch (e) {} });
+            // Les alertes vocales ne doivent se déclencher qu'une fois les
+            // tuiles visibles : sinon on entend la voix avant que l'opérateur
+            // n'ait visuellement la carte → impossible de localiser la cible.
+            // 'load' Leaflet = toutes les tuiles visibles sont chargées.
+            const armAlerts = () => {
+                if (_liveAdsbMap && _liveAdsbMap._alertsArmed) return;
+                if (_liveAdsbMap) _liveAdsbMap._alertsArmed = true;
+                try { if (typeof toggleAircraftAlert === 'function') toggleAircraftAlert(true); } catch (e) {}
+            };
+            dark.on('load', armAlerts);
+            osm.on('load', armAlerts);
+            // Filet de sécurité : si 'load' ne se déclenche pas (tuiles cachées
+            // par un autre événement, navigateur capricieux), on arme quand
+            // même après 3 s.
+            setTimeout(armAlerts, 3000);
             dark.addTo(_liveAdsbMap);
             _liveAdsbMap._rings = L.layerGroup().addTo(_liveAdsbMap);
             _liveRebuildAdsbRings();
@@ -11908,8 +11938,11 @@ function _liveAttachRadarSweep(map, radiusM) {
         iconAnchor: [sizePx / 2, sizePx / 2],
         html: '<div class="lm-radar-sweep-disk"></div><div class="lm-radar-sweep-core"></div>'
     });
+    // overlayPane = celui des cercles / polygones, situé SOUS markerPane et qui
+    // pan exactement comme tout le contenu de la carte. On y met le sweep pour
+    // garantir qu'il glisse avec la carte et reste sous les icônes aéronef.
     const m = L.marker([STATE.lat, STATE.lon], {
-        icon, interactive: false, keyboard: false, zIndexOffset: -500
+        icon, interactive: false, keyboard: false, pane: 'overlayPane'
     }).addTo(map);
     _liveAdsbMap._radarSweepMarker = m;
     _liveAdsbMap._radarSweepRadiusM = radiusM;
