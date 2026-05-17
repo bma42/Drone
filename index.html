@@ -2181,7 +2181,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.9</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.10</strong></span>
             </div>
         </div>
 
@@ -2192,7 +2192,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.9';
+const APP_VERSION = 'v2026.05.17.10';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -11161,16 +11161,15 @@ function _liveShowExitConfirm(activeCount) {
         dlg.id = 'lm-exit-confirm';
         dlg.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.72); display:flex; align-items:center; justify-content:center; z-index:100001; backdrop-filter:blur(2px);';
         dlg.innerHTML = `
-            <div style="background:linear-gradient(180deg,#1e293b,#0f172a); border:1px solid #334155; border-radius:10px; padding:22px 24px; width:min(420px, 92vw); box-shadow:0 12px 40px rgba(0,0,0,.6); color:#e2e8f0; font-family:inherit;">
+            <div style="background:linear-gradient(180deg,#1e293b,#0f172a); border:1px solid #334155; border-radius:10px; padding:22px 24px; width:min(560px, 94vw); box-shadow:0 12px 40px rgba(0,0,0,.6); color:#e2e8f0; font-family:inherit;">
                 <h3 style="margin:0 0 8px; font-size:15px; color:#fbbf24; letter-spacing:.3px;">⚠ Vols en cours</h3>
-                <p style="margin:0 0 18px; font-size:13px; line-height:1.45; color:#cbd5e1;">
-                    <strong id="lm-exit-count" style="color:#fff;">0</strong> vol(s) sont encore en cours.<br>
-                    Terminer les vols et effacer les stats du jour avant de quitter ?
+                <p style="margin:0 0 18px; font-size:13px; line-height:1.5; color:#cbd5e1; text-align:justify; text-justify:inter-word;">
+                    <strong id="lm-exit-count" style="color:#fff;">0</strong> vol(s) sont encore en cours. Terminer les vols et effacer les stats du jour avant de quitter&nbsp;?
                 </p>
-                <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
-                    <button type="button" data-act="cancel" style="background:#0f172a; color:#cbd5e1; border:1px solid #334155; padding:7px 14px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;">Annuler</button>
-                    <button type="button" data-act="keep" style="background:#1e293b; color:#e2e8f0; border:1px solid #475569; padding:7px 14px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;">Non, garder en mémoire</button>
-                    <button type="button" data-act="end" style="background:linear-gradient(135deg,#dc2626,#b91c1c); color:#fff; border:0; padding:7px 14px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.4);">Oui, terminer</button>
+                <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:nowrap; white-space:nowrap;">
+                    <button type="button" data-act="cancel" style="flex:0 0 auto; background:#0f172a; color:#cbd5e1; border:1px solid #334155; padding:7px 14px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Annuler</button>
+                    <button type="button" data-act="keep" style="flex:0 0 auto; background:#1e293b; color:#e2e8f0; border:1px solid #475569; padding:7px 14px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap;">Non, garder en mémoire</button>
+                    <button type="button" data-act="end" style="flex:0 0 auto; background:linear-gradient(135deg,#dc2626,#b91c1c); color:#fff; border:0; padding:7px 14px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.4); white-space:nowrap;">Oui, terminer</button>
                 </div>
             </div>`;
         document.body.appendChild(dlg);
