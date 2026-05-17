@@ -2181,7 +2181,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.5</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.6</strong></span>
             </div>
         </div>
 
@@ -2192,7 +2192,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.5';
+const APP_VERSION = 'v2026.05.17.6';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -10766,9 +10766,45 @@ function _liveInjectStyles() {
             0%   { transform: scale(1);   opacity: .9; }
             100% { transform: scale(5.5); opacity: 0; }
         }
-        /* Anciennes implémentations CSS du radar (lm-radar-sweep-* / lm-adsb-sweep)
-           supprimées : on utilise désormais un L.polygon Leaflet ancré au point
-           de mission, géré 100% par Leaflet. */
+        /* Disque radar (v8) — div CSS posé dans overlayPane par
+           _liveAttachRadarSweep, dimensionné/positionné via JS pour rester
+           centré sur le point de mission. Le conic-gradient + la rotation
+           CSS reproduisent l'esthétique d'origine. */
+        #live-mode-overlay .lm-radar-disk-pan {
+            position: absolute;
+            pointer-events: none;
+            border-radius: 50%;
+            background: conic-gradient(from 0deg,
+                rgba(0, 255, 150, 0.55) 0deg,
+                rgba(0, 255, 150, 0.22) 10deg,
+                rgba(0, 255, 150, 0.08) 26deg,
+                rgba(0, 255, 150, 0.02) 50deg,
+                rgba(0, 255, 150, 0)    75deg,
+                rgba(0, 255, 150, 0)   360deg);
+            animation: lm-radar-disk-rot 5s linear infinite;
+            will-change: transform;
+            filter: blur(1.5px);
+            mix-blend-mode: screen;
+            opacity: 0.85;
+        }
+        #live-mode-overlay .lm-radar-disk-rings {
+            position: absolute;
+            pointer-events: none;
+            border-radius: 50%;
+            background:
+                radial-gradient(circle at center, transparent 0, transparent calc(50% - 1px), rgba(0,255,150,0.18) calc(50% - .5px), rgba(0,255,150,0.18) 50%, transparent calc(50% + .5px)),
+                radial-gradient(circle at center, transparent 0, transparent calc(33% - 1px), rgba(0,255,150,0.12) calc(33% - .5px), rgba(0,255,150,0.12) 33%, transparent calc(33% + .5px)),
+                radial-gradient(circle at center, transparent 0, transparent calc(16% - 1px), rgba(0,255,150,0.10) calc(16% - .5px), rgba(0,255,150,0.10) 16%, transparent calc(16% + .5px));
+            opacity: .55;
+            mix-blend-mode: screen;
+        }
+        @keyframes lm-radar-disk-rot {
+            from { transform: rotate(0deg); }
+            to   { transform: rotate(360deg); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #live-mode-overlay .lm-radar-disk-pan { animation: none; }
+        }
         #live-mode-overlay select#lm-adsb-refresh,
         #live-mode-overlay select#lm-meteo-refresh,
         #live-mode-overlay select#lm-adsb-refresh:hover,
@@ -11097,6 +11133,18 @@ function exitLiveMode() {
     if (_liveAdsbMap && _liveAdsbMap._sweepSlices) {
         try { _liveAdsbMap._sweepSlices.forEach(s => _liveAdsbMap.removeLayer(s)); } catch (e) {}
         _liveAdsbMap._sweepSlices = null;
+    }
+    if (_liveAdsbMap && _liveAdsbMap._sweepDiskUpdate) {
+        try { _liveAdsbMap.off('viewreset zoomend resize move', _liveAdsbMap._sweepDiskUpdate); } catch (e) {}
+        _liveAdsbMap._sweepDiskUpdate = null;
+    }
+    if (_liveAdsbMap && _liveAdsbMap._sweepDisk && _liveAdsbMap._sweepDisk.parentNode) {
+        try { _liveAdsbMap._sweepDisk.parentNode.removeChild(_liveAdsbMap._sweepDisk); } catch (e) {}
+        _liveAdsbMap._sweepDisk = null;
+    }
+    if (_liveAdsbMap && _liveAdsbMap._sweepRingsDiv && _liveAdsbMap._sweepRingsDiv.parentNode) {
+        try { _liveAdsbMap._sweepRingsDiv.parentNode.removeChild(_liveAdsbMap._sweepRingsDiv); } catch (e) {}
+        _liveAdsbMap._sweepRingsDiv = null;
     }
     const overlay = document.getElementById('live-mode-overlay');
     if (overlay) overlay.style.display = 'none';
@@ -11984,114 +12032,70 @@ function _liveRenderAdsbList(planes) {
 // recalculant les vertices du polygone à chaque frame (requestAnimationFrame).
 function _liveAttachRadarSweep(map, radiusM) {
     if (!map || STATE.lat == null) return;
-    // Cleanup des versions précédentes (DOM résiduel + tous les layers).
+    // Cleanup intégral des versions précédentes (DOM + layers + raf).
     try {
         const c = map.getContainer();
-        if (c) c.querySelectorAll('.lm-radar-sweep-svg, .lm-radar-sweep-marker, .lm-sweep-g, .lm-adsb-sweep').forEach(n => n.remove());
+        if (c) c.querySelectorAll('.lm-radar-sweep-svg, .lm-radar-sweep-marker, .lm-sweep-g, .lm-adsb-sweep, .lm-radar-disk-pan, .lm-radar-disk-rings').forEach(n => n.remove());
     } catch (e) {}
     if (map._sweepRaf) { try { cancelAnimationFrame(map._sweepRaf); } catch (e) {} map._sweepRaf = null; }
     if (map._sweepSlices) {
         try { map._sweepSlices.forEach(s => map.removeLayer(s)); } catch (e) {}
         map._sweepSlices = null;
     }
-    if (map._sweepPolygon)     { try { map.removeLayer(map._sweepPolygon); } catch (e) {} map._sweepPolygon = null; }
-    if (map._sweepCore)        { try { map.removeLayer(map._sweepCore); } catch (e) {} map._sweepCore = null; }
-    if (map._sweepCoreGlow)    { try { map.removeLayer(map._sweepCoreGlow); } catch (e) {} map._sweepCoreGlow = null; }
-    if (map._sweepLeadLine)    { try { map.removeLayer(map._sweepLeadLine); } catch (e) {} map._sweepLeadLine = null; }
-    if (map._sweepDebugCircle) { try { map.removeLayer(map._sweepDebugCircle); } catch (e) {} map._sweepDebugCircle = null; }
-    if (map._radarSweepOverlay){ try { map.removeLayer(map._radarSweepOverlay); } catch (e) {} map._radarSweepOverlay = null; }
-    if (map._radarSweepMarker) { try { map.removeLayer(map._radarSweepMarker); } catch (e) {} map._radarSweepMarker = null; }
+    ['_sweepPolygon','_sweepCore','_sweepCoreGlow','_sweepLeadLine',
+     '_sweepDebugCircle','_radarSweepOverlay','_radarSweepMarker'].forEach(k => {
+        if (map[k]) { try { map.removeLayer(map[k]); } catch (e) {} map[k] = null; }
+    });
     if (map._sweepG && map._sweepG.parentNode) { try { map._sweepG.parentNode.removeChild(map._sweepG); } catch (e) {} map._sweepG = null; }
+    if (map._sweepDiskUpdate) { try { map.off('viewreset zoomend resize move', map._sweepDiskUpdate); } catch (e) {} map._sweepDiskUpdate = null; }
+    map._sweepDisk = null;
+    map._sweepRingsDiv = null;
 
-    // Construction d'une tranche angulaire en lat/lng (centre + arc + retour).
-    const NUM_ARC = 10;
-    const cosLat = Math.cos(STATE.lat * Math.PI / 180);
-    const buildSlice = (startDeg, sweepDeg, scale) => {
-        const r = radiusM * (scale != null ? scale : 1);
-        const pts = [[STATE.lat, STATE.lon]];
-        for (let i = 0; i <= NUM_ARC; i++) {
-            const a = (startDeg + (sweepDeg * i / NUM_ARC)) * Math.PI / 180;
-            const dLat = (r * Math.cos(a)) / 111320;
-            const dLng = (r * Math.sin(a)) / (111320 * cosLat);
-            pts.push([STATE.lat + dLat, STATE.lon + dLng]);
-        }
-        return pts;
-    };
+    // L'effet d'origine que l'user préférait : un grand disque CSS avec
+    // conic-gradient, en mix-blend-mode screen, qui tourne. On le pose
+    // dans overlayPane → Leaflet le panne avec la carte (CSS transform du
+    // pane). On dimensionne et on positionne l'élément à chaque
+    // viewreset/zoom/resize.
+    const overlayPane = map.getPanes && map.getPanes().overlayPane;
+    if (!overlayPane) { console.warn('[radar sweep v8] no overlayPane'); return; }
 
-    // Cône radar = empilement de 6 tranches de plus en plus faibles vers la
-    // traîne. Donne l'effet "trail" militaire sans avoir besoin de gradient
-    // SVG complexe (qu'on n'a pas dans L.polygon).
-    const SLICES = [
-        { sweep: 2,  opacity: 0.85, scale: 1.00 },   // tête brillante
-        { sweep: 4,  opacity: 0.55, scale: 1.00 },
-        { sweep: 6,  opacity: 0.38, scale: 1.00 },
-        { sweep: 10, opacity: 0.22, scale: 1.00 },
-        { sweep: 14, opacity: 0.12, scale: 1.00 },
-        { sweep: 20, opacity: 0.05, scale: 1.00 },   // queue diffuse
-    ];
-    map._sweepSlices = SLICES.map((cfg) =>
-        L.polygon(buildSlice(0, cfg.sweep, cfg.scale), {
-            stroke: false,
-            fill: true,
-            fillColor: '#22c55e',
-            fillOpacity: cfg.opacity,
-            interactive: false,
-            className: 'lm-sweep-slice',
-            renderer: L.svg()
-        }).addTo(map)
-    );
+    const disk = document.createElement('div');
+    disk.className = 'lm-radar-disk-pan';
+    overlayPane.appendChild(disk);
+    map._sweepDisk = disk;
 
-    // Ligne radiale brillante en tête de balayage : effet "scanline" net.
-    const buildLead = (deg) => {
-        const a = deg * Math.PI / 180;
-        const dLat = (radiusM * Math.cos(a)) / 111320;
-        const dLng = (radiusM * Math.sin(a)) / (111320 * cosLat);
-        return [[STATE.lat, STATE.lon], [STATE.lat + dLat, STATE.lon + dLng]];
-    };
-    map._sweepLeadLine = L.polyline(buildLead(0), {
-        color: '#86efac', weight: 1.6, opacity: 0.95, interactive: false,
-        lineCap: 'round'
-    }).addTo(map);
+    const rings = document.createElement('div');
+    rings.className = 'lm-radar-disk-rings';
+    overlayPane.appendChild(rings);
+    map._sweepRingsDiv = rings;
 
-    // Halo glow + cœur lumineux au centre de mission.
-    map._sweepCoreGlow = L.circleMarker([STATE.lat, STATE.lon], {
-        radius: 10, color: '#22c55e', fillColor: '#22c55e',
-        fillOpacity: 0.25, weight: 0, interactive: false
-    }).addTo(map);
-    map._sweepCore = L.circleMarker([STATE.lat, STATE.lon], {
-        radius: 4, color: '#bbf7d0', fillColor: '#22c55e',
-        fillOpacity: 1, weight: 1.5, interactive: false
-    }).addTo(map);
-
-    // Boucle d'animation : ~60 fps. 60°/s = 1 tour en 6 s (plus lent =
-    // plus radar pro, moins agressif visuellement).
-    map._sweepAngle = 0;
-    let _last = performance.now();
-    const DEG_PER_SEC = 60;
-    const tick = (now) => {
-        const dt = (now - _last) / 1000;
-        _last = now;
-        map._sweepAngle = (map._sweepAngle + DEG_PER_SEC * dt) % 360;
+    // Calcule la taille pixel correspondant au rayon de recherche, et
+    // positionne le disque centré sur le point de mission.
+    const updateDisk = () => {
+        if (!map._sweepDisk || STATE.lat == null) return;
         try {
-            // Chaque tranche est positionnée DERRIÈRE l'angle courant (rotation
-            // sens horaire = vers la droite = sweep "passe" en éclairant les
-            // aéronefs côté avant de l'angle).
-            let offset = 0;
-            for (let i = 0; i < SLICES.length; i++) {
-                const cfg = SLICES[i];
-                offset += cfg.sweep;
-                const start = (map._sweepAngle - offset + 360) % 360;
-                map._sweepSlices[i].setLatLngs(buildSlice(start, cfg.sweep, cfg.scale));
-            }
-            if (map._sweepLeadLine) map._sweepLeadLine.setLatLngs(buildLead(map._sweepAngle));
-            if (map._sweepCore)     map._sweepCore.setLatLng([STATE.lat, STATE.lon]);
-            if (map._sweepCoreGlow) map._sweepCoreGlow.setLatLng([STATE.lat, STATE.lon]);
-        } catch (e) {}
-        map._sweepRaf = requestAnimationFrame(tick);
+            const p = map.latLngToLayerPoint([STATE.lat, STATE.lon]);
+            const e = map.latLngToLayerPoint(L.latLng(STATE.lat, STATE.lon).toBounds(radiusM * 2).getNorthEast());
+            // Diamètre = 2 * rayon-en-pixels. On élargit un peu pour que
+            // le conic-gradient flou ne soit pas coupé net au bord.
+            const rPx = Math.max(80, Math.hypot(e.x - p.x, e.y - p.y));
+            const D = Math.round(rPx * 2.2);
+            const setPos = (el) => {
+                if (!el) return;
+                el.style.width  = D + 'px';
+                el.style.height = D + 'px';
+                el.style.left   = (p.x - D / 2) + 'px';
+                el.style.top    = (p.y - D / 2) + 'px';
+            };
+            setPos(map._sweepDisk);
+            setPos(map._sweepRingsDiv);
+        } catch (err) {}
     };
-    map._sweepRaf = requestAnimationFrame(tick);
+    updateDisk();
+    map._sweepDiskUpdate = updateDisk;
+    map.on('viewreset zoomend resize move', updateDisk);
 
-    console.log('[radar sweep v7] L.polygon trail x' + SLICES.length + ' @' + STATE.lat + ',' + STATE.lon + ' build=' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : '?'));
+    console.log('[radar sweep v8] CSS conic-gradient disk in overlayPane @' + STATE.lat + ',' + STATE.lon + ' build=' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : '?'));
 }
 
 let _liveLastMeteo = {};      // mémorise les dernières valeurs pour calculer la flèche d'évolution
