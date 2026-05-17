@@ -8463,6 +8463,23 @@ function _queueSpeak(msg) {
 function speakAircraftAlert(a, opts) {
     if (!a) return;
     _queueSpeak(_buildAlertMsg(a, opts));
+    try { _liveSpotlightAircraft(a); } catch (e) {}
+}
+
+// Spotlight visuel sur la carte Live Mode pour identifier l'aéronef
+// dont on parle. No-op si la carte Live Mode n'est pas ouverte.
+function _liveSpotlightAircraft(a) {
+    if (typeof _liveAdsbMap === 'undefined' || !_liveAdsbMap || !a || a.lat == null || a.lon == null) return;
+    if (typeof L === 'undefined') return;
+    const icon = L.divIcon({
+        className: 'lm-spot-icon',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+        html: '<div class="lm-spot-ring"></div>'
+    });
+    const m = L.marker([a.lat, a.lon], { icon, interactive: false, keyboard: false, zIndexOffset: 9999 });
+    try { m.addTo(_liveAdsbMap); } catch (e) { return; }
+    setTimeout(() => { try { _liveAdsbMap.removeLayer(m); } catch (e) {} }, 2600);
 }
 
 // Callsigns français de secours / urgences sanitaires / sûreté à mettre en évidence
@@ -10668,6 +10685,30 @@ function _liveInjectStyles() {
            (pas de couleur de fond, juste la barre rouge). */
         #live-mode-overlay .lm-adsb-info button#lm-btn-alert .lm-bell-slash { opacity: 0; transition: opacity .15s; }
         #live-mode-overlay .lm-adsb-info button#lm-btn-alert:not(.on) .lm-bell-slash { opacity: 1; }
+        /* Spotlight : effet ripple vert sur la carte quand la vocale parle d'un aéronef.
+           Deux ondes successives + un cœur pulsé pour bien localiser la cible. */
+        #live-mode-overlay .lm-spot-ring {
+            width: 16px; height: 16px; border-radius: 50%;
+            background: rgba(34, 197, 94, .85);
+            box-shadow: 0 0 12px 2px rgba(34, 197, 94, .85);
+            animation: lm-spot-core 1.2s ease-in-out 2;
+            position: relative;
+        }
+        #live-mode-overlay .lm-spot-ring::before,
+        #live-mode-overlay .lm-spot-ring::after {
+            content: ''; position: absolute; inset: 0; border-radius: 50%;
+            border: 2.5px solid rgba(34, 197, 94, .9);
+        }
+        #live-mode-overlay .lm-spot-ring::before { animation: lm-spot-wave 1.6s ease-out infinite; }
+        #live-mode-overlay .lm-spot-ring::after  { animation: lm-spot-wave 1.6s ease-out .55s infinite; }
+        @keyframes lm-spot-core {
+            0%, 100% { transform: scale(1);    opacity: 1; }
+            50%      { transform: scale(1.35); opacity: .85; }
+        }
+        @keyframes lm-spot-wave {
+            0%   { transform: scale(1);   opacity: .9; }
+            100% { transform: scale(5.5); opacity: 0; }
+        }
         #live-mode-overlay select#lm-adsb-refresh,
         #live-mode-overlay select#lm-meteo-refresh,
         #live-mode-overlay select#lm-adsb-refresh:hover,
