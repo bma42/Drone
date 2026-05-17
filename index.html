@@ -2181,7 +2181,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.10</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.11</strong></span>
             </div>
         </div>
 
@@ -2192,7 +2192,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.10';
+const APP_VERSION = 'v2026.05.17.11';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -10814,35 +10814,38 @@ function _liveInjectStyles() {
         #live-mode-overlay .lm-card-nw { top: 56px;    left:  22px; }
         #live-mode-overlay .lm-card-se { bottom: 50px; right: 22px; }
         #live-mode-overlay .lm-card-sw { bottom: 50px; left:  22px; }
-        /* Barre d'échelle dynamique style IGN — coin bas-droit du panneau carte. */
+        /* Barre d'échelle dynamique style IGN, intégrée dans le bandeau info. */
         #live-mode-overlay .lm-scalebar {
-            position: absolute; bottom: 50px; right: 60px;
-            z-index: 901; pointer-events: none;
+            pointer-events: none;
             background: rgba(15, 23, 42, .82);
             border: 1px solid rgba(134, 239, 172, .35);
             border-radius: 5px;
-            padding: 5px 9px 4px;
+            padding: 3px 7px;
             font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-            box-shadow: 0 2px 6px rgba(0,0,0,.4);
-            display: flex; flex-direction: column; gap: 3px; align-items: stretch;
+            display: flex; flex-direction: column; gap: 2px; align-items: stretch;
+            flex: 0 0 auto;
         }
         #live-mode-overlay .lm-scalebar-line {
             position: relative;
-            height: 8px; width: 100px;
+            height: 6px; width: 80px;
             border-bottom: 2px solid rgba(134, 239, 172, .95);
-            box-shadow: 0 0 4px rgba(34, 197, 94, .55);
+            box-shadow: 0 0 3px rgba(34, 197, 94, .55);
         }
         #live-mode-overlay .lm-scalebar-tick {
-            position: absolute; bottom: -2px; width: 2px; height: 8px;
+            position: absolute; bottom: -2px; width: 2px; height: 6px;
             background: rgba(134, 239, 172, .95);
         }
         #live-mode-overlay .lm-scalebar-tick-l { left: 0; }
         #live-mode-overlay .lm-scalebar-tick-r { right: 0; }
         #live-mode-overlay .lm-scalebar-labels {
-            display: flex; justify-content: space-between;
-            font-size: 11px; font-weight: 700; color: #f1f5f9; letter-spacing: .3px;
-            line-height: 1.1;
+            display: flex; justify-content: space-between; gap: 6px;
+            font-size: 9.5px; font-weight: 700; color: #f1f5f9; letter-spacing: .2px;
+            line-height: 1.1; white-space: nowrap;
         }
+        #live-mode-overlay #lm-scalebar-cm { color: #86efac; }
+        /* Trend invert : sur "visibilité" une hausse est BONNE → on inverse les couleurs. */
+        #live-mode-overlay .lm-trend.up.invert   { color: #22c55e; }
+        #live-mode-overlay .lm-trend.down.invert { color: #ef4444; }
         /* Disque radar (v8) — div CSS posé dans overlayPane par
            _liveAttachRadarSweep, dimensionné/positionné via JS pour rester
            centré sur le point de mission. Le conic-gradient + la rotation
@@ -11300,6 +11303,11 @@ function _liveModeHtml() {
         <div class="lm-panel lm-adsb">
             <div class="lm-adsb-info" id="lm-adsb-info">
                 <span class="lm-stats" id="lm-adsb-stats">Chargement ADS-B…</span>
+                <!-- Barre d'échelle dynamique : à côté du statut aéronefs, juste avant la barre de loading. -->
+                <div class="lm-scalebar" aria-hidden="true">
+                    <div class="lm-scalebar-line"><span class="lm-scalebar-tick lm-scalebar-tick-l"></span><span class="lm-scalebar-tick lm-scalebar-tick-r"></span></div>
+                    <div class="lm-scalebar-labels"><span id="lm-scalebar-dist">—</span><span id="lm-scalebar-cm">1&nbsp;cm&nbsp;=&nbsp;—</span></div>
+                </div>
                 <div class="lm-progress-bar lm-progress-bar-adsb" id="lm-adsb-progress"><div class="lm-progress-fill" id="lm-adsb-progress-fill"></div></div>
                 <span class="lm-adsb-ctrl">
                     <label class="lm-adsb-radius" title="Rayon de détection ADS-B (km)">
@@ -11329,20 +11337,15 @@ function _liveModeHtml() {
             </div>
             <div class="lm-adsb-list" id="lm-adsb-list"></div>
             <div class="lm-adsb-map" id="lm-adsb-map"></div>
-            <!-- Mire cardinaux : 4 cardinaux + 4 intermédiaires (NE / SE / SO / NO). -->
-            <div class="lm-cardinal lm-card-n" aria-hidden="true"><span class="lm-card-tick"></span><span class="lm-card-lbl">N</span></div>
-            <div class="lm-cardinal lm-card-s" aria-hidden="true"><span class="lm-card-tick"></span><span class="lm-card-lbl">S</span></div>
-            <div class="lm-cardinal lm-card-e" aria-hidden="true"><span class="lm-card-tick"></span><span class="lm-card-lbl">E</span></div>
-            <div class="lm-cardinal lm-card-w" aria-hidden="true"><span class="lm-card-tick"></span><span class="lm-card-lbl">O</span></div>
-            <div class="lm-cardinal lm-card-ne lm-card-inter" aria-hidden="true"><span class="lm-card-lbl">NE</span></div>
-            <div class="lm-cardinal lm-card-se lm-card-inter" aria-hidden="true"><span class="lm-card-lbl">SE</span></div>
-            <div class="lm-cardinal lm-card-sw lm-card-inter" aria-hidden="true"><span class="lm-card-lbl">SO</span></div>
-            <div class="lm-cardinal lm-card-nw lm-card-inter" aria-hidden="true"><span class="lm-card-lbl">NO</span></div>
-            <!-- Barre d'échelle dynamique (mis à jour sur zoom). -->
-            <div class="lm-scalebar" aria-hidden="true">
-                <div class="lm-scalebar-line"><span class="lm-scalebar-tick lm-scalebar-tick-l"></span><span class="lm-scalebar-tick lm-scalebar-tick-r"></span></div>
-                <div class="lm-scalebar-labels"><span id="lm-scalebar-dist">—</span><span id="lm-scalebar-cm" style="margin-left:10px; color:#86efac;">1&nbsp;cm&nbsp;=&nbsp;—</span></div>
-            </div>
+            <!-- Mire cardinaux : 4 cardinaux + 4 intermédiaires en toutes lettres. -->
+            <div class="lm-cardinal lm-card-n" aria-hidden="true"><span class="lm-card-tick"></span><span class="lm-card-lbl">Nord</span></div>
+            <div class="lm-cardinal lm-card-s" aria-hidden="true"><span class="lm-card-tick"></span><span class="lm-card-lbl">Sud</span></div>
+            <div class="lm-cardinal lm-card-e" aria-hidden="true"><span class="lm-card-tick"></span><span class="lm-card-lbl">Est</span></div>
+            <div class="lm-cardinal lm-card-w" aria-hidden="true"><span class="lm-card-tick"></span><span class="lm-card-lbl">Ouest</span></div>
+            <div class="lm-cardinal lm-card-ne lm-card-inter" aria-hidden="true"><span class="lm-card-lbl">Nord-Est</span></div>
+            <div class="lm-cardinal lm-card-se lm-card-inter" aria-hidden="true"><span class="lm-card-lbl">Sud-Est</span></div>
+            <div class="lm-cardinal lm-card-sw lm-card-inter" aria-hidden="true"><span class="lm-card-lbl">Sud-Ouest</span></div>
+            <div class="lm-cardinal lm-card-nw lm-card-inter" aria-hidden="true"><span class="lm-card-lbl">Nord-Ouest</span></div>
         </div>
         <div class="lm-panel">
             <h3 style="display:flex; align-items:center; gap:8px;">
@@ -11925,13 +11928,17 @@ function _liveRenderStats() {
         wrap.innerHTML = dateHeader + `<div style="display:flex; flex-direction:column; gap:10px;">${sections}</div>`;
     }
 
-    // Bind les onglets (après chaque render parce qu'on a réécrit le DOM).
-    wrap.querySelectorAll('[data-stats-tab]').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const t = e.currentTarget.dataset.statsTab;
+    // Event delegation pour les onglets (pas de re-binding par re-render → pas
+    // de risque de handler perdu après un switch vers la vue historique).
+    if (!wrap._statsTabsBound) {
+        wrap.addEventListener('click', (e) => {
+            const btn = e.target && e.target.closest && e.target.closest('[data-stats-tab]');
+            if (!btn) return;
+            const t = btn.dataset.statsTab;
             if (t && t !== _liveStatsTab) { _liveStatsTab = t; _liveRenderStats(); }
         });
-    });
+        wrap._statsTabsBound = true;
+    }
 }
 
 // Efface l'historique des vols (chronos cumulés par télépilote et drone/batterie
@@ -12459,10 +12466,9 @@ async function _liveRefreshMeteo() {
             _liveMeteoFirstLoad = false;
         }
         // Flèche d'évolution : ▲ rouge si valeur en hausse, ▼ vert si baisse.
-        // Si pas de variation significative au dernier refresh, on garde la
-        // dernière direction connue (animée) pour que les triangles soient
-        // toujours visibles tant qu'une tendance existe.
-        const trend = (key, threshold) => {
+        // Sur les métriques où "hausse = bon" (ex visibilité), on passe
+        // invert=true et la couleur s'inverse (▲ vert / ▼ rouge).
+        const trend = (key, threshold, invert) => {
             const prev = _liveLastMeteo[key];
             if (prev != null) {
                 const d = values[key] - prev;
@@ -12472,9 +12478,10 @@ async function _liveRefreshMeteo() {
             }
             const dir = _liveLastTrend[key];
             if (!dir) return '';
+            const inv = invert ? ' invert' : '';
             return dir === 'up'
-                ? '<span class="lm-trend up">▲</span>'
-                : '<span class="lm-trend down">▼</span>';
+                ? '<span class="lm-trend up' + inv + '">▲</span>'
+                : '<span class="lm-trend down' + inv + '">▼</span>';
         };
         const dir = c.wind_direction_10m || 0;
         const grid = document.getElementById('lm-meteo-grid');
@@ -12505,7 +12512,7 @@ async function _liveRefreshMeteo() {
                 <div class="lm-tile-k">Pression</div>
                 <div class="lm-tile-v">${values.press.toFixed(0)}<span class="lm-tile-u">hPa</span></div>
             </div>
-            <div class="lm-tile ${values.vis < 5 ? 'warn' : 'ok'}">${trend('vis', 0.1)}
+            <div class="lm-tile ${values.vis < 5 ? 'warn' : 'ok'}">${trend('vis', 0.1, true)}
                 <div class="lm-tile-k">Visibilité</div>
                 <div class="lm-tile-v">${values.vis.toFixed(1)}<span class="lm-tile-u">km</span></div>
             </div>
