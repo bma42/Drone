@@ -2181,7 +2181,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.6</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.7</strong></span>
             </div>
         </div>
 
@@ -2192,7 +2192,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.6';
+const APP_VERSION = 'v2026.05.17.7';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -10766,6 +10766,45 @@ function _liveInjectStyles() {
             0%   { transform: scale(1);   opacity: .9; }
             100% { transform: scale(5.5); opacity: 0; }
         }
+        /* Mire cardinaux : N / E / S / O fixés sur les bords du panneau carte.
+           Style militaire discret, vert phosphorescent assorti au radar.
+           Pointer-events:none → ne gêne ni les clics carte ni les controles. */
+        #live-mode-overlay .lm-cardinal {
+            position: absolute; z-index: 900; pointer-events: none;
+            display: flex; align-items: center; gap: 4px;
+            color: rgba(134, 239, 172, 0.9); font-weight: 800; font-size: 13px;
+            letter-spacing: 1.4px; font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+            text-shadow: 0 0 4px rgba(34, 197, 94, .9), 0 0 1px rgba(0,0,0,.9);
+        }
+        #live-mode-overlay .lm-cardinal .lm-card-tick {
+            display: inline-block;
+            background: rgba(134, 239, 172, .75);
+            box-shadow: 0 0 4px rgba(34, 197, 94, .85);
+        }
+        /* Nord — haut centre. Tick vertical. */
+        #live-mode-overlay .lm-card-n {
+            top: 48px; left: 50%; transform: translateX(-50%);
+            flex-direction: column; gap: 2px;
+        }
+        #live-mode-overlay .lm-card-n .lm-card-tick { width: 2px; height: 14px; }
+        /* Sud — bas centre. Tick vertical, label sous le tick. */
+        #live-mode-overlay .lm-card-s {
+            bottom: 40px; left: 50%; transform: translateX(-50%);
+            flex-direction: column-reverse; gap: 2px;
+        }
+        #live-mode-overlay .lm-card-s .lm-card-tick { width: 2px; height: 14px; }
+        /* Est — milieu droit. Tick horizontal, label à gauche du tick. */
+        #live-mode-overlay .lm-card-e {
+            right: 10px; top: 50%; transform: translateY(-50%);
+            flex-direction: row-reverse; gap: 4px;
+        }
+        #live-mode-overlay .lm-card-e .lm-card-tick { width: 14px; height: 2px; }
+        /* Ouest — milieu gauche. Tick horizontal, label à droite du tick. */
+        #live-mode-overlay .lm-card-w {
+            left: 10px; top: 50%; transform: translateY(-50%);
+            flex-direction: row; gap: 4px;
+        }
+        #live-mode-overlay .lm-card-w .lm-card-tick { width: 14px; height: 2px; }
         /* Disque radar (v8) — div CSS posé dans overlayPane par
            _liveAttachRadarSweep, dimensionné/positionné via JS pour rester
            centré sur le point de mission. Le conic-gradient + la rotation
@@ -11238,6 +11277,11 @@ function _liveModeHtml() {
             </div>
             <div class="lm-adsb-list" id="lm-adsb-list"></div>
             <div class="lm-adsb-map" id="lm-adsb-map"></div>
+            <!-- Mire cardinaux : indicateurs N / E / S / O sur les bords du panneau carte. -->
+            <div class="lm-cardinal lm-card-n" aria-hidden="true"><span class="lm-card-tick"></span><span class="lm-card-lbl">N</span></div>
+            <div class="lm-cardinal lm-card-s" aria-hidden="true"><span class="lm-card-tick"></span><span class="lm-card-lbl">S</span></div>
+            <div class="lm-cardinal lm-card-e" aria-hidden="true"><span class="lm-card-tick"></span><span class="lm-card-lbl">E</span></div>
+            <div class="lm-cardinal lm-card-w" aria-hidden="true"><span class="lm-card-tick"></span><span class="lm-card-lbl">O</span></div>
         </div>
         <div class="lm-panel">
             <h3 style="display:flex; align-items:center; gap:8px;">
