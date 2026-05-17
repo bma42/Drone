@@ -2181,7 +2181,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.16</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.17</strong></span>
             </div>
         </div>
 
@@ -2192,7 +2192,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.16';
+const APP_VERSION = 'v2026.05.17.17';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -10881,7 +10881,7 @@ function _liveInjectStyles() {
             font-size: 9.5px; font-weight: 700; color: #f1f5f9; letter-spacing: .2px;
             line-height: 1.1; white-space: nowrap;
         }
-        #live-mode-overlay #lm-scalebar-cm { color: #86efac; }
+        #live-mode-overlay .lm-scalebar-labels span { color: #f1f5f9; }
         /* Trend invert : sur "visibilité" une hausse est BONNE → on inverse les couleurs. */
         #live-mode-overlay .lm-trend.up.invert   { color: #22c55e; }
         #live-mode-overlay .lm-trend.down.invert { color: #ef4444; }
@@ -11361,7 +11361,7 @@ function _liveModeHtml() {
                 <!-- Barre d'échelle dynamique : à côté du statut aéronefs, juste avant la barre de loading. -->
                 <div class="lm-scalebar" aria-hidden="true">
                     <div class="lm-scalebar-line"><span class="lm-scalebar-tick lm-scalebar-tick-l"></span><span class="lm-scalebar-tick lm-scalebar-tick-r"></span></div>
-                    <div class="lm-scalebar-labels"><span id="lm-scalebar-dist">—</span><span id="lm-scalebar-cm">1&nbsp;cm&nbsp;=&nbsp;—</span></div>
+                    <div class="lm-scalebar-labels"><span id="lm-scalebar-dist">—</span></div>
                 </div>
                 <div class="lm-progress-bar lm-progress-bar-adsb" id="lm-adsb-progress"><div class="lm-progress-fill" id="lm-adsb-progress-fill"></div></div>
                 <span class="lm-adsb-ctrl">
@@ -12433,14 +12433,12 @@ function _liveUpdateScaleBar() {
     if (!_liveAdsbMap) return;
     const lineEl = document.querySelector('#live-mode-overlay .lm-scalebar-line');
     const distEl = document.getElementById('lm-scalebar-dist');
-    const cmEl = document.getElementById('lm-scalebar-cm');
-    if (!lineEl || !distEl || !cmEl) return;
+    if (!lineEl || !distEl) return;
     try {
         const c = _liveAdsbMap.getCenter();
         const z = _liveAdsbMap.getZoom();
         // m/px Web Mercator au centre de la carte
         const metersPerPx = 156543.03392 * Math.cos(c.lat * Math.PI / 180) / Math.pow(2, z);
-        // Choisit le plus grand multiple "rond" qui rentre dans MAX_PX.
         const MAX_PX = 110;
         const NICE = [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000, 20000, 25000, 50000, 100000, 200000];
         let chosen = NICE[0];
@@ -12457,9 +12455,6 @@ function _liveUpdateScaleBar() {
             return Math.round(m) + ' m';
         };
         distEl.textContent = fmt(chosen);
-        // 1 cm CSS = 96/2.54 = 37.7953 px.
-        const metersPerCm = metersPerPx * (96 / 2.54);
-        cmEl.innerHTML = '1&nbsp;cm&nbsp;=&nbsp;' + fmt(metersPerCm);
     } catch (e) {}
 }
 
