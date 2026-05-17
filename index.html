@@ -2251,7 +2251,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.24</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.25</strong></span>
             </div>
         </div>
 
@@ -2262,7 +2262,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.24';
+const APP_VERSION = 'v2026.05.17.25';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -3698,41 +3698,99 @@ const _VIGI_COLORS = {
 
 async function fetchVigilance(dept) {
     if (!dept) { STATE.vigilance = null; _injectVigilanceBanner(); return; }
-    const tries = [
-        `code_insee_dep="${dept}"`,
-        `code_insee="${dept}"`,
-        `dep_code="${dept}"`,
-        `code_dept="${dept}"`,
-        `departement="${dept}"`
-    ];
-    // Cascade : direct → corsproxy.io → allorigins.win. Sur Safari/GitHub
-    // Pages l'appel direct à opendatasoft est CORS-bloqué — on bascule
-    // automatiquement sur un proxy public pour ramener la donnée réelle.
-    const buildUrls = (w) => {
-        const direct = `https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/weatherref-france-vigilance-meteo-departement/records?where=${encodeURIComponent(w)}&limit=30`;
-        return [
-            direct,
-            'https://corsproxy.io/?url=' + encodeURIComponent(direct),
-            'https://api.allorigins.win/raw?url=' + encodeURIComponent(direct)
-        ];
-    };
+    const log = (...a) => { try { console.log('[vigilance §4]', ...a); } catch (e) {} };
     let records = [];
     let anySuccess = false;
-    outer: for (const w of tries) {
-        for (const url of buildUrls(w)) {
-            try {
-                const r = await fetchWithTimeout(url, {}, 8000);
-                if (!r.ok) continue;
+    let lastErr = null;
+
+    // ── 1) API OFFICIELLE Météo-France si un token est configuré ─────────
+    // L'utilisateur peut coller son token (gratuit via portail-api.meteofrance.fr)
+    // dans localStorage avec : localStorage.setItem('drone_mf_token', '...')
+    let mfToken = null;
+    try { mfToken = localStorage.getItem('drone_mf_token') || null; } catch (e) {}
+    if (mfToken) {
+        const mfUrl = 'https://public-api.meteofrance.fr/public/DPVigilance/v1/cartevigilance/encours';
+        try {
+            const r = await fetchWithTimeout(mfUrl, {
+                headers: { 'apikey': mfToken, 'Authorization': 'Bearer ' + mfToken, 'Accept': 'application/json' }
+            }, 8000);
+            if (r.ok) {
                 anySuccess = true;
                 const j = await r.json();
-                if ((j.results || []).length) { records = j.results; break outer; }
-                // 0 records via cette where-clause : on n'essaie pas d'autre
-                // proxy (donnée valide reçue, juste vide), on passe à la
-                // clause suivante.
-                break;
-            } catch (e) { /* proxy suivant, puis clause suivante */ }
+                // Schéma MF officiel : { product: { periods: [{ timelaps: { domain_ids: [{ domain_id, max_color_id, phenomenon_items: [{ phenomenon_id, phenomenon_max_color_id }] }] } }] } }
+                const phenoLbl = { 1:'Vent violent', 2:'Pluie-inondation', 3:'Orages', 4:'Inondation', 5:'Neige-verglas', 6:'Canicule', 7:'Grand froid', 8:'Avalanches', 9:'Vagues-submersion' };
+                const all = [];
+                try {
+                    (j.product && j.product.periods || []).forEach(per => {
+                        ((per.timelaps && per.timelaps.domain_ids) || []).forEach(d => {
+                            if (String(d.domain_id) !== String(dept)) return;
+                            (d.phenomenon_items || []).forEach(p => {
+                                if (p.phenomenon_max_color_id > 1) all.push({
+                                    niveau: p.phenomenon_max_color_id,
+                                    phenomene: phenoLbl[p.phenomenon_id] || ('Phénomène ' + p.phenomenon_id),
+                                    debut: per.begin_validity_time || '',
+                                    fin:   per.end_validity_time   || ''
+                                });
+                            });
+                        });
+                    });
+                } catch (e) {}
+                if (all.length) {
+                    all.sort((a, b) => b.niveau - a.niveau);
+                    log('hit API officielle MF →', all.length, 'phénomène(s)');
+                    STATE.vigilance = { dept, items: all, unavailable: false, source: 'mf-official' };
+                    _injectVigilanceBanner();
+                    return;
+                }
+                // 200 OK + 0 phénomène pour ce dept → réellement vert via MF officielle.
+                log('API MF officielle : 0 phénomène pour dept', dept);
+                STATE.vigilance = { dept, items: [], unavailable: false, source: 'mf-official' };
+                _injectVigilanceBanner();
+                return;
+            } else { lastErr = 'MF HTTP ' + r.status; log('API MF token KO', r.status); }
+        } catch (e) { lastErr = (e && e.message) || 'MF err'; log('API MF token throw', lastErr); }
+    }
+
+    // ── 2) Fallback opendatasoft × multi-datasets × multi-fields × multi-proxies ─
+    const DATASETS = [
+        'weatherref-france-vigilance-meteo-departement',
+        'risques-meteorologiques-copy',
+        'vigilance-meteo-france',
+        'vigilance-meteo'
+    ];
+    const FIELDS = ['code_insee_dep', 'code_insee', 'dep_code', 'code_dept', 'departement', 'dep'];
+    const PROXIES = [
+        u => u,
+        u => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
+        u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+        u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u),
+        u => 'https://cors-proxy.fringe.zone/' + u
+    ];
+    outer: for (const ds of DATASETS) {
+        for (const f of FIELDS) {
+            const direct = `https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/${ds}/records?where=${encodeURIComponent(f + '="' + dept + '"')}&limit=30`;
+            for (const proxify of PROXIES) {
+                const url = proxify(direct);
+                try {
+                    const r = await fetchWithTimeout(url, {}, 7000);
+                    if (!r.ok) { lastErr = 'HTTP ' + r.status; continue; }
+                    anySuccess = true;
+                    let j; try { j = await r.json(); } catch (e) { lastErr = 'JSON parse'; continue; }
+                    if (j && Array.isArray(j.results)) {
+                        if (j.results.length) {
+                            records = j.results;
+                            log('hit', ds, '·', f, '→', j.results.length, 'records via', proxify === PROXIES[0] ? 'direct' : 'proxy');
+                            break outer;
+                        }
+                        // 200 + 0 : on passe à la combinaison suivante mais on
+                        // ne ré-essaie pas les autres proxies de ce duo.
+                        break;
+                    }
+                } catch (e) { lastErr = (e && e.message) || 'fetch err'; }
+            }
         }
     }
+    if (!records.length) log('opendatasoft : aucune source disponible', lastErr ? '(last: ' + lastErr + ')' : '');
     const norm = records.map(r => ({
         niveau: parseInt(r.couleur || r.niveau || r.color_id || r.niveau_couleur || r.color || 1, 10),
         phenomene: r.phenomene || r.nom_phenomene || r.type_risque || r.phenomenon || r.libelle_phenomene || 'Phénomène',
@@ -3740,11 +3798,7 @@ async function fetchVigilance(dept) {
         fin: r.fin_validite || r.date_fin || r.dt_fin_evt || r.date_fin_validite || ''
     })).filter(r => r.niveau >= 1 && r.niveau <= 4);
     norm.sort((a, b) => b.niveau - a.niveau);
-    // Si AUCUNE requête n'a abouti (CORS / réseau / 4xx-5xx), on marque
-    // l'état "indisponible" : sinon on annoncerait une vigilance verte
-    // alors qu'on n'a pas l'info (cas Safari / GitHub Pages → opendatasoft
-    // CORS bloqué qu'on a observé).
-    STATE.vigilance = { dept, items: norm, unavailable: !anySuccess };
+    STATE.vigilance = { dept, items: norm, unavailable: !anySuccess, source: anySuccess ? 'opendatasoft' : null };
     _injectVigilanceBanner();
 }
 
@@ -3756,10 +3810,12 @@ function _injectVigilanceBanner() {
     const v = STATE.vigilance;
     if (!v) { slot.innerHTML = ''; return; }
     if (v.unavailable) {
-        slot.innerHTML = `<div style="display:flex; align-items:center; gap:8px; padding:6px 12px; background:#fef3c7; border:1px solid #fcd34d; border-left:4px solid #d97706; border-radius:4px; font-size:12px; color:#92400e; margin-bottom:10px;">
+        slot.innerHTML = `<div style="display:flex; align-items:center; gap:8px; padding:6px 12px; background:#fef3c7; border:1px solid #fcd34d; border-left:4px solid #d97706; border-radius:4px; font-size:12px; color:#92400e; margin-bottom:10px; flex-wrap:wrap;">
             <span style="background:#d97706; color:#fff; padding:2px 8px; border-radius:3px; font-size:10px; font-weight:700; letter-spacing:.5px;">⚠ INDISPONIBLE</span>
-            <span><strong>Vigilance Météo-France inaccessible</strong> (réseau / CORS bloqué). Vérifier manuellement le département ${v.dept}.</span>
-            <a href="https://vigilance.meteofrance.fr/fr/${v.dept}" target="_blank" rel="noopener" style="margin-left:auto; font-size:11px; color:#92400e; opacity:.9; text-decoration:underline;">↗ vigilance.meteofrance.fr</a>
+            <span style="flex:1; min-width:240px;"><strong>Vigilance Météo-France inaccessible</strong> (proxy bloqué). Vérifier manuellement le département <strong>${v.dept}</strong>.</span>
+            <button type="button" class="no-print btn-soft" onclick="if(STATE.dept) fetchVigilance(STATE.dept)" style="padding:4px 10px; font-size:11px;">↻ Réessayer</button>
+            <button type="button" class="no-print btn-soft" onclick="(()=>{const t=prompt('Coller votre token API Météo-France (gratuit · portail-api.meteofrance.fr)');if(t){localStorage.setItem('drone_mf_token',t.trim());if(STATE.dept) fetchVigilance(STATE.dept);}})()" style="padding:4px 10px; font-size:11px;" title="Configurer un token Météo-France pour utiliser l'API officielle">🔑 Token MF</button>
+            <a href="https://vigilance.meteofrance.fr/fr/${v.dept}" target="_blank" rel="noopener" style="font-size:11px; color:#92400e; opacity:.9; text-decoration:underline;">↗ vigilance.meteofrance.fr</a>
         </div>`;
         return;
     }
