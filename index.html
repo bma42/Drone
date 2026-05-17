@@ -2181,7 +2181,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.14</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.15</strong></span>
             </div>
         </div>
 
@@ -2192,7 +2192,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.14';
+const APP_VERSION = 'v2026.05.17.15';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -10841,14 +10841,18 @@ function _liveInjectStyles() {
            Leaflet (position bottomright, ~60px de hauteur depuis bottom:10). */
         #live-mode-overlay .lm-card-se { bottom: 90px; right: 22px; transition: bottom .2s ease; }
         #live-mode-overlay .lm-card-sw { bottom: 50px; left:  22px; transition: bottom .2s ease; }
-        /* Quand la liste d'aéronefs est non vide elle prend ~ max-height 180px
-           + 10px de margin → on remonte SE / SO au-dessus pour qu'ils restent
-           lisibles. Backstop via :has() (Safari 15.4+ / Chrome / Firefox récents)
-           ET via la classe .has-aclist toggled par JS pour les vieux navigateurs. */
+        /* Quand la liste d'aéronefs est non vide on lit sa hauteur réelle via
+           --lm-aclist-h (mis à jour à chaque render) et on remonte SE / SO
+           juste au-dessus, +30 px de marge. La règle :has() reste comme
+           filet de sécurité avec une valeur par défaut élevée. */
+        #live-mode-overlay .lm-adsb.has-aclist .lm-card-se,
+        #live-mode-overlay .lm-adsb.has-aclist .lm-card-sw {
+            bottom: calc(var(--lm-aclist-h, 200px) + 30px);
+        }
         #live-mode-overlay .lm-adsb:has(.lm-adsb-list:not(:empty)) .lm-card-se,
-        #live-mode-overlay .lm-adsb.has-aclist .lm-card-se { bottom: 210px; }
-        #live-mode-overlay .lm-adsb:has(.lm-adsb-list:not(:empty)) .lm-card-sw,
-        #live-mode-overlay .lm-adsb.has-aclist .lm-card-sw { bottom: 210px; }
+        #live-mode-overlay .lm-adsb:has(.lm-adsb-list:not(:empty)) .lm-card-sw {
+            bottom: calc(var(--lm-aclist-h, 200px) + 30px);
+        }
         /* Barre d'échelle dynamique style IGN, intégrée dans le bandeau info. */
         #live-mode-overlay .lm-scalebar {
             pointer-events: none;
@@ -12300,10 +12304,21 @@ function _liveRenderAdsbInfo(planes) {
 function _liveRenderAdsbList(planes) {
     const list = document.getElementById('lm-adsb-list');
     if (!list) return;
-    // Toggle .has-aclist sur le panneau .lm-adsb → CSS remonte SE/SO en
-    // conséquence pour rester lisibles au-dessus de la liste.
+    // Toggle .has-aclist sur le panneau .lm-adsb + measure RÉELLE de la
+    // hauteur visible de la liste → CSS custom property utilisée pour
+    // remonter SE/SO juste au-dessus, quelle que soit la longueur.
     const panel = list.closest('.lm-adsb');
-    const setHasList = (v) => { if (panel) panel.classList.toggle('has-aclist', !!v); };
+    const applyListHeight = () => {
+        if (!panel) return;
+        const h = list.offsetHeight || 0;
+        if (h > 0) panel.style.setProperty('--lm-aclist-h', h + 'px');
+        else panel.style.removeProperty('--lm-aclist-h');
+    };
+    const setHasList = (v) => {
+        if (!panel) return;
+        panel.classList.toggle('has-aclist', !!v);
+        if (!v) panel.style.removeProperty('--lm-aclist-h');
+    };
     if (!planes.length) { list.innerHTML = ''; setHasList(false); return; }
     const visible = planes
         .filter(a => a.isPriority || a.emergency || a.isHelicopter || (a.altM != null && a.altM < 500))
@@ -12333,6 +12348,7 @@ function _liveRenderAdsbList(planes) {
         </tr>`;
     }).join('');
     list.innerHTML = `<table><tbody>${rows}</tbody></table>`;
+    applyListHeight();
     // Event delegation : 1 listener pour toutes les lignes, survit aux re-renders.
     if (!list._rowsBound) {
         list.addEventListener('click', (e) => {
