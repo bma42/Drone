@@ -2181,7 +2181,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.15</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.16</strong></span>
             </div>
         </div>
 
@@ -2192,7 +2192,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.15';
+const APP_VERSION = 'v2026.05.17.16';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -12423,26 +12423,32 @@ function _liveShowReturnBtn(label) {
 // 100% du positionnement géographique, sur tous les events de pan / zoom /
 // fullscreen / resize, par construction. La rotation est obtenue en
 // recalculant les vertices du polygone à chaque frame (requestAnimationFrame).
-// Met à jour la barre d'échelle dynamique. Calcule la distance géo de
-// la largeur de la barre CSS (100px) et le ratio km par cm CSS.
+// Met à jour la barre d'échelle. Auto-scale style Google Maps / IGN : on
+// choisit une valeur ronde (10m, 25m, 50m, 100m, 250m, 500m, 1km...) qui
+// tient dans ~110 px de large, et on dimensionne la barre en conséquence.
+// Le second label "1 cm = X" est calculé via la formule Web Mercator
+// standard (156543.03392 * cos(lat) / 2^zoom), plus fiable que le
+// round-trip latLngToContainerPoint → containerPointToLatLng.
 function _liveUpdateScaleBar() {
     if (!_liveAdsbMap) return;
-    const barEl = document.querySelector('#live-mode-overlay .lm-scalebar-line');
+    const lineEl = document.querySelector('#live-mode-overlay .lm-scalebar-line');
     const distEl = document.getElementById('lm-scalebar-dist');
     const cmEl = document.getElementById('lm-scalebar-cm');
-    if (!barEl || !distEl || !cmEl) return;
+    if (!lineEl || !distEl || !cmEl) return;
     try {
-        // Largeur réelle de la barre en pixels CSS (peut varier si overridden).
-        const barPx = barEl.getBoundingClientRect().width || 100;
-        // Distance géo correspondant à barPx pixels au centre de la carte.
         const c = _liveAdsbMap.getCenter();
-        const a = _liveAdsbMap.latLngToContainerPoint(c);
-        const b = _liveAdsbMap.containerPointToLatLng([a.x + barPx, a.y]);
-        const meters = c.distanceTo(b);
-        // 1 cm CSS ≈ 96 / 2.54 = 37.7953 px (constante CSS standard).
-        const PX_PER_CM = 96 / 2.54;
-        const metersPerCm = meters * (PX_PER_CM / barPx);
-
+        const z = _liveAdsbMap.getZoom();
+        // m/px Web Mercator au centre de la carte
+        const metersPerPx = 156543.03392 * Math.cos(c.lat * Math.PI / 180) / Math.pow(2, z);
+        // Choisit le plus grand multiple "rond" qui rentre dans MAX_PX.
+        const MAX_PX = 110;
+        const NICE = [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000, 20000, 25000, 50000, 100000, 200000];
+        let chosen = NICE[0];
+        for (const v of NICE) {
+            if (v / metersPerPx <= MAX_PX) chosen = v; else break;
+        }
+        const chosenPx = chosen / metersPerPx;
+        lineEl.style.width = chosenPx.toFixed(1) + 'px';
         const fmt = (m) => {
             if (m >= 1000) {
                 const km = m / 1000;
@@ -12450,7 +12456,9 @@ function _liveUpdateScaleBar() {
             }
             return Math.round(m) + ' m';
         };
-        distEl.textContent = fmt(meters);
+        distEl.textContent = fmt(chosen);
+        // 1 cm CSS = 96/2.54 = 37.7953 px.
+        const metersPerCm = metersPerPx * (96 / 2.54);
         cmEl.innerHTML = '1&nbsp;cm&nbsp;=&nbsp;' + fmt(metersPerCm);
     } catch (e) {}
 }
@@ -12632,7 +12640,7 @@ async function _liveRefreshMeteo() {
                 <div class="lm-tile-k">Humidité</div>
                 <div class="lm-tile-v">${values.hum.toFixed(0)}<span class="lm-tile-u">%</span></div>
             </div>
-            <div class="lm-tile ok">${trend('press', 0.3)}
+            <div class="lm-tile ok">${trend('press', 0.3, true)}
                 <div class="lm-tile-k">Pression</div>
                 <div class="lm-tile-v">${values.press.toFixed(0)}<span class="lm-tile-u">hPa</span></div>
             </div>
