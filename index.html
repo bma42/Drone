@@ -2126,7 +2126,7 @@
             </div>
             <div class="card-body">
                 <div id="risk-grid"></div>
-                <button type="button" class="add-btn no-print" onclick="addRiskRow()">
+                <button type="button" class="add-btn no-print" style="margin-top:14px;" onclick="addRiskRow()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px;"><path d="M12 5v14M5 12h14"/></svg>
                     Ajouter un risque manuellement
                 </button>
@@ -2261,7 +2261,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.28</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.29</strong></span>
             </div>
         </div>
 
@@ -2272,7 +2272,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.28';
+const APP_VERSION = 'v2026.05.17.29';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -4089,32 +4089,19 @@ function renderWeather(j, dateISO) {
         .filter(Boolean).join(' ');
     const xLabels = labels.map((l, i) => `<text x="${xPos(i, labels.length).toFixed(1)}" y="${Hh - 2}" text-anchor="middle" font-size="9" fill="#6b7280">${l}</text>`).join('');
     const yGrid = [10, 20, 30, 40, 50].filter(v => v <= allMax).map(v => `<line x1="${P}" x2="${W-PR}" y1="${yPos(v)}" y2="${yPos(v)}" stroke="#e5e7eb" stroke-width=".5"/><text x="${P-2}" y="${yPos(v)+3}" text-anchor="end" font-size="9" fill="#6b7280">${v}</text>`).join('');
-    // Couleurs dynamiques : la ligne (et les labels d'axe) reflètent la valeur.
-    const tempColor = v => v <= 0 ? '#1e40af' : v <= 8 ? '#0284c7' : v <= 16 ? '#06b6d4' : v <= 22 ? '#16a34a' : v <= 28 ? '#eab308' : v <= 34 ? '#f97316' : '#dc2626';
-    const windColor = v => v <= 15 ? '#16a34a' : v <= 25 ? '#eab308' : v <= 40 ? '#f97316' : '#dc2626';
-    // Échelle température à droite : tickStep adaptatif, couleur dynamique par valeur.
+    // Couleurs simples (pas de dégradé arc-en-ciel) : un bleu pour le vent,
+    // un rouge pour la température. Les paliers de risque restent gérés par
+    // les lignes horizontales pointillées (NO-GO / limite vent) et l'axe
+    // température reste en rouge uniforme côté droit.
+    const COLOR_WIND = '#0066cc';
+    const COLOR_TEMP = '#dc2626';
+    // Échelle température à droite : tickStep adaptatif, rouge uniforme.
     const tStep = tRange <= 4 ? 1 : tRange <= 10 ? 2 : tRange <= 20 ? 5 : 10;
     const tTicks = [];
     for (let v = Math.ceil(tMin / tStep) * tStep; v <= tMax; v += tStep) tTicks.push(v);
-    const yGridT = validT.length ? tTicks.map(v => `<text x="${W - PR + 4}" y="${yPosT(v) + 3}" text-anchor="start" font-size="9" fill="${tempColor(v)}" font-weight="700">${v}°</text>`).join('') : '';
-    // Construit une polyligne SEGMENTÉE : chaque tronçon a la couleur dynamique
-    // de la valeur moyenne du segment.
-    const mkSegments = (arr, yFn, colorFn, width) => {
-        const out = [];
-        for (let i = 1; i < arr.length; i++) {
-            const a = arr[i-1], b = arr[i];
-            if (typeof a !== 'number' || typeof b !== 'number') continue;
-            const x1 = xPos(i-1, arr.length).toFixed(1);
-            const y1 = yFn(a).toFixed(1);
-            const x2 = xPos(i, arr.length).toFixed(1);
-            const y2 = yFn(b).toFixed(1);
-            const c = colorFn((a + b) / 2);
-            out.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"/>`);
-        }
-        return out.join('');
-    };
-    const wSegs = mkSegments(wvals, yPos, windColor, 2);
-    const tSegs = validT.length ? mkSegments(tvals, yPosT, tempColor, 1.8) : '';
+    const yGridT = validT.length ? tTicks.map(v => `<text x="${W - PR + 4}" y="${yPosT(v) + 3}" text-anchor="start" font-size="9" fill="${COLOR_TEMP}" font-weight="700">${v}°</text>`).join('') : '';
+    const wPath = mkPath(wvals);
+    const tPath = validT.length ? mkPathT(tvals) : '';
     const gPath = mkPath(gvals);
 
     const html = `
@@ -4136,15 +4123,15 @@ function renderWeather(j, dateISO) {
                 }).join('')}
                 <path d="${gPath} L${xPos(gvals.length-1, gvals.length)},${Hh-P} L${xPos(0, gvals.length)},${Hh-P} Z" fill="#fed7aa" fill-opacity=".5"/>
                 <path d="${gPath}" fill="none" stroke="#d97706" stroke-width="1.6"/>
-                ${wSegs}
-                ${tSegs}
+                <path d="${wPath}" fill="none" stroke="${COLOR_WIND}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                ${tPath ? `<path d="${tPath}" fill="none" stroke="${COLOR_TEMP}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>` : ''}
                 ${yGridT}
                 ${xLabels}
             </svg>
             <div style="margin-top:4px; font-size:11px;">
-                <span style="display:inline-flex; align-items:center; gap:6px; margin-right:14px;" title="Vert ≤15, jaune ≤25, orange ≤40, rouge >40 km/h"><span style="display:inline-block; width:42px; height:3px; border-radius:2px; background:linear-gradient(90deg,#16a34a,#eab308,#f97316,#dc2626);"></span>Vent moyen <small style="color:var(--c-muted); font-weight:500;">(couleur = intensité)</small></span>
+                <span style="display:inline-flex; align-items:center; gap:6px; margin-right:14px;"><span style="width:14px; height:3px; background:${COLOR_WIND}; display:inline-block; border-radius:2px;"></span>Vent moyen</span>
                 <span style="display:inline-flex; align-items:center; gap:6px; margin-right:14px;"><span style="width:14px; height:3px; background:#d97706; display:inline-block; border-radius:2px;"></span>Rafales</span>
-                ${tSegs ? `<span style="display:inline-flex; align-items:center; gap:6px;" title="Bleu froid → rouge chaud"><span style="display:inline-block; width:42px; height:3px; border-radius:2px; background:linear-gradient(90deg,#1e40af,#0284c7,#06b6d4,#16a34a,#eab308,#f97316,#dc2626);"></span>Température (°C — axe droit, couleur dynamique)</span>` : ''}
+                ${tPath ? `<span style="display:inline-flex; align-items:center; gap:6px;"><span style="width:14px; height:3px; background:${COLOR_TEMP}; display:inline-block; border-radius:2px;"></span>Température (°C — axe droit)</span>` : ''}
                 ${droneLimits.length === 0
                     ? `<span style="display:inline-flex; align-items:center; gap:6px; margin-left:14px; color:#dc2626;"><span style="width:14px; height:0; border-top:1.5px dashed #dc2626; display:inline-block;"></span>Seuil NO-GO 43,2 km/h (par défaut)</span>`
                     : droneLimits.map((lim, idx) => {
