@@ -2261,7 +2261,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.30</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.31</strong></span>
             </div>
         </div>
 
@@ -2272,7 +2272,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.30';
+const APP_VERSION = 'v2026.05.17.31';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -4088,13 +4088,10 @@ function renderWeather(j, dateISO) {
             : null)
         .filter(Boolean).join(' ');
     const xLabels = labels.map((l, i) => `<text x="${xPos(i, labels.length).toFixed(1)}" y="${Hh - 2}" text-anchor="middle" font-size="9" fill="#6b7280">${l}</text>`).join('');
-    const yGrid = [10, 20, 30, 40, 50].filter(v => v <= allMax).map(v => `<line x1="${P}" x2="${W-PR}" y1="${yPos(v)}" y2="${yPos(v)}" stroke="#e5e7eb" stroke-width=".5"/><text x="${P-2}" y="${yPos(v)+3}" text-anchor="end" font-size="9" fill="#6b7280">${v}</text>`).join('');
-    // Couleurs simples (pas de dégradé arc-en-ciel) : un bleu pour le vent,
-    // un rouge pour la température. Les paliers de risque restent gérés par
-    // les lignes horizontales pointillées (NO-GO / limite vent) et l'axe
-    // température reste en rouge uniforme côté droit.
+    // Axe vent à gauche en bleu (assorti à la courbe vent / rafales).
     const COLOR_WIND = '#0066cc';
     const COLOR_TEMP = '#dc2626';
+    const yGrid = [10, 20, 30, 40, 50].filter(v => v <= allMax).map(v => `<line x1="${P}" x2="${W-PR}" y1="${yPos(v)}" y2="${yPos(v)}" stroke="#e5e7eb" stroke-width=".5"/><text x="${P-2}" y="${yPos(v)+3}" text-anchor="end" font-size="9" fill="${COLOR_WIND}" font-weight="700">${v}</text>`).join('');
     // Échelle température à droite : tickStep adaptatif, rouge uniforme.
     const tStep = tRange <= 4 ? 1 : tRange <= 10 ? 2 : tRange <= 20 ? 5 : 10;
     const tTicks = [];
@@ -4121,8 +4118,7 @@ function renderWeather(j, dateISO) {
                     return `<line x1="${P}" x2="${W-PR}" y1="${yPos(lim)}" y2="${yPos(lim)}" stroke="${color}" stroke-width=".8" stroke-dasharray="3,2" opacity="${opacity}"/>
                             <text x="${W-PR}" y="${(yPos(lim) - 2).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" fill="${color}">${lim.toLocaleString('fr-FR')} km/h</text>`;
                 }).join('')}
-                <path d="${gPath} L${xPos(gvals.length-1, gvals.length)},${Hh-P} L${xPos(0, gvals.length)},${Hh-P} Z" fill="#fed7aa" fill-opacity=".5"/>
-                <path d="${gPath}" fill="none" stroke="#d97706" stroke-width="1.6"/>
+                <path d="${gPath}" fill="none" stroke="${COLOR_WIND}" stroke-width="1.6" stroke-dasharray="4,3" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>
                 <path d="${wPath}" fill="none" stroke="${COLOR_WIND}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 ${tPath ? `<path d="${tPath}" fill="none" stroke="${COLOR_TEMP}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>` : ''}
                 ${yGridT}
@@ -4130,7 +4126,7 @@ function renderWeather(j, dateISO) {
             </svg>
             <div style="margin-top:4px; font-size:11px;">
                 <span style="display:inline-flex; align-items:center; gap:6px; margin-right:14px;"><span style="width:14px; height:3px; background:${COLOR_WIND}; display:inline-block; border-radius:2px;"></span>Vent moyen</span>
-                <span style="display:inline-flex; align-items:center; gap:6px; margin-right:14px;"><span style="width:14px; height:3px; background:#d97706; display:inline-block; border-radius:2px;"></span>Rafales</span>
+                <span style="display:inline-flex; align-items:center; gap:6px; margin-right:14px;"><span style="width:14px; height:0; border-top:2px dashed ${COLOR_WIND}; display:inline-block; opacity:.8;"></span>Rafales</span>
                 ${tPath ? `<span style="display:inline-flex; align-items:center; gap:6px;"><span style="width:14px; height:3px; background:${COLOR_TEMP}; display:inline-block; border-radius:2px;"></span>Température (°C — axe droit)</span>` : ''}
                 ${droneLimits.length === 0
                     ? `<span style="display:inline-flex; align-items:center; gap:6px; margin-left:14px; color:#dc2626;"><span style="width:14px; height:0; border-top:1.5px dashed #dc2626; display:inline-block;"></span>Seuil NO-GO 43,2 km/h (par défaut)</span>`
