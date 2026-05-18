@@ -2261,7 +2261,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.33</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.34</strong></span>
             </div>
         </div>
 
@@ -2272,7 +2272,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.33';
+const APP_VERSION = 'v2026.05.17.34';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -10509,19 +10509,42 @@ function serializeMission() {
         if (el.id) return;
         if (el.checked) data.fields['__radio__' + el.name] = el.value;
     });
-    ['auth-drone-tbody', 'custom-vectors', 'dynamic-container', 'risk-tbody'].forEach(id => {
+    // Liste des conteneurs dynamiques à sérialiser (innerHTML). On ajoute
+    // 'custom-pilots' : sans ça les télépilotes ajoutés à la main étaient
+    // perdus au reload et les hardcodés p1-p6 se reretrouvaient tous cochés
+    // par effet de bord du dispatchEvent change.
+    ['auth-drone-tbody', 'custom-vectors', 'custom-pilots', 'dynamic-container', 'risk-tbody', 'risk-grid'].forEach(id => {
         const el = document.getElementById(id);
         if (el) data.innerHtml[id] = el.innerHTML;
+    });
+    // Signatures : capture des canvas en PNG data URL pour pouvoir les
+    // redessiner au reload (canvases sont fragiles à serializer en innerHTML).
+    data.signatures = {};
+    document.querySelectorAll('.sig-box .sig-pad').forEach(c => {
+        try {
+            const role = c.closest('.sig-box') && c.closest('.sig-box').dataset.sig;
+            if (!role) return;
+            // Une signature vide = canvas tout blanc → on filtre via la taille du data URL.
+            const url = c.toDataURL('image/png');
+            if (url && url.length > 200) data.signatures[role] = url;
+        } catch (e) {}
     });
     return data;
 }
 
 function restoreMission(data) {
     if (!data) return;
-    // Reset préalable : tout checkbox/radio absent de la sauvegarde est décoché.
-    // Sinon, l'état laissé par la mission précédente (ou les valeurs par défaut
-    // de la page) pollue le chargement (ex. tous les pilotes apparaissent cochés
-    // alors que la mission sauvegardée n'en avait qu'un).
+    // ORDRE CRITIQUE :
+    //   1. On RESTAURE D'ABORD les conteneurs dynamiques (innerHTML) — sinon
+    //      les checkboxes des télépilotes custom restaurés sont remises à 0
+    //      par défaut quand on remplace leur HTML après les avoir cochées.
+    //   2. PUIS on uncheck les inputs id'd absents de la sauvegarde (les
+    //      télépilotes hardcoded p1..p6 qui n'étaient pas cochés à la save).
+    //   3. PUIS on applique les valeurs sauvegardées.
+    Object.entries(data.innerHtml || {}).forEach(([id, html]) => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = html;
+    });
     const savedKeys = new Set(Object.keys(data.fields || {}));
     document.querySelectorAll('input[type="checkbox"][id], input[type="radio"][id]').forEach(el => {
         if (el.id === 'mission-select') return;
@@ -10545,15 +10568,38 @@ function restoreMission(data) {
         else el.value = val;
         try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
     });
-    Object.entries(data.innerHtml || {}).forEach(([id, html]) => {
-        const el = document.getElementById(id);
-        if (el) el.innerHTML = html;
-    });
+    // Restaure les signatures (canvas) — décodées depuis les PNG data URLs.
+    if (data.signatures) {
+        Object.entries(data.signatures).forEach(([role, url]) => {
+            try {
+                const box = document.querySelector('.sig-box[data-sig="' + role + '"]');
+                if (!box) return;
+                const canvas = box.querySelector('.sig-pad');
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                const img = new Image();
+                img.onload = () => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    // Marque la signature comme validée (lecture seule + label).
+                    canvas.dataset.signed = '1';
+                    canvas.dataset.dataUrl = url;
+                    try { if (typeof validateSignature === 'function') validateSignature(role); } catch (e) {}
+                };
+                img.src = url;
+            } catch (e) {}
+        });
+    }
     const s = data.state || {};
     if (s.lat != null && s.lon != null && typeof selectAddr === 'function') {
         selectAddr(s.address || `(${s.lat},${s.lon})`, s.lat, s.lon, s.dept || '');
     }
     if (typeof checkAuthEmpty === 'function') checkAuthEmpty();
+    // Re-bind aux télépilotes custom restaurés via innerHTML : leurs handlers
+    // inline restent fonctionnels (onchange/oninput), mais on doit refresh
+    // l'état du chef de dispositif et du rédacteur.
+    if (typeof refreshChefDispositif === 'function') { try { refreshChefDispositif(); } catch (e) {} }
+    if (typeof updateRedacteur === 'function') { try { updateRedacteur(); } catch (e) {} }
 }
 
 function loadSelectedMission() {
