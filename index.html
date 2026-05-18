@@ -297,17 +297,6 @@
         }
         .btn-soft:hover { background: #dbeafe; border-color: #93c5fd; box-shadow: 0 1px 4px rgba(59,130,246,.18); }
         .btn-soft:active { transform: translateY(1px); }
-        /* Bouton "+ Ajouter un risque/bloc" : large, bordé en pointillé. */
-        .btn-add-block {
-            display: flex; align-items: center; justify-content: center; gap: 8px;
-            width: 100%; margin-top: 12px;
-            padding: 14px; background: #eff6ff; color: var(--c-primary);
-            border: 2px dashed #bfdbfe; border-radius: 8px;
-            font-size: 14px; font-weight: 600; cursor: pointer;
-            transition: all .15s ease;
-        }
-        .btn-add-block:hover { background: #dbeafe; border-color: #60a5fa; border-style: solid; }
-        .btn-add-block:active { transform: translateY(1px); }
         /* Boutons d'action généraux — partagés par tous les modules.
            Variantes couleur via .act-btn-{success,warning,danger,info,neutral}. */
         .act-btn {
@@ -2137,7 +2126,7 @@
             </div>
             <div class="card-body">
                 <div id="risk-grid"></div>
-                <button type="button" class="btn-add-block no-print" onclick="addRiskRow()">
+                <button type="button" class="add-btn no-print" onclick="addRiskRow()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px;"><path d="M12 5v14M5 12h14"/></svg>
                     Ajouter un risque manuellement
                 </button>
@@ -2153,7 +2142,7 @@
             <div class="card-body">
                 <div id="dynamic-container"></div>
                 <div class="empty-state no-print" id="steps-empty">Aucune information complémentaire — cliquez ci-dessous pour en ajouter.</div>
-                <button type="button" class="btn-add-block no-print" onclick="addNewBlock()">
+                <button type="button" class="add-btn no-print" onclick="addNewBlock()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px;"><path d="M12 5v14M5 12h14"/></svg>
                     Ajouter une information complémentaire
                 </button>
@@ -2272,7 +2261,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.27</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.28</strong></span>
             </div>
         </div>
 
@@ -2283,7 +2272,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.27';
+const APP_VERSION = 'v2026.05.17.28';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
