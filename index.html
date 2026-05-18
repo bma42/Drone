@@ -733,7 +733,28 @@
         }
         .step-item .head { display: flex; gap: 10px; align-items: center; }
         .step-item input[type="text"] { flex: 1; }
-        .step-item .del { color: var(--c-danger); border: 0; background: transparent; cursor: pointer; font-weight: 600; font-size: 12px; }
+        .step-item .del {
+            display: inline-flex; align-items: center; gap: 4px;
+            background: #fef2f2; color: var(--c-danger);
+            border: 1px solid #fecaca; border-radius: 6px;
+            padding: 4px 10px; font-weight: 600; font-size: 12px; cursor: pointer;
+            transition: all .15s ease;
+        }
+        .step-item .del:hover { background: #fee2e2; border-color: #f87171; }
+        .step-item .del:active { transform: translateY(1px); }
+        /* Bouton "×" retirer la carte d'un bloc info (§22) — pill rouge soft. */
+        .step-map-del {
+            position: absolute; top: 6px; right: 6px; z-index: 600;
+            width: 26px; height: 26px; line-height: 1;
+            background: rgba(255,255,255,.95); color: var(--c-danger);
+            border: 1px solid #fecaca; border-radius: 6px;
+            font-size: 17px; font-weight: 700; cursor: pointer;
+            display: inline-flex; align-items: center; justify-content: center;
+            box-shadow: 0 1px 3px rgba(15,23,42,.18);
+            transition: all .15s ease;
+        }
+        .step-map-del:hover { background: #fee2e2; border-color: #f87171; }
+        .step-map-del:active { transform: translateY(1px); }
 
         /* ---------- Signatures ---------- */
         .sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
@@ -2112,7 +2133,7 @@
             <div class="card-head">
                 <div class="card-num">21</div>
                 <div class="card-title">Analyse de risques<span class="sub">Risques identifiés · niveau (probabilité × gravité) · mesures de mitigation</span></div>
-                <button type="button" class="no-print" onclick="if(typeof populateRiskTable==='function') populateRiskTable()" title="Recalculer les risques automatiques (les risques manuellement édités sont préservés)" style="background:transparent; border:1px solid var(--c-border-strong); border-radius:4px; padding:3px 9px; cursor:pointer; font-size:11px; color:var(--c-text-soft); margin-right:8px;">↻ Rafraîchir</button>
+                <button type="button" class="btn-head-refresh no-print" onclick="if(typeof populateRiskTable==='function') populateRiskTable()" title="Recalculer les risques automatiques (les risques manuellement édités sont préservés)">↻ Rafraîchir</button>
             </div>
             <div class="card-body">
                 <div id="risk-grid"></div>
@@ -2251,7 +2272,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.26</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.27</strong></span>
             </div>
         </div>
 
@@ -2262,7 +2283,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.26';
+const APP_VERSION = 'v2026.05.17.27';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -3708,7 +3729,7 @@ async function fetchVigilance(dept) {
     // dans localStorage.drone_mf_token. Sinon on utilise le token par défaut
     // ci-dessous — À RÉGÉNÉRER si vous diffusez le repo, car il est public
     // (limite 60 req/min, partagé entre tous les visiteurs du site).
-    const MF_TOKEN_DEFAULT = 'eyJ4NXQiOiJZV0kxTTJZNE1qWTNOemsyTkRZeU5XTTRPV014TXpjek1UVmhNbU14T1RSa09ETXlOVEE0Tnc9PSIsImtpZCI6ImdhdGV3YXlfY2VydGlmaWNhdGVfYWxpYXMiLCJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJLb29kZXRhdEBjYXJib24uc3VwZXIiLCJhcHBsaWNhdGlvbiI6eyJvd25lciI6Iktvb2RldGF0IiwidGllclF1b3RhVHlwZSI6bnVsbCwidGllciI6IlVubGltaXRlZCIsIm5hbWUiOiJEZWZhdWx0QXBwbGljYXRpb24iLCJpZCI6NDA5NDksInV1aWQiOiI0MjA5MzU0Yy01Y2Q3LTRjOTItOGRjZC1lNjA2ZWIzNjJhY2EifSwiaXNzIjoiaHR0cHM6XC9cL3BvcnRhaWwtYXBpLm1ldGVvZnJhbmNlLmZyOjQ0M1wvb2F1dGgyXC90b2tlbiIsInRpZXJJbmZvIjp7IjYwUmVxUGFyTWluIjp7InRpZXJRdW90YVR5cGUiOiJyZXF1ZXN0Q291bnQiLCJncmFwaFFMTWF4Q29tcGxleGl0eSI6MCwiZ3JhcGhRTE1heERlcHRoIjowLCJzdG9wT25RdW90YVJlYWNoIjp0cnVlLCJzcGlrZUFycmVzdExpbWl0IjowLCJzcGlrZUFycmVzdFVuaXQiOiJzZWMifX0sImtleXR5cGUiOiJQUk9EVUNUSU9OIiwic3Vic2NyaWJlZEFQSXMiOlt7InN1YnNjcmliZXJUZW5hbnREb21haW4iOiJjYXJib24uc3VwZXIiLCJuYW1lIjoiRG9ubmVlc1B1YmxpcXVlc1ZpZ2lsYW5jZSIsImNvbnRleHQiOiJcL3B1YmxpY1wvRFBWaWdpbGFuY2VcL3YxIiwicHVibGlzaGVyIjoiYWRtaW4iLCJ2ZXJzaW9uIjoidjEiLCJzdWJzY3JpcHRpb25UaWVyIjoiNjBSZXFQYXJNaW4ifV0sImV4cCI6MTc3OTA3NzQwNCwidG9rZW5fdHlwZSI6ImFwaUtleSIsImlhdCI6MTc3OTA3MzgwNCwianRpIjoiYzM4YTIxN2UtYjhlNy00MGQ1LWI1NTUtZjlmZTZlNjY4ZTU5In0=.j5NEAZJeFjt4cukGRwAbji-G0Lx3FgKx0nHHhOopbT9OQiJTnevDRXKjgDFDkeEBS_Y2Scd0y_BM9qHyED1gQzvMxbtmTeXnOYnTqZzz9PQKjdpCgZ-fQ5QefbHLoswqkGx4GuNg0Vgjvbst3LUVsqUUBFmeP2qAmO3lVY_0B_xvT9fSgOZ7UqC-Rry2z0SL72w8mRugDPOSQ0skBL5Wdio9qnSWm33rePfT797tAUJilnrSAHTsL3pD2UOcEI67BZ-AUcdbwuladfRH_ke2x6osclCLDYhy-7EQOrGf_z4R_wqFddUoN7Y_JuSU7WGRfQcRR4srVx7fXuAZtfTuIA==';
+    const MF_TOKEN_DEFAULT = 'eyJ4NXQiOiJZV0kxTTJZNE1qWTNOemsyTkRZeU5XTTRPV014TXpjek1UVmhNbU14T1RSa09ETXlOVEE0Tnc9PSIsImtpZCI6ImdhdGV3YXlfY2VydGlmaWNhdGVfYWxpYXMiLCJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJLb29kZXRhdEBjYXJib24uc3VwZXIiLCJhcHBsaWNhdGlvbiI6eyJvd25lciI6Iktvb2RldGF0IiwidGllclF1b3RhVHlwZSI6bnVsbCwidGllciI6IlVubGltaXRlZCIsIm5hbWUiOiJEZWZhdWx0QXBwbGljYXRpb24iLCJpZCI6NDA5NDksInV1aWQiOiI0MjA5MzU0Yy01Y2Q3LTRjOTItOGRjZC1lNjA2ZWIzNjJhY2EifSwiaXNzIjoiaHR0cHM6XC9cL3BvcnRhaWwtYXBpLm1ldGVvZnJhbmNlLmZyOjQ0M1wvb2F1dGgyXC90b2tlbiIsInRpZXJJbmZvIjp7IjYwUmVxUGFyTWluIjp7InRpZXJRdW90YVR5cGUiOiJyZXF1ZXN0Q291bnQiLCJncmFwaFFMTWF4Q29tcGxleGl0eSI6MCwiZ3JhcGhRTE1heERlcHRoIjowLCJzdG9wT25RdW90YVJlYWNoIjp0cnVlLCJzcGlrZUFycmVzdExpbWl0IjowLCJzcGlrZUFycmVzdFVuaXQiOiJzZWMifX0sImtleXR5cGUiOiJQUk9EVUNUSU9OIiwic3Vic2NyaWJlZEFQSXMiOlt7InN1YnNjcmliZXJUZW5hbnREb21haW4iOiJjYXJib24uc3VwZXIiLCJuYW1lIjoiRG9ubmVlc1B1YmxpcXVlc1ZpZ2lsYW5jZSIsImNvbnRleHQiOiJcL3B1YmxpY1wvRFBWaWdpbGFuY2VcL3YxIiwicHVibGlzaGVyIjoiYWRtaW4iLCJ2ZXJzaW9uIjoidjEiLCJzdWJzY3JpcHRpb25UaWVyIjoiNjBSZXFQYXJNaW4ifV0sImV4cCI6MTc4MjY3NDI4MiwidG9rZW5fdHlwZSI6ImFwaUtleSIsImlhdCI6MTc3OTA3NDI4MiwianRpIjoiMzk2MTFjYTUtYTlhZS00ZTQ1LWE0YmItZDVmY2U0MTFlY2IwIn0=.qKBsHAIKC10AQpLOIIxB0TJfb_8ARY-t-xC_D-sGlvlAwVrQ16lTHGlSbDSsFZ4UpIQ1pjB1fAAt8Xc4O1bPRJM2cvSAbXy_0qUnOs-6BqT-a6lrZxChHwIDJFrU0RDZ6_kUhdr18Q0ng3Bg_o-_tfoMb4VSupCjLIdevw_0IQeJxUiWvpQAsaxLVopThgzkuVMj110L47txsuS8ZtNP6nViurkdgLNDIWtjR5gmuyEG0XAYjLWVOqAIn9zLmlf1bqch74vpk7Ajx3FYyqlH2lbGDXgiFErrUdNbLjFrEE4UxbTAhA0eafmhd2-ILlgYXLZd59vEnI4rK587Umjc7Q==';
     let mfToken = null;
     try { mfToken = localStorage.getItem('drone_mf_token') || MF_TOKEN_DEFAULT; } catch (e) { mfToken = MF_TOKEN_DEFAULT; }
     if (mfToken) {
@@ -10326,7 +10347,7 @@ function addStepMap(containerId) {
     wrap.style.cssText = 'position:relative; margin-bottom:10px;';
     wrap.innerHTML = `
         <div class="step-map-canvas" style="height:240px; width:100%; border-radius:6px; border:1px solid var(--c-border); overflow:hidden;"></div>
-        <button type="button" class="no-print" onclick="this.closest('.step-map').remove()" title="Retirer la carte" style="position:absolute; top:6px; right:6px; z-index:600; background:rgba(255,255,255,.95); border:1px solid var(--c-border-strong); border-radius:4px; width:26px; height:26px; line-height:1; cursor:pointer; font-size:16px;">×</button>
+        <button type="button" class="no-print step-map-del" onclick="this.closest('.step-map').remove()" title="Retirer la carte">×</button>
         <div class="step-map-coords" style="font-size:11px; color:var(--c-muted); margin-top:4px;"></div>
     `;
     container.appendChild(wrap);
