@@ -1707,8 +1707,8 @@
                             <label style="cursor:pointer;"><input type="radio" name="captation-mode" value="polygone" onchange="setCaptationMode('polygone')" style="accent-color:var(--c-primary);"> Polygone de rues</label>
                         </div>
                         <div id="captation-circle-controls" class="no-print" style="display:flex; align-items:center; gap:10px; margin-bottom:8px; font-size:12px; flex-wrap:wrap;">
-                            <span style="white-space:nowrap;">Périmètre : <strong><span id="captation-radius-num">500</span> m</strong></span>
-                            <input type="range" id="captation-radius" min="50" max="5000" step="50" value="500" oninput="setCaptationRadius(this.value)" style="flex:1; min-width:140px;">
+                            <span style="white-space:nowrap;">Périmètre : <strong><span id="captation-radius-num">1000</span> m</strong></span>
+                            <input type="range" id="captation-radius" min="50" max="5000" step="50" value="1000" oninput="setCaptationRadius(this.value)" style="flex:1; min-width:140px;">
                             <button type="button" class="act-btn act-btn-warning act-btn-sm" onclick="clearCaptation()">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
                                 Effacer
@@ -2261,7 +2261,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.31</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.32</strong></span>
             </div>
         </div>
 
@@ -2272,7 +2272,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.31';
+const APP_VERSION = 'v2026.05.17.32';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -2905,7 +2905,7 @@ function toggleArrete() {
    =================================================================== */
 let captationMap = null;
 let captationCenterMarker = null, captationCircleLayer = null, captationPolygonLayer = null;
-STATE.captation = { mode: 'cercle', center: null, radiusM: 500, polygon: null };
+STATE.captation = { mode: 'cercle', center: null, radiusM: 1000, polygon: null };
 
 function initCaptationMap() {
     const el = document.getElementById('captation-map');
@@ -3013,7 +3013,7 @@ function setCaptationMode(mode) {
 }
 
 function setCaptationRadius(m) {
-    STATE.captation.radiusM = Math.max(50, Math.min(5000, parseInt(m, 10) || 500));
+    STATE.captation.radiusM = Math.max(50, Math.min(5000, parseInt(m, 10) || 1000));
     const num = document.getElementById('captation-radius-num');
     if (num) num.textContent = STATE.captation.radiusM;
     _drawCaptationCircle();
