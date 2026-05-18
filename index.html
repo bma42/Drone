@@ -2261,7 +2261,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.34</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.35</strong></span>
             </div>
         </div>
 
@@ -2272,7 +2272,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.34';
+const APP_VERSION = 'v2026.05.17.35';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -6252,26 +6252,38 @@ async function fetchUasZones(lat, lon) {
     setStatus('uas', 'load');
     document.getElementById('uas-body').innerHTML = `<div class="empty-state">⏳ Récupération des zones de restriction drones (10 km)…</div>`;
 
-    // Bbox 10 km autour du point
     const dLat = 10000 / 111000;
     const dLon = 10000 / (111000 * Math.cos(lat * Math.PI / 180));
     const bbox = [(lon - dLon).toFixed(6), (lat - dLat).toFixed(6), (lon + dLon).toFixed(6), (lat + dLat).toFixed(6)];
-    const url = _buildIgnWfsUrl('TRANSPORTS.DRONES.RESTRICTIONS:carte_restriction_drones_lf', bbox, 200);
-    try {
-        const r = await fetchWithTimeout(url, {}, 15000);
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const j = await r.json();
-        renderUasZones(j.features || [], lat, lon);
-        STATE.uas = j.features || [];
-        return j.features || [];
-    } catch (e) {
-        console.warn('UAS zones IGN:', e, 'URL:', url);
-        setStatus('uas', 'err', 'indisponible');
-        document.getElementById('uas-body').innerHTML = `
-            <div class="empty-state" style="margin-bottom:10px;">Zones drones indisponibles (${(e && e.message) || e || 'erreur réseau'}).</div>
-            <button class="btn-soft no-print" onclick="if(STATE.lat) fetchUasZones(STATE.lat, STATE.lon)">↻ Réessayer</button>`;
-        return null;
+    const directUrl = _buildIgnWfsUrl('TRANSPORTS.DRONES.RESTRICTIONS:carte_restriction_drones_lf', bbox, 200);
+    // Safari iOS jette parfois 'The string did not match the expected pattern'
+    // sur des URLs WFS complexes (colon dans typeNames, ':' encodé). On essaie
+    // direct puis on bascule sur des proxies CORS qui font tampon réseau.
+    const transports = [
+        directUrl,
+        'https://corsproxy.io/?url=' + encodeURIComponent(directUrl),
+        'https://api.allorigins.win/raw?url=' + encodeURIComponent(directUrl),
+        'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(directUrl)
+    ];
+    let lastErr = null;
+    for (const url of transports) {
+        try {
+            const r = await fetchWithTimeout(url, {}, 15000);
+            if (!r.ok) { lastErr = 'HTTP ' + r.status; continue; }
+            const j = await r.json();
+            renderUasZones(j.features || [], lat, lon);
+            STATE.uas = j.features || [];
+            return j.features || [];
+        } catch (e) {
+            lastErr = (e && e.message) || String(e);
+            console.warn('[UAS] tentative KO via', url.slice(0, 80), '→', lastErr);
+        }
     }
+    setStatus('uas', 'err', 'indisponible');
+    document.getElementById('uas-body').innerHTML = `
+        <div class="empty-state" style="margin-bottom:10px;">Zones drones indisponibles (${lastErr || 'erreur réseau'}).</div>
+        <button class="btn-soft no-print" onclick="if(STATE.lat) fetchUasZones(STATE.lat, STATE.lon)">↻ Réessayer</button>`;
+    return null;
 }
 
 function classifyUasLimit(limite) {
@@ -10595,11 +10607,57 @@ function restoreMission(data) {
         selectAddr(s.address || `(${s.lat},${s.lon})`, s.lat, s.lon, s.dept || '');
     }
     if (typeof checkAuthEmpty === 'function') checkAuthEmpty();
+    if (typeof checkStepsEmpty === 'function') { try { checkStepsEmpty(); } catch (e) {} }
     // Re-bind aux télépilotes custom restaurés via innerHTML : leurs handlers
     // inline restent fonctionnels (onchange/oninput), mais on doit refresh
     // l'état du chef de dispositif et du rédacteur.
     if (typeof refreshChefDispositif === 'function') { try { refreshChefDispositif(); } catch (e) {} }
     if (typeof updateRedacteur === 'function') { try { updateRedacteur(); } catch (e) {} }
+    // Ré-instancie les Leaflet maps des risques (§21) et des informations
+    // complémentaires (§22) — leur HTML est restauré mais sans instance JS.
+    if (typeof initRiskMiniMaps === 'function') { try { initRiskMiniMaps(); } catch (e) {} }
+    if (typeof _reInitStepMaps === 'function')  { try { _reInitStepMaps();  } catch (e) {} }
+}
+
+// Re-initialise les Leaflet maps internes aux blocs d'info complémentaire (§22)
+// après un restore depuis une sauvegarde. Les coordonnées du marker sont
+// préservées via data-lat / data-lon sur le wrapper .step-map.
+function _reInitStepMaps() {
+    if (typeof L === 'undefined') return;
+    document.querySelectorAll('.step-map').forEach(wrap => {
+        const canvas = wrap.querySelector('.step-map-canvas');
+        if (!canvas || canvas.dataset.reinited === '1') return;
+        // Vide tout le DOM Leaflet stale laissé par le innerHTML
+        canvas.innerHTML = '';
+        try { delete canvas._leaflet_id; } catch (e) {}
+        canvas.dataset.reinited = '1';
+        const savedLat = parseFloat(wrap.dataset.lat || '');
+        const savedLon = parseFloat(wrap.dataset.lon || '');
+        const hasSaved = !isNaN(savedLat) && !isNaN(savedLon);
+        const fallback = STATE.lat != null ? [STATE.lat, STATE.lon] : [46.6, 2.4];
+        const center = hasSaved ? [savedLat, savedLon] : fallback;
+        const z = hasSaved ? 14 : (STATE.lat != null ? 14 : 6);
+        const stepMap = L.map(canvas, { scrollWheelZoom: false }).setView(center, z);
+        try { _frTileLayer().addTo(stepMap); } catch (e) {}
+        const coordsLabel = wrap.querySelector('.step-map-coords');
+        let m = null;
+        const update = () => {
+            if (!m) { if (coordsLabel) coordsLabel.textContent = 'Cliquez sur la carte pour poser un point.'; wrap.dataset.lat = ''; wrap.dataset.lon = ''; return; }
+            const ll = m.getLatLng();
+            if (coordsLabel) coordsLabel.textContent = `📍 ${ll.lat.toFixed(6)}, ${ll.lng.toFixed(6)} — glisser le marqueur ou cliquer sur la carte pour ajuster`;
+            wrap.dataset.lat = ll.lat;
+            wrap.dataset.lon = ll.lng;
+        };
+        const place = (latlng) => {
+            if (!m) { m = L.marker(latlng, { draggable: true, autoPan: true }).addTo(stepMap); m.on('dragend', update); }
+            else m.setLatLng(latlng);
+            update();
+        };
+        if (hasSaved) place(center);
+        else update();
+        stepMap.on('click', e => place(e.latlng));
+        setTimeout(() => { try { stepMap.invalidateSize(); } catch (e) {} }, 120);
+    });
 }
 
 function loadSelectedMission() {
