@@ -2251,7 +2251,7 @@
             </div>
             <div class="doc-footer-bottom">
                 <span>Document généré localement &middot; Aucune transmission automatique &middot; <strong>Usage strictement opérationnel</strong></span>
-                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.25</strong></span>
+                <span>Date d'édition&nbsp;: <strong id="footer-date">—</strong> &middot; Build <strong id="app-version">v2026.05.17.26</strong></span>
             </div>
         </div>
 
@@ -2262,7 +2262,7 @@
 /* ===================================================================
    ÉTUDE FAISABILITÉ DRONE — logique d'app
    =================================================================== */
-const APP_VERSION = 'v2026.05.17.25';
+const APP_VERSION = 'v2026.05.17.26';
 console.log('%c[Drone] build ' + APP_VERSION, 'background:#0b3d91;color:#fff;padding:2px 6px;border-radius:3px;font-weight:700;');
 
 /* -------- Loader visuel des cartes (gradient + drone qui pulse) -------- */
@@ -3704,29 +3704,45 @@ async function fetchVigilance(dept) {
     let lastErr = null;
 
     // ── 1) API OFFICIELLE Météo-France si un token est configuré ─────────
-    // L'utilisateur peut coller son token (gratuit via portail-api.meteofrance.fr)
-    // dans localStorage avec : localStorage.setItem('drone_mf_token', '...')
+    // L'utilisateur peut coller son propre token (gratuit via portail-api.meteofrance.fr)
+    // dans localStorage.drone_mf_token. Sinon on utilise le token par défaut
+    // ci-dessous — À RÉGÉNÉRER si vous diffusez le repo, car il est public
+    // (limite 60 req/min, partagé entre tous les visiteurs du site).
+    const MF_TOKEN_DEFAULT = 'eyJ4NXQiOiJZV0kxTTJZNE1qWTNOemsyTkRZeU5XTTRPV014TXpjek1UVmhNbU14T1RSa09ETXlOVEE0Tnc9PSIsImtpZCI6ImdhdGV3YXlfY2VydGlmaWNhdGVfYWxpYXMiLCJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJLb29kZXRhdEBjYXJib24uc3VwZXIiLCJhcHBsaWNhdGlvbiI6eyJvd25lciI6Iktvb2RldGF0IiwidGllclF1b3RhVHlwZSI6bnVsbCwidGllciI6IlVubGltaXRlZCIsIm5hbWUiOiJEZWZhdWx0QXBwbGljYXRpb24iLCJpZCI6NDA5NDksInV1aWQiOiI0MjA5MzU0Yy01Y2Q3LTRjOTItOGRjZC1lNjA2ZWIzNjJhY2EifSwiaXNzIjoiaHR0cHM6XC9cL3BvcnRhaWwtYXBpLm1ldGVvZnJhbmNlLmZyOjQ0M1wvb2F1dGgyXC90b2tlbiIsInRpZXJJbmZvIjp7IjYwUmVxUGFyTWluIjp7InRpZXJRdW90YVR5cGUiOiJyZXF1ZXN0Q291bnQiLCJncmFwaFFMTWF4Q29tcGxleGl0eSI6MCwiZ3JhcGhRTE1heERlcHRoIjowLCJzdG9wT25RdW90YVJlYWNoIjp0cnVlLCJzcGlrZUFycmVzdExpbWl0IjowLCJzcGlrZUFycmVzdFVuaXQiOiJzZWMifX0sImtleXR5cGUiOiJQUk9EVUNUSU9OIiwic3Vic2NyaWJlZEFQSXMiOlt7InN1YnNjcmliZXJUZW5hbnREb21haW4iOiJjYXJib24uc3VwZXIiLCJuYW1lIjoiRG9ubmVlc1B1YmxpcXVlc1ZpZ2lsYW5jZSIsImNvbnRleHQiOiJcL3B1YmxpY1wvRFBWaWdpbGFuY2VcL3YxIiwicHVibGlzaGVyIjoiYWRtaW4iLCJ2ZXJzaW9uIjoidjEiLCJzdWJzY3JpcHRpb25UaWVyIjoiNjBSZXFQYXJNaW4ifV0sImV4cCI6MTc3OTA3NzQwNCwidG9rZW5fdHlwZSI6ImFwaUtleSIsImlhdCI6MTc3OTA3MzgwNCwianRpIjoiYzM4YTIxN2UtYjhlNy00MGQ1LWI1NTUtZjlmZTZlNjY4ZTU5In0=.j5NEAZJeFjt4cukGRwAbji-G0Lx3FgKx0nHHhOopbT9OQiJTnevDRXKjgDFDkeEBS_Y2Scd0y_BM9qHyED1gQzvMxbtmTeXnOYnTqZzz9PQKjdpCgZ-fQ5QefbHLoswqkGx4GuNg0Vgjvbst3LUVsqUUBFmeP2qAmO3lVY_0B_xvT9fSgOZ7UqC-Rry2z0SL72w8mRugDPOSQ0skBL5Wdio9qnSWm33rePfT797tAUJilnrSAHTsL3pD2UOcEI67BZ-AUcdbwuladfRH_ke2x6osclCLDYhy-7EQOrGf_z4R_wqFddUoN7Y_JuSU7WGRfQcRR4srVx7fXuAZtfTuIA==';
     let mfToken = null;
-    try { mfToken = localStorage.getItem('drone_mf_token') || null; } catch (e) {}
+    try { mfToken = localStorage.getItem('drone_mf_token') || MF_TOKEN_DEFAULT; } catch (e) { mfToken = MF_TOKEN_DEFAULT; }
     if (mfToken) {
         const mfUrl = 'https://public-api.meteofrance.fr/public/DPVigilance/v1/cartevigilance/encours';
-        try {
-            const r = await fetchWithTimeout(mfUrl, {
-                headers: { 'apikey': mfToken, 'Authorization': 'Bearer ' + mfToken, 'Accept': 'application/json' }
-            }, 8000);
-            if (r.ok) {
+        // L'API officielle MF n'autorise pas forcément CORS depuis le
+        // navigateur → on essaie direct puis on bascule sur les proxies si
+        // besoin. Header EXACTEMENT comme le curl officiel : "apikey: …".
+        const mfTransports = [
+            { url: mfUrl, headers: { 'apikey': mfToken, 'Accept': '*/*' } },
+            { url: 'https://corsproxy.io/?url=' + encodeURIComponent(mfUrl), headers: { 'apikey': mfToken, 'Accept': '*/*' } },
+            { url: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(mfUrl), headers: { 'apikey': mfToken, 'Accept': '*/*' } },
+            { url: 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(mfUrl), headers: { 'apikey': mfToken, 'Accept': '*/*' } }
+        ];
+        for (const t of mfTransports) {
+            try {
+                const r = await fetchWithTimeout(t.url, { headers: t.headers }, 8000);
+                if (!r.ok) { lastErr = 'MF HTTP ' + r.status; log('MF transport', t.url.slice(0, 60), '→', r.status); continue; }
                 anySuccess = true;
                 const j = await r.json();
-                // Schéma MF officiel : { product: { periods: [{ timelaps: { domain_ids: [{ domain_id, max_color_id, phenomenon_items: [{ phenomenon_id, phenomenon_max_color_id }] }] } }] } }
+                // Schéma officiel MF : { product: { periods: [{ timelaps_items / per_phenomenon_max_color_id … }] } }
+                // ou meta.product.periods[].timelaps.domain_ids[].phenomenon_items[]
                 const phenoLbl = { 1:'Vent violent', 2:'Pluie-inondation', 3:'Orages', 4:'Inondation', 5:'Neige-verglas', 6:'Canicule', 7:'Grand froid', 8:'Avalanches', 9:'Vagues-submersion' };
                 const all = [];
                 try {
-                    (j.product && j.product.periods || []).forEach(per => {
-                        ((per.timelaps && per.timelaps.domain_ids) || []).forEach(d => {
+                    const periods = (j && j.product && j.product.periods) || (j && j.periods) || [];
+                    periods.forEach(per => {
+                        const domains = (per.timelaps && per.timelaps.domain_ids) || per.domain_ids || [];
+                        domains.forEach(d => {
                             if (String(d.domain_id) !== String(dept)) return;
-                            (d.phenomenon_items || []).forEach(p => {
-                                if (p.phenomenon_max_color_id > 1) all.push({
-                                    niveau: p.phenomenon_max_color_id,
+                            const items = d.phenomenon_items || d.phenomenons_items || [];
+                            items.forEach(p => {
+                                const lvl = p.phenomenon_max_color_id || p.max_color_id || p.color_id || 1;
+                                if (lvl > 1) all.push({
+                                    niveau: lvl,
                                     phenomene: phenoLbl[p.phenomenon_id] || ('Phénomène ' + p.phenomenon_id),
                                     debut: per.begin_validity_time || '',
                                     fin:   per.end_validity_time   || ''
@@ -3734,21 +3750,14 @@ async function fetchVigilance(dept) {
                             });
                         });
                     });
-                } catch (e) {}
-                if (all.length) {
-                    all.sort((a, b) => b.niveau - a.niveau);
-                    log('hit API officielle MF →', all.length, 'phénomène(s)');
-                    STATE.vigilance = { dept, items: all, unavailable: false, source: 'mf-official' };
-                    _injectVigilanceBanner();
-                    return;
-                }
-                // 200 OK + 0 phénomène pour ce dept → réellement vert via MF officielle.
-                log('API MF officielle : 0 phénomène pour dept', dept);
-                STATE.vigilance = { dept, items: [], unavailable: false, source: 'mf-official' };
+                } catch (e) { log('MF parse err', e && e.message); }
+                all.sort((a, b) => b.niveau - a.niveau);
+                log('hit API officielle MF →', all.length, 'phénomène(s) pour dept', dept, 'via', t.url.startsWith('https://public-api') ? 'direct' : 'proxy');
+                STATE.vigilance = { dept, items: all, unavailable: false, source: 'mf-official' };
                 _injectVigilanceBanner();
                 return;
-            } else { lastErr = 'MF HTTP ' + r.status; log('API MF token KO', r.status); }
-        } catch (e) { lastErr = (e && e.message) || 'MF err'; log('API MF token throw', lastErr); }
+            } catch (e) { lastErr = (e && e.message) || 'MF throw'; log('MF transport throw', lastErr); }
+        }
     }
 
     // ── 2) Fallback opendatasoft × multi-datasets × multi-fields × multi-proxies ─
